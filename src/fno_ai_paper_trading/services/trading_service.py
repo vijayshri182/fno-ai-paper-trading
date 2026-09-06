@@ -1,0 +1,101 @@
+"""Trading service: the public orchestration layer.
+
+A `TradingService` wires together data → risk → broker → portfolio and exposes
+a single `submit_order(...)` method. It never places a live order — the paper
+broker is always used.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from decimal import Decimal
+
+from fno_ai_paper_trading.broker.base import Broker
+from fno_ai_paper_trading.data.provider import MarketDataProvider
+from fno_ai_paper_trading.models.enums import OrderSide, OrderStatus
+from fno_ai_paper_trading.models.instruments import Instrument
+from fno_ai_paper_trading.models.order import Fill, Order
+from fno_ai_paper_trading.models.position import Trade
+from fno_ai_paper_trading.portfolio.portfolio import Portfolio
+from fno_ai_paper_trading.risk.manager import RiskDecision, RiskManager
+from fno_ai_paper_trading.utils.logging import get_logger
+
+logger = get_logger(__name__)
+
+
+@dataclass(frozen=True)
+class OrderResult:
+    """Everything the caller needs to know after submitting an order."""
+
+    decision: RiskDecision
+    order: Order
+    fill: Fill | None = None
+    trade: Trade | None = None
+    reference_price: Decimal | None = None
+
+
+class TradingService:
+    """Orchestrates risk checks, paper broker execution and portfolio updates."""
+
+    def __init__(
+        self,
+        settings,
+        provider: MarketDataProvider,
+        risk_manager: RiskManager,
+        broker: Broker,
+        portfolio: Portfolio,
+    ) -> None:
+        self.settings = settings
+        self.provider = provider
+        self.risk_manager = risk_manager
+        self.broker = broker
+        self.portfolio = portfolio
+
+    def submit_order(
+        self,
+        instrument: Instrument,
+        side: OrderSide,
+        quantity: int,
+        reference_price: Decimal | None = None,
+    ) -> OrderResult:
+        """Validate, fill and record a single order.
+
+        ``reference_price``: if ``None``, the last price from the data provider
+        is used. A supplied price overrides the provider (useful for tests and
+        backtesting).
+        """
+        price = reference_price if reference_price is not None else self.provider.get_last_price(instrument)
+        order = Order(instrument=instrument, side=side, quantity=quantity)
+        logger.info(
+            "submit_order %s %s %d @ %s",
+            side.value,
+            instrument.symbol,
+            quantity,
+            price,
+        )
+
+        decision = self.risk_manager.evaluate(order, self.portfolio, price)
+        if not decision.approved:
+            order.status = OrderStatus.REJECTED
+            order.rejection_reason = decision.summary
+            logger.warning("order rejected: %s", decision.summary)
+            return OrderResult(decision=decision, order=order, reference_price=price)
+
+        from fno_ai_paper_trading.broker.paper_broker import PaperBroker
+
+        if not isinstance(self.broker, PaperBroker):
+            raise RuntimeError("non-paper brokers are not supported in Phase 1")
+
+        market_price = self.provider.get_market_price(instrument)
+        fill = self.broker.place_order(order, market_price)
+        if fill is None:
+            return OrderResult(decision=decision, order=order, reference_price=price)
+
+        trade = self.portfolio.apply_fill(fill)
+        logger.info("filled trade %s", trade.trade_id)
+        return OrderResult(
+            decision=decision,
+            order=order,
+            fill=fill,
+            trade=trade,
+            reference_price=price,
+        )
