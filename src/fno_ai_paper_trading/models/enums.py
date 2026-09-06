@@ -49,3 +49,11 @@ class RejectionReason(str, Enum):
     MAX_ORDER_NOTIONAL_EXCEEDED = "MAX_ORDER_NOTIONAL_EXCEEDED"
     DAILY_LOSS_LIMIT_REACHED = "DAILY_LOSS_LIMIT_REACHED"
     UNKNOWN_INSTRUMENT = "UNKNOWN_INSTRUMENT"
+
+
+class MarketPhase(str, Enum):
+    """State of the market session at a point in time."""
+
+    PRE_OPEN = "PRE_OPEN"  # Order entry phase just before continuous trading
+    OPEN = "OPEN"  # Continuous trading is active
+    CLOSED = "CLOSED"  # Trading has not started or has ended for the day

@@ -179,9 +179,26 @@ Build the core foundation:
 
 # Phase 2 — Real Market Data + Strategy Foundation
 
-### Planned
+### Status: implemented (2026-09-07) — first increment
 
-Integrate real market-data APIs.
+Implemented the real-market-data provider interface and the strategy engine;
+backtesting harness remains as a follow-up in this phase.
+
+**Delivered:**
+- `MarketDataProvider` ABC extended: `get_instrument`, `get_quote`,
+  `get_market_session`, `get_historical_ohlcv` (+ existing `get_prices`).
+- Read-only **Zerodha Kite Connect v3** adapter (`data/kite_provider.py`):
+  quote, LTP, position-size/contract CSV master, historical candles and market
+  status over `FNO_KITE_*` credentials; exponential-backoff retries on
+  rate-limit/5xx/network errors; typed `MarketDataError` hierarchy.
+- NSE market hours helper (`data/market_hours.py`): session phases
+  (PRE_OPEN/OPEN/CLOSED), weekend/holiday handling, next-open rollover.
+- Extended models: `MarketPhase` enum, `MarketQuote`, `MarketSession`,
+  `open_interest`, `exchange`/`exchange_token`.
+- Deterministic strategy engine: `Strategy` ABC, `StrategyEngine` replay, and
+  `MovingAverageCrossStrategy` (fast/slow SMA crossover).
+- `StrategyService`: evaluates signals and submits paper orders only, through
+  RiskManager → PaperBroker.
 
 The system should be able to receive real market information while continuing to execute trades only through the PaperBroker.
 
@@ -988,11 +1005,11 @@ F&O AI Paper Trading System
 
 ## Current Phase
 
-**Phase 1 — Foundation**
+**Phase 2 — Real Market Data + Strategy Foundation**
 
 Status:
 
-**IN PROGRESS**
+**IN PROGRESS** (first increment implemented 2026-09-07; backtesting harness still pending in this phase)
 
 ---
 
@@ -1000,25 +1017,25 @@ Status:
 
 Phase 1 is complete when:
 
-* [ ] Project structure exists
-* [ ] Configuration works
-* [ ] Core models work
-* [ ] Data provider interface exists
-* [ ] Sample provider works
-* [ ] Broker interface exists
-* [ ] PaperBroker works
-* [ ] Portfolio works
-* [ ] P&L calculations work
-* [ ] RiskManager works
-* [ ] Logging works
-* [ ] `.env.example` exists
-* [ ] No secrets are committed
-* [ ] Tests cover core functionality
-* [ ] All tests pass
-* [ ] `python src/main.py` works
-* [ ] README is updated
-* [ ] Git diff reviewed
-* [ ] Phase 1 committed
+* [x] Project structure exists
+* [x] Configuration works
+* [x] Core models work
+* [x] Data provider interface exists
+* [x] Sample provider works
+* [x] Broker interface exists
+* [x] PaperBroker works
+* [x] Portfolio works
+* [x] P&L calculations work
+* [x] RiskManager works
+* [x] Logging works
+* [x] `.env.example` exists
+* [x] No secrets are committed
+* [x] Tests cover core functionality
+* [x] All tests pass
+* [x] `python src/main.py` works
+* [x] README is updated
+* [x] Git diff reviewed
+* [x] Phase 1 committed
 * [ ] Phase 1 pushed to GitHub
 
 ---
@@ -1027,20 +1044,21 @@ Phase 1 is complete when:
 
 Phase 2 is complete when:
 
-* [ ] Real market-data provider is integrated
-* [ ] API credentials are environment-based
-* [ ] No credentials are committed
-* [ ] Instrument data is normalized
-* [ ] Market prices are normalized
-* [ ] API failures are handled
-* [ ] Rate limits are respected
-* [ ] Real market data can be consumed by the application
-* [ ] Paper trading continues to use PaperBroker
-* [ ] No real orders can be placed
-* [ ] First deterministic strategy is implemented
-* [ ] Strategy tests exist
-* [ ] Integration tests exist
-* [ ] Documentation is updated
+* [x] Real market-data provider is integrated
+* [x] API credentials are environment-based
+* [x] No credentials are committed
+* [x] Instrument data is normalized
+* [x] Market prices are normalized
+* [x] API failures are handled
+* [x] Rate limits are respected
+* [x] Real market data can be consumed by the application
+* [x] Paper trading continues to use PaperBroker
+* [x] No real orders can be placed
+* [x] First deterministic strategy is implemented
+* [x] Strategy tests exist
+* [x] Integration tests exist
+* [x] Documentation is updated
+* [ ] Backtesting harness (follow-up in this phase)
 
 ---
 
@@ -1158,6 +1176,27 @@ The system should be capable of using **real market information while remaining 
 ---
 
 # 31. Change Log
+
+## 2026-09-07
+
+* Phase 2 first increment implemented:
+  * `MarketDataProvider` ABC extended (`get_instrument`, `get_quote`,
+    `get_market_session`, `get_historical_ohlcv`).
+  * Read-only Kite Connect v3 adapter (`data/kite_provider.py`) with
+    `FNO_KITE_*` environment credentials, retries and a typed `MarketDataError`
+    hierarchy; `KiteSettings` added to config.
+  * NSE market hours helper (`data/market_hours.py`) with session phases and
+    holiday/weekend/next-open handling.
+  * Models extended: `MarketPhase`, `MarketQuote`, `MarketSession`,
+    `open_interest`, `exchange`/`exchange_token`.
+  * Deterministic strategy engine: `Strategy` ABC, `StrategyEngine`,
+    `MovingAverageCrossStrategy`.
+  * `StrategyService` evaluates signals and submits paper orders only.
+  * `main.py` now runs the Phase 1 demo + a strategy demo (paper-only).
+  * Discovered and fixed latent Phase 1 defect: `Trade.realized_pnl` is now
+    signed (losses allowed) rather than forced non-negative.
+  * All 134 unit tests pass; test report generated.
+* Backtesting harness remains a follow-up within Phase 2.
 
 ## 2026-09-06
 

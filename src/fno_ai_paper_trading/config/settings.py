@@ -65,12 +65,50 @@ class PaperSettings:
         object.__setattr__(self, "slippage_rate", non_negative_decimal(self.slippage_rate, "slippage_rate"))
 
 
+@dataclass(frozen=True)
+class KiteSettings:
+    """Read-only Kite Connect market-data configuration.
+
+    Credentials are read from the environment only. Empty values are allowed at
+    load time so the rest of the system still starts without Kite; the provider
+    raises ``ProviderConfigurationError`` only if a live call is attempted while
+    credentials are missing.
+    """
+
+    api_key: str = ""
+    access_token: str = ""
+    base_url: str = "https://api.kite.trade"
+    timeout_seconds: float = 10.0
+    max_retries: int = 3
+
+    def __post_init__(self) -> None:
+        base_url = self.base_url.strip().rstrip("/")
+        if not base_url.startswith("https://") and not base_url.startswith("http://"):
+            raise ValueError("base_url must start with http:// or https://")
+        if self.timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be > 0")
+        if self.max_retries < 0:
+            raise ValueError("max_retries must be >= 0")
+        object.__setattr__(self, "api_key", self.api_key.strip())
+        object.__setattr__(self, "access_token", self.access_token.strip())
+        object.__setattr__(self, "base_url", base_url)
+
+    @property
+    def configured(self) -> bool:
+        """True when API key and access token are both present."""
+        return bool(self.api_key and self.access_token)
+
+
 def _env_decimal(name: str, default: str) -> Decimal:
     return Decimal(os.getenv(name, default).strip())
 
 
 def _env_int(name: str, default: str) -> int:
     return int(os.getenv(name, default).strip())
+
+
+def _env_float(name: str, default: str) -> float:
+    return float(os.getenv(name, default).strip())
 
 
 def load_settings(env_file: str | Path | None = None) -> PaperSettings:
@@ -98,4 +136,24 @@ def load_settings(env_file: str | Path | None = None) -> PaperSettings:
         commission_fixed=_env_decimal("FNO_PAPER_COMMISSION_FIXED", "0"),
         slippage_rate=_env_decimal("FNO_PAPER_SLIPPAGE_RATE", "0.001"),
         log_level=log_level,
+    )
+
+
+def load_kite_settings(env_file: str | Path | None = None) -> KiteSettings:
+    """Load Kite Connect settings from the environment.
+
+    Follows the same ``.env`` precedence rules as :func:`load_settings`.
+    Returns an unconfigured ``KiteSettings`` when credentials are absent.
+    """
+    if env_file is not None:
+        load_dotenv(dotenv_path=env_file)
+    else:
+        load_dotenv()
+
+    return KiteSettings(
+        api_key=os.getenv("FNO_KITE_API_KEY", ""),
+        access_token=os.getenv("FNO_KITE_ACCESS_TOKEN", ""),
+        base_url=os.getenv("FNO_KITE_BASE_URL", "https://api.kite.trade"),
+        timeout_seconds=_env_float("FNO_KITE_TIMEOUT_SECONDS", "10"),
+        max_retries=_env_int("FNO_KITE_MAX_RETRIES", "3"),
     )

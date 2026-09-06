@@ -5,9 +5,15 @@ A modular Python system for paper-trading Futures & Options instruments.
 **Phase 1 scope:** configuration, data models, in-memory data provider, pre-trade
 risk management, a simulated paper broker, portfolio accounting and a test suite.
 
+**Phase 2 scope:** real market data behind the `MarketDataProvider` abstraction
+(Zerodha Kite Connect v3 adapter, market hours, typed errors, rate-limit/retry
+handling) plus the first deterministic strategy (moving average crossover) and a
+strategy service that executes signals through the paper broker only.
+
 > **Safety guarantee:** This system is paper-trading only. No code in this
 > repository places live orders, contacts a broker API, or executes real-money
-> trades. The paper broker is completely isolated from any external service.
+> trades. The paper broker is completely isolated from any external service;
+> the market-data vendor adapter is read-only.
 
 ---
 
@@ -15,15 +21,22 @@ risk management, a simulated paper broker, portfolio accounting and a test suite
 
 ```
 src/
-  main.py                             # Entry point — runs a small paper demo
+  main.py                             # Entry point — Phase 1 + Phase 2 paper demos
   fno_ai_paper_trading/
-    config/settings.py                # Environment-based PaperSettings (Decimal-backed)
+    config/settings.py                # Environment-based PaperSettings + KiteSettings
     models/                           # Domain objects: Instrument, Order, Fill,
-                                      #   Position, Trade, MarketPrice, enums
+                                      #   Position, Trade, MarketPrice, MarketQuote,
+                                      #   MarketSession, enums
     data/
       provider.py                     # MarketDataProvider ABC
       mock_provider.py                # InMemoryMarketDataProvider (deterministic samples)
-    strategies/                       # Reserved for Phase 2
+      kite_provider.py                # Kite Connect v3 adapter (read-only market data)
+      market_hours.py                 # NSE session hours / market status helpers
+      errors.py                       # Typed MarketDataError hierarchy
+    strategies/
+      base.py                         # Strategy ABC + SignalResult
+      moving_average_cross.py         # First deterministic strategy
+      engine.py                       # Replays bars through a strategy
     risk/
       manager.py                      # RiskManager — pre-trade quantity/notional/loss checks
     broker/
@@ -31,17 +44,21 @@ src/
       paper_broker.py                 # PaperBroker — simulated fills, slippage, commission
     portfolio/
       portfolio.py                    # Cash, positions, average entry price, P&L
-    backtest/                         # Reserved for Phase 2
+    backtest/                         # Reserved for Phase 4
     services/
       trading_service.py              # Orchestrates data → risk → broker → portfolio
+      strategy_service.py             # Signals → risk → paper broker (paper orders only)
     utils/
       logging.py                      # Structured logging setup (no secrets in output)
       functions.py                    # Decimal helpers, id generation, notional calc
+      http.py                         # Dependency-free urllib HTTP transport
+      retry.py                        # Exponential-backoff retry helper
 tests/                                # Unit tests — no external dependencies
 ```
 
 All money/price fields use `decimal.Decimal` throughout. Interfaces (ABCs) are
-stable and ready for Phase 2 strategy and backtest additions.
+stable, so backtesting (remaining Phase 2) and AI (Phase 3) plug in without
+touching the core accounting/risk/strategy paths.
 
 ---
 
@@ -89,14 +106,21 @@ If `.env` is absent, sensible defaults are used.
 python src/main.py
 ```
 
-This prints the system title and runs a small paper-trading demo that:
+This prints the system title and runs two paper-only demonstrations:
 
-1. Loads settings from environment (or defaults).
-2. Creates three sample instruments (a future + two options).
-3. Submits two buy orders through the risk manager → paper broker → portfolio.
-4. Prints final cash, unrealized P&L and total portfolio value.
+1. **Phase 1 walkthrough:** creates three sample instruments (a future + two
+   options) and submits two buy orders through risk manager → paper broker →
+   portfolio.
+2. **Phase 2 strategy demo:** replays a deterministic 55-bar series through the
+   moving-average crossover strategy, submitting paper orders when the fast MA
+   crosses the slow MA (one BUY then one SELL in the sample series), then prints
+   final cash and portfolio value.
 
-No real orders are placed.
+Both demos finish with the same guarantee: no real orders are placed.
+
+Credentials (if you configure Kite) enable the read-only market-data adapter,
+but the demos always use the deterministic in-memory provider, so `python
+src/main.py` works offline with zero credentials.
 
 ---
 
@@ -119,10 +143,15 @@ beyond `pytest`.
 
 | Test file | Covers |
 |---|---|
-| `tests/test_models.py` | Instrument, Order, Fill, Position, Trade, MarketPrice — creation and validation |
+| `tests/test_models.py` | Instrument, Order, Fill, Position, Trade, MarketPrice, MarketQuote, MarketSession — creation and validation |
 | `tests/test_risk.py` | Position quantity limits, notional limits, daily loss limit, unknown instrument |
 | `tests/test_broker.py` | PaperBroker fill, slippage, commission, status transitions, cancellation |
 | `tests/test_portfolio.py` | Cash changes, position tracking, average entry price, realized/unrealized P&L, total value |
+| `tests/test_market_hours.py` | NSE session phases, weekend/holiday closed state, next-open rollover |
+| `tests/test_strategies.py` | Moving-average crossover signals, engine replay, determinism |
+| `tests/test_strategy_service.py` | Signals → risk → paper broker integration; risk gating; hold = no order |
+| `tests/test_kite_provider.py` | Kite adapter mapping, CSV master, candles, sessions, retries and typed errors (mocked HTTP) |
+| `tests/test_utils_http_retry.py` | HTTP transport, retry/backoff behaviour |
 
 ---
 
@@ -142,21 +171,32 @@ Defaults are shown next to each variable in `.env.example`.
 | `FNO_PAPER_COMMISSION_FIXED` | `0` | Flat commission per fill |
 | `FNO_PAPER_SLIPPAGE_RATE` | `0.001` | Price slippage applied to simulated fills |
 | `FNO_LOG_LEVEL` | `INFO` | Logging verbosity |
+| `FNO_KITE_API_KEY` | *(empty)* | Kite Connect API key (read-only market data)—**never commit a real key** |
+| `FNO_KITE_ACCESS_TOKEN` | *(empty)* | Kite Connect access token—**never commit a real token** |
+| `FNO_KITE_BASE_URL` | `https://api.kite.trade` | Kite endpoint base URL |
+| `FNO_KITE_TIMEOUT_SECONDS` | `10` | HTTP timeout for Kite calls |
+| `FNO_KITE_MAX_RETRIES` | `3` | Retries on rate-limit/5xx/network errors |
 
 Never commit real values to `.env` — the file is git-ignored.
 
 ---
 
-## Safety limitations (Phase 1)
+## Safety limitations (Phase 2)
 
 - **No live execution:** the `PaperBroker.is_live` property is hard-coded to
-  `False`. No code path in the system contacts an external broker or API.
+  `False`. No code path in the system contacts an external broker or API. The
+  strategy service submits paper orders only.
 - **No secrets in code:** all credentials belong in `.env` (git-ignored) or
-  environment variables, never in source.
-- **No AI/strategy claims:** no automated signal or strategy logic ships in
-  Phase 1. The `strategies/` and `backtest/` packages are placeholders.
-- **No network calls:** the only data provider is `InMemoryMarketDataProvider`.
-  No HTTP/WebSocket connections are made anywhere in the codebase.
+  environment variables, never in source. The Kite adapter refuses to run
+  without credentials and raises a typed `ProviderConfigurationError`.
+- **No AI/strategy claims:** the strategy engine is deterministic (moving
+  average crossover). AI analysis is planned for Phase 3 and will sit behind an
+  interface with non-autonomous execution.
+- **Market data is offline-safe:** the only provider exercised by the demos is
+  `InMemoryMarketDataProvider`. The Kite Connect adapter is a read-only market
+  data client, unit-tested against mocked HTTP; it never places orders and it
+  is exercised live only when `FNO_KITE_API_KEY` / `FNO_KITE_ACCESS_TOKEN` are
+  configured by the user.
 
 ---
 
@@ -164,7 +204,8 @@ Never commit real values to `.env` — the file is git-ignored.
 
 | Phase | Scope |
 |---|---|
-| **Phase 2** | Strategy engine, real market-data provider interface, backtesting harness |
+| **Phase 2 (done)** | Strategy engine, real market-data provider interface, moving-average crossover strategy, read-only Kite Connect adapter |
+| **Phase 2 (remaining)** | Backtesting harness, historical-data CLI/tooling |
 | **Phase 3** | AI analysis/explainability (behind an interface, never autonomous execution) |
 | **Phase 4** | Real broker adapter behind an interface, required to remain disabled by default |
 

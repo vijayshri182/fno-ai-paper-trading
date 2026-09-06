@@ -23,6 +23,8 @@ class Instrument:
     expiry: date | None = None
     strike: Decimal | None = None
     option_type: str | None = None  # "CE" or "PE"
+    exchange: str = "NSE"
+    exchange_token: str | None = None  # vendor/exchange token (e.g. Kite instrument token)
     lot_size: int = 1
     tick_size: Decimal = Decimal("0.05")
     multiplier: int = 1
@@ -30,13 +32,20 @@ class Instrument:
     def __post_init__(self) -> None:
         symbol = self.symbol.strip()
         underlying = self.underlying_symbol.strip()
+        exchange = self.exchange.strip().upper()
         if not symbol:
             raise ValueError("instrument symbol must not be empty")
         if not underlying:
             raise ValueError("underlying_symbol must not be empty")
+        if not exchange:
+            raise ValueError("exchange must not be empty")
+
+        exchange_token = self.exchange_token.strip() if self.exchange_token else None
 
         object.__setattr__(self, "symbol", symbol)
         object.__setattr__(self, "underlying_symbol", underlying)
+        object.__setattr__(self, "exchange", exchange)
+        object.__setattr__(self, "exchange_token", exchange_token)
         object.__setattr__(self, "lot_size", positive_int(self.lot_size, "lot_size"))
         object.__setattr__(self, "multiplier", positive_int(self.multiplier, "multiplier"))
         object.__setattr__(self, "tick_size", positive_decimal(self.tick_size, "tick_size"))

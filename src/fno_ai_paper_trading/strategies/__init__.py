@@ -1,6 +1,16 @@
-"""Strategy layer — reserved for Phase 2.
+"""Strategy layer — Phase 2.
 
-No strategy implementation ships in Phase 1. The package exists so the target
-architecture is in place and the data/risk/broker/portfolio interfaces can be
-built against without rewrites.
+Strategies are pure decision functions over price history. They never place
+orders; the strategy service converts their signals into paper orders through
+the risk manager and the paper broker.
 """
+from fno_ai_paper_trading.strategies.base import SignalResult, Strategy
+from fno_ai_paper_trading.strategies.engine import StrategyEngine
+from fno_ai_paper_trading.strategies.moving_average_cross import MovingAverageCrossStrategy
+
+__all__ = [
+    "Strategy",
+    "SignalResult",
+    "StrategyEngine",
+    "MovingAverageCrossStrategy",
+]

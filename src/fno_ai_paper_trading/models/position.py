@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from fno_ai_paper_trading.models.enums import OrderSide
 from fno_ai_paper_trading.models.instruments import Instrument
@@ -11,6 +11,7 @@ from fno_ai_paper_trading.utils.functions import (
     non_negative_decimal,
     positive_decimal,
     positive_int,
+    to_decimal,
 )
 
 
@@ -70,10 +71,16 @@ class Trade:
     def __post_init__(self) -> None:
         if not self.trade_id.strip():
             raise ValueError("trade requires a trade_id")
+        try:
+            realized_pnl = to_decimal(self.realized_pnl)
+        except (InvalidOperation, TypeError, ValueError) as exc:
+            raise ValueError("realized_pnl must be a number") from exc
+        if not realized_pnl.is_finite():
+            raise ValueError("realized_pnl must be finite")
         object.__setattr__(self, "quantity", positive_int(self.quantity, "quantity"))
         object.__setattr__(self, "price", positive_decimal(self.price, "price"))
         object.__setattr__(self, "commission", non_negative_decimal(self.commission, "commission"))
-        object.__setattr__(self, "realized_pnl", non_negative_decimal(self.realized_pnl, "realized_pnl"))
+        object.__setattr__(self, "realized_pnl", realized_pnl)
 
     @property
     def notional(self) -> Decimal:

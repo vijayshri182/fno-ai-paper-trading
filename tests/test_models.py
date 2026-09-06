@@ -10,9 +10,15 @@ from decimal import Decimal
 
 import pytest
 
-from fno_ai_paper_trading.models.enums import InstrumentType, OrderSide, OrderStatus, OrderType
+from fno_ai_paper_trading.models.enums import (
+    InstrumentType,
+    MarketPhase,
+    OrderSide,
+    OrderStatus,
+    OrderType,
+)
 from fno_ai_paper_trading.models.instruments import Instrument
-from fno_ai_paper_trading.models.market import MarketPrice
+from fno_ai_paper_trading.models.market import MarketPrice, MarketQuote, MarketSession
 from fno_ai_paper_trading.models.order import Fill, Order
 from fno_ai_paper_trading.models.position import Position, Trade
 
@@ -111,6 +117,22 @@ class TestInstrument:
                           underlying_symbol="NIFT", multiplier=1)
         assert inst.multiplier == 1
 
+    def test_exchange_normalized_and_token_preserved(self) -> None:
+        inst = Instrument(
+            symbol="NIFTY1",
+            instrument_type=InstrumentType.FUTURE,
+            underlying_symbol="NIFTY",
+            exchange="nse",
+            exchange_token=" 408065 ",
+        )
+        assert inst.exchange == "NSE"
+        assert inst.exchange_token == "408065"
+
+    def test_blank_exchange_rejected(self) -> None:
+        with pytest.raises(ValueError, match="exchange"):
+            Instrument(symbol="X", instrument_type=InstrumentType.FUTURE,
+                       underlying_symbol="NIFT", exchange="  ")
+
 
 # ---------------------------------------------------------------------------
 # Order
@@ -203,6 +225,15 @@ class TestTrade:
             Trade(trade_id="TRD_2", instrument=_future(), side=OrderSide.BUY,
                   quantity=0, price=Decimal("100"), commission=Decimal("0"))
 
+    def test_trade_allows_negative_realized_pnl(self) -> None:
+        # Realized P&L is signed: closing at a loss is a legitimate scenario.
+        trade = Trade(
+            trade_id="TRD_3", instrument=_future(), side=OrderSide.SELL,
+            quantity=5, price=Decimal("200"), commission=Decimal("10"),
+            realized_pnl=Decimal("-2500"),
+        )
+        assert trade.realized_pnl == Decimal("-2500")
+
 
 # ---------------------------------------------------------------------------
 # MarketPrice
@@ -245,3 +276,100 @@ class TestMarketPrice:
                 open=Decimal("10"), high=Decimal("15"), low=Decimal("5"),
                 close=Decimal("12"), volume=-1,
             )
+
+    def test_open_interest_accepted_and_validated(self) -> None:
+        bar = MarketPrice(
+            instrument=_future(), timestamp=datetime.now(),
+            open=Decimal("10"), high=Decimal("15"), low=Decimal("5"),
+            close=Decimal("12"), volume=100, open_interest=250,
+        )
+        assert bar.open_interest == 250
+        with pytest.raises(ValueError, match="open_interest"):
+            MarketPrice(
+                instrument=_future(), timestamp=datetime.now(),
+                open=Decimal("10"), high=Decimal("15"), low=Decimal("5"),
+                close=Decimal("12"), volume=100, open_interest=-1,
+            )
+
+
+# ---------------------------------------------------------------------------
+# MarketQuote
+# ---------------------------------------------------------------------------
+
+class TestMarketQuote:
+    def test_quote_stores_fields(self) -> None:
+        quote = MarketQuote(
+            instrument=_future(),
+            timestamp=datetime(2026, 9, 1, 9, 30),
+            last_price=Decimal("24205"),
+            open=Decimal("24100"),
+            high=Decimal("24300"),
+            low=Decimal("24050"),
+            previous_close=Decimal("24120"),
+            volume=1200,
+            open_interest=2500,
+            bid=Decimal("24200"),
+            ask=Decimal("24210"),
+        )
+        assert quote.change_abs == Decimal("85")
+        assert quote.last_price == Decimal("24205")
+
+    def test_quote_negative_last_price_rejected(self) -> None:
+        with pytest.raises(ValueError, match="last_price"):
+            MarketQuote(
+                instrument=_future(), timestamp=datetime.now(), last_price=Decimal("-1"),
+            )
+
+    def test_quote_bid_must_be_at_most_ask(self) -> None:
+        with pytest.raises(ValueError, match="bid"):
+            MarketQuote(
+                instrument=_future(), timestamp=datetime.now(), last_price=Decimal("10"),
+                bid=Decimal("11"), ask=Decimal("10"),
+            )
+
+    def test_quote_high_low_consistency(self) -> None:
+        with pytest.raises(ValueError, match="high"):
+            MarketQuote(
+                instrument=_future(), timestamp=datetime.now(), last_price=Decimal("10"),
+                high=Decimal("5"), low=Decimal("15"),
+            )
+
+    def test_quote_negative_open_interest_rejected(self) -> None:
+        with pytest.raises(ValueError, match="open_interest"):
+            MarketQuote(
+                instrument=_future(), timestamp=datetime.now(), last_price=Decimal("10"),
+                open_interest=-2,
+            )
+
+
+# ---------------------------------------------------------------------------
+# MarketSession
+# ---------------------------------------------------------------------------
+
+class TestMarketSession:
+    def test_session_stores_fields(self) -> None:
+        session = MarketSession(
+            is_open=True,
+            phase=MarketPhase.OPEN,
+            observed_at=datetime(2026, 9, 1, 10, 0),
+            open_time=datetime(2026, 9, 1, 9, 15),
+            close_time=datetime(2026, 9, 1, 15, 30),
+            exchange="nse",
+            label="session",
+        )
+        assert session.exchange == "NSE"  # normalized to upper
+        assert session.phase is MarketPhase.OPEN
+
+    def test_session_rejects_inverted_hours(self) -> None:
+        with pytest.raises(ValueError, match="open_time"):
+            MarketSession(
+                is_open=False,
+                phase=MarketPhase.CLOSED,
+                observed_at=datetime(2026, 9, 1, 10, 0),
+                open_time=datetime(2026, 9, 1, 15, 30),
+                close_time=datetime(2026, 9, 1, 9, 15),
+            )
+
+    def test_session_rejects_empty_exchange(self) -> None:
+        with pytest.raises(ValueError, match="exchange"):
+            MarketSession(is_open=True, phase=MarketPhase.OPEN, observed_at=datetime.now(), exchange=" ")
