@@ -179,10 +179,10 @@ Build the core foundation:
 
 # Phase 2 — Real Market Data + Strategy Foundation
 
-### Status: implemented (2026-09-07) — first increment
+### Status: implemented (2026-09-07)
 
-Implemented the real-market-data provider interface and the strategy engine;
-backtesting harness remains as a follow-up in this phase.
+Implemented the real-market-data provider interface, the strategy engine, and
+the deterministic backtest harness.
 
 **Delivered:**
 - `MarketDataProvider` ABC extended: `get_instrument`, `get_quote`,
@@ -199,6 +199,15 @@ backtesting harness remains as a follow-up in this phase.
   `MovingAverageCrossStrategy` (fast/slow SMA crossover).
 - `StrategyService`: evaluates signals and submits paper orders only, through
   RiskManager → PaperBroker.
+- **Backtest harness** (`fno_ai_paper_trading.backtest`): deterministic
+  `BacktestEngine` (no look-ahead, bar-timestamped fills), `BacktestConfig`
+  execution assumptions (capital, sizing, commission, slippage, risk limits),
+  `BacktestResult`/`EquityPoint` metrics (P&L, win rate, profit factor,
+  drawdown, equity curve), hand-verified dataset fixtures (long/short, winning,
+  losing, drawdown, multiple trades, no-trade) and an offline
+  `python -m fno_ai_paper_trading.backtest` demo. Paper-broker only — no
+  credentials, no network. See `tests/test_backtest.py` for correctness and
+  safety regression coverage.
 
 The system should be able to receive real market information while continuing to execute trades only through the PaperBroker.
 
@@ -726,11 +735,13 @@ Tests must not require external API connectivity.
 
 # 17. Backtesting Architecture
 
-Backtesting begins in Phase 4.
+Backtesting is implemented within Phase 2 (2026-09-07) in the
+`fno_ai_paper_trading.backtest` package; see the Phase 2 delivery notes above.
+A historical-data CLI that loads external OHLCV is planned for Phase 3.
 
-The backtesting engine should reuse the same core concepts where practical.
+The backtesting engine reuses the same core concepts where practical.
 
-Preferred architecture:
+Preferred architecture (as implemented):
 
 ```text
 Historical Data
@@ -754,7 +765,7 @@ Portfolio
 Performance Analytics
 ```
 
-Backtesting should account for:
+Backtesting accounts for:
 
 * Commission
 * Slippage
@@ -765,7 +776,9 @@ Backtesting should account for:
 * Drawdown
 * P&L
 
-The backtesting engine must avoid look-ahead bias.
+The backtesting engine avoids look-ahead bias (strategy sees only `bars[:i+1]`
+at bar `i`) and is fully deterministic (fills carry bar timestamps; all costs
+are explicit `Decimal` arithmetic).
 
 ---
 
@@ -1005,11 +1018,11 @@ F&O AI Paper Trading System
 
 ## Current Phase
 
-**Phase 2 — Real Market Data + Strategy Foundation**
+**Phase 2 — Real Market Data + Strategy Foundation + Backtesting**
 
 Status:
 
-**IN PROGRESS** (first increment implemented 2026-09-07; backtesting harness still pending in this phase)
+**IN PROGRESS** (implemented 2026-09-07; remaining Phase 2 work: historical-data CLI/tooling is deferred to Phase 3)
 
 ---
 
@@ -1057,8 +1070,9 @@ Phase 2 is complete when:
 * [x] First deterministic strategy is implemented
 * [x] Strategy tests exist
 * [x] Integration tests exist
+* [x] Backtesting harness implemented (deterministic engine, execution assumptions, metrics, datasets, offline demo)
+* [ ] Historical-data CLI/tooling (deferred to Phase 3)
 * [x] Documentation is updated
-* [ ] Backtesting harness (follow-up in this phase)
 
 ---
 
@@ -1179,6 +1193,24 @@ The system should be capable of using **real market information while remaining 
 
 ## 2026-09-07
 
+* Phase 2 backtest harness implemented (completing Phase 2):
+  * `src/fno_ai_paper_trading/backtest/` package added: `config.py`
+    (`BacktestConfig` execution assumptions), `engine.py` (`BacktestEngine` +
+    paper-only `BacktestBroker` that stamps fills with bar timestamps),
+    `result.py` (`BacktestResult`, `EquityPoint` with full P&L / win-rate /
+    profit-factor / drawdown metrics), `datasets.py` (deterministic,
+    hand-verified fixtures incl. long & short round trips, winning, losing,
+    drawdown, multiple trades, no-trade), `__main__.py` (offline demo).
+  * Correctness guarantees: no look-ahead (`bars[:i+1]` per bar), deterministic
+    reproducibility (asserted in tests), round-trip trade statistics, positions
+    left open at end-of-data are reported with unrealized P&L (no phantom
+    closing trade), risk limits identical to live paper trading.
+  * `src/main.py` now also runs a backtest demo (paper-only).
+  * `tests/test_backtest.py` added: exact-cost P&L (slippage 1% → 7.70,
+    commission → 0.68997), drawdown, chronology, signal timing, signed realized
+    P&L regression, determinism-repeatability, end-of-data open position, risk
+    rejection vs disabled-risk, paper-only offline safety.
+  * Full suite: 156 tests pass (134 + 22 new); test report regenerated.
 * Phase 2 first increment implemented:
   * `MarketDataProvider` ABC extended (`get_instrument`, `get_quote`,
     `get_market_session`, `get_historical_ohlcv`).
@@ -1196,7 +1228,6 @@ The system should be capable of using **real market information while remaining 
   * Discovered and fixed latent Phase 1 defect: `Trade.realized_pnl` is now
     signed (losses allowed) rather than forced non-negative.
   * All 134 unit tests pass; test report generated.
-* Backtesting harness remains a follow-up within Phase 2.
 
 ## 2026-09-06
 

@@ -7,13 +7,16 @@ risk management, a simulated paper broker, portfolio accounting and a test suite
 
 **Phase 2 scope:** real market data behind the `MarketDataProvider` abstraction
 (Zerodha Kite Connect v3 adapter, market hours, typed errors, rate-limit/retry
-handling) plus the first deterministic strategy (moving average crossover) and a
-strategy service that executes signals through the paper broker only.
+handling), the first deterministic strategy (moving average crossover), a
+strategy service that executes signals through the paper broker only, and a
+deterministic backtest harness for offline research.
 
 > **Safety guarantee:** This system is paper-trading only. No code in this
 > repository places live orders, contacts a broker API, or executes real-money
 > trades. The paper broker is completely isolated from any external service;
-> the market-data vendor adapter is read-only.
+> the market-data vendor adapter is read-only. The backtest engine executes
+> through the same paper broker only — it needs no credentials and makes no
+> network calls.
 
 ---
 
@@ -21,7 +24,7 @@ strategy service that executes signals through the paper broker only.
 
 ```
 src/
-  main.py                             # Entry point — Phase 1 + Phase 2 paper demos
+  main.py                             # Entry point — Phase 1, Phase 2 strategy, backtest demos
   fno_ai_paper_trading/
     config/settings.py                # Environment-based PaperSettings + KiteSettings
     models/                           # Domain objects: Instrument, Order, Fill,
@@ -44,7 +47,12 @@ src/
       paper_broker.py                 # PaperBroker — simulated fills, slippage, commission
     portfolio/
       portfolio.py                    # Cash, positions, average entry price, P&L
-    backtest/                         # Reserved for Phase 4
+    backtest/
+      config.py                       # BacktestConfig — explicit execution assumptions
+      engine.py                       # BacktestEngine + paper-only fill broker
+      result.py                       # BacktestResult + EquityPoint (metrics)
+      datasets.py                     # Deterministic historical datasets
+      __main__.py                     # Offline backtest demo (python -m ...)
     services/
       trading_service.py              # Orchestrates data → risk → broker → portfolio
       strategy_service.py             # Signals → risk → paper broker (paper orders only)
@@ -57,8 +65,8 @@ tests/                                # Unit tests — no external dependencies
 ```
 
 All money/price fields use `decimal.Decimal` throughout. Interfaces (ABCs) are
-stable, so backtesting (remaining Phase 2) and AI (Phase 3) plug in without
-touching the core accounting/risk/strategy paths.
+stable, so additional strategies, historical-data tooling (Phase 3) and AI
+(Phase 3) plug in without touching the core accounting/risk/strategy paths.
 
 ---
 
@@ -106,7 +114,7 @@ If `.env` is absent, sensible defaults are used.
 python src/main.py
 ```
 
-This prints the system title and runs two paper-only demonstrations:
+This prints the system title and runs three paper-only demonstrations:
 
 1. **Phase 1 walkthrough:** creates three sample instruments (a future + two
    options) and submits two buy orders through risk manager → paper broker →
@@ -115,8 +123,12 @@ This prints the system title and runs two paper-only demonstrations:
    moving-average crossover strategy, submitting paper orders when the fast MA
    crosses the slow MA (one BUY then one SELL in the sample series), then prints
    final cash and portfolio value.
+3. **Backtest demo:** replays a deterministic 13-bar series with `fast=2`,
+   `slow=3` through the backtest engine and prints the resulting performance
+   metrics (final equity, total P&L, return, max drawdown, trade statistics,
+   commission, profit factor).
 
-Both demos finish with the same guarantee: no real orders are placed.
+All three demos finish with the same guarantee: no real orders are placed.
 
 Credentials (if you configure Kite) enable the read-only market-data adapter,
 but the demos always use the deterministic in-memory provider, so `python
@@ -152,6 +164,89 @@ beyond `pytest`.
 | `tests/test_strategy_service.py` | Signals → risk → paper broker integration; risk gating; hold = no order |
 | `tests/test_kite_provider.py` | Kite adapter mapping, CSV master, candles, sessions, retries and typed errors (mocked HTTP) |
 | `tests/test_utils_http_retry.py` | HTTP transport, retry/backoff behaviour |
+| `tests/test_backtest.py` | Backtest engine: exact-cost P&L, slippage/commission, drawdown, equity curve, no look-ahead, signal timing, long & short round trips, determinism, risk gating, end-of-data open positions, paper-only offline safety |
+
+---
+
+## Backtesting
+
+The backtest harness replays historical OHLCV bars through a strategy and the
+same `PaperBroker` used by live paper trading, producing performance metrics
+and an equity curve.
+
+```bash
+python -m fno_ai_paper_trading.backtest
+```
+
+This runs the offline demo (fast/slow = 2/3 against a deterministic dataset) and
+prints a summary. Programmatic use:
+
+```python
+from fno_ai_paper_trading.backtest.config import BacktestConfig
+from fno_ai_paper_trading.backtest.datasets import build_profitable_series
+from fno_ai_paper_trading.backtest.engine import BacktestEngine
+from fno_ai_paper_trading.strategies.moving_average_cross import MovingAverageCrossStrategy
+
+bars = build_profitable_series(instrument)          # deterministic fixture
+result = BacktestEngine().run(
+    bars,
+    MovingAverageCrossStrategy(fast=2, slow=3),
+    BacktestConfig(initial_capital=100000, quantity=10),
+)
+print(result.final_equity, result.total_return_pct, result.profit_factor)
+```
+
+### Execution assumptions
+
+All assumptions are explicit in `BacktestConfig` (defaults shown):
+
+| Config key | Default | Meaning |
+|---|---|---|
+| `initial_capital` | `100000` | Starting equity |
+| `quantity` | `1` | Size of every simulated order |
+| `commission_rate` | `0.0003` | Commission as fraction of filled notional |
+| `commission_fixed` | `0` | Flat commission per fill |
+| `slippage_rate` | `0.001` | Adverse price slippage applied to each fill |
+| `enable_risk_manager` | `True` | Apply the same `RiskManager` limits as live paper trading |
+| `max_position_quantity` / `max_order_notional` / `max_daily_loss` | `75` / `250000` / `10000` | Risk-limit values used when the risk manager is enabled |
+
+### Behavioural guarantees
+
+- **No look-ahead:** at bar `i` the strategy sees only `bars[:i+1]`; orders
+  generated at bar `i` fill at bar `i`'s close. The tests assert the strategy
+  stays flat until the first signal bar.
+- **Determinism:** fills carry the bar timestamp (not wall-clock time) and every
+  cost is explicit `Decimal` arithmetic, so a given strategy + dataset always
+  produces the identical result. Repeated-run equality is asserted in tests.
+- **Round-trip trade statistics:** a trade is counted only when a position is
+  closed (a `BUY` opening a long, then a `SELL` closing it — and vice versa for
+  shorts). Gross profit/loss and win rate reflect closed round trips only.
+- **Positions left open at the end of data are reported as-is** (with unrealized
+  P&L in the last equity snapshot) — no phantom closing trade is manufactured.
+- **Risk gating is identical to live paper trading:** orders pass through
+  `RiskManager` first; a rejected order is skipped entirely.
+
+### Metric definitions
+
+- `total_pnl` / `total_return_pct` — net of all commission and slippage costs.
+- `gross_profit` / `gross_loss` / `profit_factor` — based on closed round-trip
+  realised P&L *before* costs; `profit_factor = gross_profit / |gross_loss|`
+  (rendered as `Infinity` when there is no losing trade).
+- `max_drawdown` / `max_drawdown_pct` — largest peak-to-trough decline in the
+  equity curve.
+- `equity_curve` — per-bar snapshots (`timestamp`, `equity`, `cash`,
+  `unrealized_pnl`, `drawdown_from_peak`).
+
+### Backtest datasets
+
+`fno_ai_paper_trading.backtest.datasets` ships deterministic, hand-verified
+OHLCV fixtures for correctness tests: `build_profitable_series`,
+`build_losing_series`, `build_drawdown_series`, `build_multiple_trades_series`,
+`build_no_trade_series`, and `build_short_profit_series` (a `SELL`-to-open short
+closed by a `BUY`).
+
+> **Disclaimer:** results from these fixtures illustrate mechanics, not
+> profitability. Past performance does not guarantee future results.
 
 ---
 
@@ -181,11 +276,11 @@ Never commit real values to `.env` — the file is git-ignored.
 
 ---
 
-## Safety limitations (Phase 2)
+## Safety limitations
 
 - **No live execution:** the `PaperBroker.is_live` property is hard-coded to
   `False`. No code path in the system contacts an external broker or API. The
-  strategy service submits paper orders only.
+  strategy service and the backtest engine submit paper orders only.
 - **No secrets in code:** all credentials belong in `.env` (git-ignored) or
   environment variables, never in source. The Kite adapter refuses to run
   without credentials and raises a typed `ProviderConfigurationError`.
@@ -197,6 +292,10 @@ Never commit real values to `.env` — the file is git-ignored.
   data client, unit-tested against mocked HTTP; it never places orders and it
   is exercised live only when `FNO_KITE_API_KEY` / `FNO_KITE_ACCESS_TOKEN` are
   configured by the user.
+- **Backtesting is offline and paper-only:** the engine instantiates its own
+  paper broker and never reads credentials, connects to a network, or touches
+  the Kite adapter. Backtest results reflect the configured execution
+  assumptions only and are not a basis for real-money decisions.
 
 ---
 
@@ -204,9 +303,8 @@ Never commit real values to `.env` — the file is git-ignored.
 
 | Phase | Scope |
 |---|---|
-| **Phase 2 (done)** | Strategy engine, real market-data provider interface, moving-average crossover strategy, read-only Kite Connect adapter |
-| **Phase 2 (remaining)** | Backtesting harness, historical-data CLI/tooling |
-| **Phase 3** | AI analysis/explainability (behind an interface, never autonomous execution) |
+| **Phase 2 (done)** | Strategy engine, real market-data provider interface, moving-average crossover strategy, read-only Kite Connect adapter, deterministic backtest harness |
+| **Phase 3** | Historical-data CLI/tooling, AI analysis/explainability (behind an interface, never autonomous execution) |
 | **Phase 4** | Real broker adapter behind an interface, required to remain disabled by default |
 
 ---

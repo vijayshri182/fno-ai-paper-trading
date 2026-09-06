@@ -124,11 +124,45 @@ def _strategy_demo() -> None:
     logger.info("Phase 2 strategy demo complete - all orders were paper only.")
 
 
+def _backtest_demo() -> None:
+    """Run a paper-only backtest over a deterministic dataset.
+
+    Uses the same moving-average crossover strategy; execution is simulated by
+    the backtest engine's paper broker only. No network or credentials needed.
+    """
+    from fno_ai_paper_trading.backtest.config import BacktestConfig
+    from fno_ai_paper_trading.backtest.datasets import build_profitable_series
+    from fno_ai_paper_trading.backtest.engine import BacktestEngine
+
+    settings = _settings()
+    logger = get_logger(__name__)
+
+    provider = InMemoryMarketDataProvider()
+    nifty_fut = provider.get_instruments()[0]
+    bars = build_profitable_series(nifty_fut)
+    strategy = MovingAverageCrossStrategy(fast=2, slow=3)
+    config = BacktestConfig(initial_capital=settings.initial_capital, quantity=10)
+
+    result = BacktestEngine().run(bars, strategy, config)
+    logger.info("backtest '%s' over %d bars", strategy.name, result.num_bars_processed)
+    logger.info("final equity  : %s", result.final_equity)
+    logger.info("total P&L     : %s", result.total_pnl)
+    logger.info("total return  : %s%%", result.total_return_pct)
+    logger.info("max drawdown  : %s (%s%%)", result.max_drawdown, result.max_drawdown_pct)
+    logger.info("trades        : %d (win %d / loss %d)", result.num_trades, result.winning_trades, result.losing_trades)
+    logger.info("gross profit  : %s | gross loss: %s | commission: %s",
+                result.gross_profit, result.gross_loss, result.total_commission)
+    logger.info("profit factor : %s", result.profit_factor)
+    logger.info("Phase 2 backtest demo complete - simulated paper execution only.")
+
+
 def main() -> None:
     print("F&O AI Paper Trading System")
     _demo()
     print("")
     _strategy_demo()
+    print("")
+    _backtest_demo()
 
 
 if __name__ == "__main__":

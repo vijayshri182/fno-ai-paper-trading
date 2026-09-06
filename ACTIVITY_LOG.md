@@ -21,9 +21,9 @@
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Foundation (models, config, provider interface, paper broker, portfolio, risk, tests) | **DONE** — commit `448e02f` |
-| 2 | Real market data behind `MarketDataProvider` + first deterministic strategy | **IN PROGRESS** |
-| 3 | AI analysis / decision support | Planned (not started) |
-| 4 | Backtesting engine + analytics | Planned (not started) |
+| 2 | Real market data + first deterministic strategy + backtest harness | **DONE** — commits `a86ec64`, `feat: add deterministic backtest harness` |
+| 3 | Historical-data CLI, AI analysis / decision support | Planned (not started) |
+| 4 | Backtesting engine + analytics | Folded into Phase 2 (engine implemented); analytics extended in Phase 3 |
 
 ---
 
@@ -159,6 +159,88 @@ strategy (moving average cross). Everything continues to execute through
 
 - Commit message: `feat: implement phase 2 market data and strategy foundation`
 - Not pushed (consistency with Phase 1; pending user visibility).
+
+---
+
+## 4c. 2026-09-07 — Phase 2: Deterministic Backtest Harness
+
+**Objective.** Build a deterministic backtest harness (`fno_ai_paper_trading
+.backtest`) that replays historical OHLCV bars through a strategy and the same
+`PaperBroker` used for paper trading, produces performance metrics and an equity
+curve, and reuses Phase 1/2 core paths unchanged. Paper-broker only — no
+credentials, no network, no live orders.
+
+**Design decisions (recorded before coding).**
+
+1. **Stage-1 scope, explicit assumptions.** Included: data/bar interface,
+   deterministic engine with chronological replay, explicit execution
+   assumptions (`BacktestConfig`), performance metrics + equity curve, costs
+   (commission + slippage), and deterministic datasets. Explicitly deferred:
+   market-session handling, multi-instrument, order-expiry, venue/partial fills,
+   and a historical-data CLI (Phase 3).
+2. **No look-ahead.** At bar `i` the strategy receives only `bars[:i+1]`. Orders
+   generated at bar `i` fill at bar `i`'s close price (with slippage). Tests
+   assert the backlog stays flat until the first signal bar.
+3. **Determinism without wall-clock time.** A `BacktestBroker(PaperBroker)`
+   override of `place_order` injects `_fill_timestamp` from the engine's
+   current bar via `set_timestamp`, so fills carry bar timestamps instead of
+   `datetime.now()`. Every cost is explicit `Decimal` arithmetic, so identical
+   input always yields identical output (repeat-run equality is asserted).
+4. **Round-trip trade statistics.** A trade counts only when a position is
+   closed (`_is_closing_fill`); gross profit/loss and win rate reflect closed
+   round trips. `BacktestResult.total_commission` is tracked separately.
+   Gross P&L excludes costs; net P&L (`final_equity - initial_capital`)
+   includes all costs.
+5. **Reuse, don't fork.** The engine drives the existing
+   `MovingAverageCrossStrategy.analyze`, `StrategyEngine` signals, `RiskManager`
+   (built from `PaperSettings` with `Environment.TEST`), `PaperBroker`, and
+   `Portfolio.apply_fill`. Risk limits behave identically to paper trading; a
+   rejected order is skipped. `BacktestConfig.enable_risk_manager=False`
+   bypasses risk checks for trade-level mechanics tests (matching Griffin).
+6. **Fixtures are hand-verified, not generated blindly.** Every dataset is a
+   deliberately shaped close vector whose expected fills and P&L are computed by
+   hand for `MovingAverageCrossStrategy(fast=2, slow=3)` (needs slow+1 = 4 bars
+   before a signal). Series: profitable (BUY@110 → SELL@120), losing
+   (BUY@110 → SELL@100), drawdown (BUY@110 → SELL@90), multiple trades (two
+   round trips), no-trade (never crosses), and short profit (SELL@140 opens,
+   BUY@130 closes, gross +100).
+
+**Change log.**
+
+- `backtest/config.py`: validated `BacktestConfig` (capital, quantity,
+  commission rate/fixed, slippage, risk toggle + limits).
+- `backtest/result.py`: `EquityPoint` + `BacktestResult` (total P&L / return,
+  bar count, signals/orders/fills, round-trip trade stats, gross profit/loss,
+  profit factor, total commission, max drawdown, equity curve).
+- `backtest/engine.py`: `BacktestBroker` (paper-only, stamped fills) +
+  `BacktestEngine.run(bars, strategy, config)`; per-bar equity snapshot incl.
+  unrealized P&L and drawdown-from-peak; leaves end-of-data positions open.
+- `backtest/datasets.py`: six deterministic fixture series.
+- `backtest/__init__.py` + `backtest/__main__.py`: package exports + offline
+  backtest demo (`python -m fno_ai_paper_trading.backtest`).
+- `src/main.py`: third demo (backtest) after Phase 1 + Phase 2 strategy demos.
+- `tests/test_backtest.py` (22 tests): exact-cost P&L (1% slippage qty1 → 7.70;
+  commission → 0.68997), costs/slippage reduce P&L, drawdown, chronological
+  equity curve, no-look-ahead, signal timing (buy [5], sell [10]), signed
+  realized P&L (Phase 1 regression guard), determinism-repeatability, short
+  round trip, end-of-data open position, risk-limit rejection vs disabled,
+  paper-only offline safety, empty series.
+- Docs: README (backtest section, metric definitions, safety), PROJECT_PLAN
+  (Phase 2 status, Section 17, DoD, Change Log), this log.
+
+**Verification (final pass).**
+
+- `pytest -q`: **156 passed, 0 failed** (0.45s) — 134 existing + 22 new.
+- `python src/main.py`: all three demos run paper-only; backtest demo prints
+  `final equity 100097.0100300`, `total P&L 97.0100300` for the 13-bar
+  profitable fixture (BUY fill 110.11, SELL fill 119.88, commission 0.68997,
+  drawdown 201.5596400 / 0.2009596%).
+- `python -m fno_ai_paper_trading.backtest`: offline demo runs with no
+  credentials and no network.
+- `scripts/generate_test_report.py`: `reports/test_report.html` — 156 tests /
+  0 failures / 0.42s.
+- No provider/network interaction in backtest path: verified by offline smoke
+  run and by the test that runs the engine with no Kite credentials set.
 
 ---
 
