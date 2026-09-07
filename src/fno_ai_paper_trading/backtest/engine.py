@@ -35,13 +35,23 @@ from fno_ai_paper_trading.backtest.result import BacktestResult, EquityPoint
 class BacktestBroker(PaperBroker):
     """PaperBroker variant that stamps fills with a caller-provided timestamp.
 
+    Optionally accepts a duck-typed ``cost_schedule`` (any object with
+    ``compute(side, notional, quantity) -> obj.total``). When present, the full
+    fill charge comes from the schedule instead of the legacy
+    commission-rate/fixed model.
+
     This is an implementation detail of the backtest engine and must not be
     used outside the backtest package.
     """
 
-    def __init__(self, config: PaperBrokerConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: PaperBrokerConfig | None = None,
+        cost_schedule: object | None = None,
+    ) -> None:
         super().__init__(config)
         self._fill_timestamp: datetime | None = None
+        self.cost_schedule = cost_schedule
 
     def set_timestamp(self, ts: datetime) -> None:
         self._fill_timestamp = ts
@@ -60,7 +70,7 @@ class BacktestBroker(PaperBroker):
         order.status = OrderStatus.SUBMITTED
 
         fill_price = self._apply_slippage(market_price.close, order.side)
-        commission = self._compute_commission(order, fill_price)
+        commission = self._resolve_commission(order, fill_price)
 
         order.filled_quantity = order.quantity
         order.average_fill_price = fill_price
@@ -79,6 +89,15 @@ class BacktestBroker(PaperBroker):
         self._orders[order.order_id] = order
         self._fills.append(fill)
         return fill
+
+    def _resolve_commission(self, order: Order, fill_price: Decimal) -> Decimal:
+        """Full fill charge: cost-schedule total if configured, else legacy model."""
+        if self.cost_schedule is not None:
+            notional = fill_price * order.quantity * order.instrument.multiplier
+            return self.cost_schedule.compute(
+                side=order.side, notional=notional, quantity=order.quantity
+            ).total
+        return self._compute_commission(order, fill_price)
 
 
 # ---------------------------------------------------------------------------
@@ -102,12 +121,18 @@ class BacktestEngine:
         config: BacktestConfig | None = None,
     ) -> BacktestResult:
         config = config or BacktestConfig()
+        slippage = (
+            config.execution.total_adverse_rate
+            if config.execution is not None
+            else config.slippage_rate
+        )
         broker = BacktestBroker(
             PaperBrokerConfig(
                 commission_rate=config.commission_rate,
                 commission_fixed=config.commission_fixed,
-                slippage_rate=config.slippage_rate,
-            )
+                slippage_rate=slippage,
+            ),
+            cost_schedule=config.cost_schedule,
         )
         portfolio = Portfolio(config.initial_capital)
         risk_manager = self._build_risk_manager(config)

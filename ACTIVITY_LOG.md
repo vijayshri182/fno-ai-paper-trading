@@ -22,8 +22,9 @@
 |---|---|---|
 | 1 | Foundation (models, config, provider interface, paper broker, portfolio, risk, tests) | **DONE** — commit `448e02f` |
 | 2 | Real market data + first deterministic strategy + backtest harness | **DONE** — commits `a86ec64`, `feat: add deterministic backtest harness` |
-| 3 | Historical-data CLI, AI analysis / decision support | Planned (not started) |
-| 4 | Backtesting engine + analytics | Folded into Phase 2 (engine implemented); analytics extended in Phase 3 |
+| 3 | Strategy research & robustness evaluation (costs, regimes, in/out-of-sample, walk-forward, sensitivity, benchmark, metrics, experiments, HTML notebook) | **DONE** — `feat: add strategy research and robustness framework` |
+| 4 | Historical-data CLI, AI analysis / decision support | Planned (not started) |
+| 5 | Backtesting engine + analytics | Folded into Phase 2 (engine implemented); analytics extended by the research framework (Phase 3) |
 
 ---
 
@@ -244,6 +245,97 @@ credentials, no network, no live orders.
 
 ---
 
+## 4d. 2026-09-07 — Phase 3: Strategy Research & Robustness Evaluation
+
+**Objective.** Build a deterministic, paper-only research framework on top of
+the backtest harness whose purpose is *scientific*: determine whether the
+moving-average cross strategy has a meaningful edge after realistic costs, over
+in-sample and out-of-sample periods alike, without ever optimizing parameters
+against the data the result is reported on. Research output is clearly labelled
+as synthetic/historical evidence.
+
+**Design decisions (recorded before coding).**
+
+1. **Costs are a first-class, configurable schedule, not a single number.** The
+   backtest's flat commission/slippage fields are kept for compatibility, and
+   `BacktestConfig` gains two duck-typed, optional overrides: `cost_schedule`
+   (anything with `compute(side, notional, quantity) -> .total`) and
+   `execution` (anything with `total_adverse_rate`). Defaults are `None`, so all
+   existing behaviour and numbers are unchanged (regression-tested).
+2. **The illustrative schedule is honest.** `IndiaCostSchedule.nse_fo_illustrative()`
+   documents example component rates (STT sell-side 0.0000125, exchange 0.00002,
+   SEBI 0.000001, stamp duty buy-side 0.000002, GST 18% on brokerage + exchange +
+   SEBI) and is explicitly not a claim of any broker's current fees. GST excludes
+   STT and stamp duty (verified against the implementation and by hand in tests).
+3. **No optimizer, no ML, no giant grid.** `run_parameter_sensitivity` evaluates
+   only caller-enumerated `(fast, slow)` combinations; impossible ones
+   (fast ≥ slow) are reported as skipped, never executed. The research question
+   is robustness of an explicitly chosen configuration, not "which maximizes
+   the backtest".
+4. **Out-of-sample honesty.** Splits are chronological/contiguous/disjoint.
+   Walk-forward windows advance `[train][test]` with step ≥ test (non-overlap);
+   each test window is evaluated against a fresh `build_strategy(train_bars)`
+   strategy over the test bars only — no trading ahead, no warm-up leakage.
+5. **Determinism everywhere.** Regime datasets are float-free, formula-derived
+   close sequences (no randomness); regime shapes guarantee real MA crossovers
+   (a pure monotone ramp produces *zero* crossovers, which was discovered and
+   corrected by making the counter-drift outlast the slow window). Experiments
+   carry a stable `config_hash` (SHA-256 over canonical JSON) so identical runs
+   are provably reproducible.
+6. **Metrics are robust and None-safe.** CAGR requires a minimum trading
+   horizon; Sharpe/Sortino require enough return samples; exposure counts bars
+   in which any position is held (including an open position marked to market at
+   end-of-data). "Unavailable" values render as `n/a`, never fake zeros.
+
+**Change log.**
+
+- `research/` package added:
+  - `costs.py` — `IndiaCostSchedule` + `ChargeBreakdown` (exact Decimal math,
+    documented assumptions, compute contract for the engine).
+  - `execution.py` — `ExecutionAssumptions` (slippage + half-spread + impact →
+    `total_adverse_rate`).
+  - `regimes.py` — `build_sustained_uptrend/downtrend`, `build_sideways_choppy`,
+    `build_volatile_market`, `build_trend_reversal`, `build_low_volatility`,
+    `REGIME_BUILDERS`, `regime_stats`.
+  - `split.py` — `SplitScheme`/`Split`/`split_bars`/`split_indices` (60/20/20
+    default, must sum to 1).
+  - `walkforward.py` — `plan_windows` (step ≥ test_size), `run_walk_forward`
+    (per-window OOS results, compounded combined return), `WalkForwardStep`/`Result`.
+  - `sensitivity.py` — `run_parameter_sensitivity`, `SensitivityRow(+Skipped)`,
+    `validate_ma_pairs`.
+  - `benchmark.py` — `buy_and_hold` (gross, 100% exposure, `ValueError` if
+    unfunded) + `BenchmarkResult`.
+  - `metrics.py` — `compute_metrics` + `PerformanceMetrics` (net P&L/return,
+    CAGR, drawdown+duration, win rate, profit factor, expectancy, avg win/loss,
+    annualized vol / Sharpe / Sortino, exposure).
+  - `experiment.py` — `ExperimentConfig` (provenance + `config_hash`),
+    `ExperimentResult`, `run_experiment`.
+  - `report.py` + `__main__.py` (offline demo) + `__init__.py` exports.
+- Backtest wiring: `BacktestConfig.cost_schedule` / `BacktestConfig.execution`
+  (backward compatible); `BacktestBroker._resolve_commission`; engine slippage
+  override; public `closes_to_bars` alias in `backtest/datasets.py`.
+- `scripts/generate_research_report.py` → `reports/research_report.html`
+  (sections: costs, execution, regimes, experiments, in/out-of-sample,
+  walk-forward, sensitivity, benchmarks).
+- `tests/test_research.py` (45 tests) — hand-verified values throughout.
+- Docs: README (research section + test table + future phases), PROJECT_PLAN
+  (§17b + Change Log + current-phase status), this log.
+
+**Verification (final pass).**
+
+- `pytest -q`: **201 passed, 0 failed** (156 + 45 new).
+- `python -m fno_ai_paper_trading.research`: offline demo runs with no
+  credentials and no network; shows a closed round trip on trend-reversal, OOS
+  trading on volatile, 6-combo sensitivity on choppy, walk-forward OOS, and
+  gross buy-and-hold benchmark.
+- `python scripts/generate_research_report.py`: writes
+  `reports/research_report.html` (git-ignored).
+- Engine wiring verified by tests: flat cost schedule per fill (2 × 1.23 =
+  2.46 total commission) and execution `total_adverse_rate` replacing slippage
+  (BUY@110→115.5, SELL@120→114, qty10 → P&L −15).
+
+---
+
 ## 5. Open Topics / Risks
 
 - The Kite Connect credential flow (api key + access token) is implemented and
@@ -254,3 +346,14 @@ credentials, no network, no live orders.
   responsible for supplying real credentials via `.env`.
 - The NSE 2026 holiday calendar in `data/market_hours.py` is best-effort;
   verify it against the official NSE calendar before relying on it.
+- The research cost schedule (`IndiaCostSchedule.nse_fo_illustrative()`) is
+  explicitly illustrative. **It must be replaced with the real fee schedule of
+  the target broker/segment before any backtest conclusion is drawn** — this is
+  stated in the module docstring, the report, and the README. Same for
+  `ExecutionAssumptions` (slippage/spread/impact defaults).
+- MA-cross behaviour is regime-dependent by design: on a strict monotone ramp
+  the fast average is already above the slow one when the slow average becomes
+  computable, so no crossover fires (a pure breakaway trend generates a single
+  entry and holds). The regime builders avoid this by leading with a
+  counter-drift longer than the slow window; the walk-forward OOS leg still
+  re-warms on test bars only.

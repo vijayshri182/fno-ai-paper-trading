@@ -11,12 +11,22 @@ handling), the first deterministic strategy (moving average crossover), a
 strategy service that executes signals through the paper broker only, and a
 deterministic backtest harness for offline research.
 
+**Phase 3 (research) scope:** a scientifically disciplined research framework
+built on the backtest harness — a configurable Indian cost schedule and
+execution/slippage assumptions, deterministic market-regime datasets,
+train/validation/out-of-sample splits, walk-forward evaluation, explicit
+parameter sensitivity, a gross buy-and-hold benchmark, robust performance
+metrics, self-describing experiment records, and a labelled HTML notebook. The
+goal is to evaluate whether a strategy has an edge *after realistic costs* — not
+to make it look profitable.
+
 > **Safety guarantee:** This system is paper-trading only. No code in this
 > repository places live orders, contacts a broker API, or executes real-money
 > trades. The paper broker is completely isolated from any external service;
 > the market-data vendor adapter is read-only. The backtest engine executes
 > through the same paper broker only — it needs no credentials and makes no
-> network calls.
+> network calls. The research framework runs deterministic synthetic data and
+> the illustrative cost schedule through the same paper-only engine.
 
 ---
 
@@ -53,6 +63,18 @@ src/
       result.py                       # BacktestResult + EquityPoint (metrics)
       datasets.py                     # Deterministic historical datasets
       __main__.py                     # Offline backtest demo (python -m ...)
+    research/
+      costs.py                        # Configurable Indian cost model (IndiaCostSchedule)
+      execution.py                    # Execution/slippage assumptions
+      regimes.py                      # Deterministic market-regime datasets
+      split.py                        # Train/validation/out-of-sample splits
+      walkforward.py                  # Rolling train/test walk-forward evaluation
+      sensitivity.py                  # Explicit parameter sensitivity (not an optimizer)
+      benchmark.py                    # Gross buy-and-hold benchmark
+      metrics.py                      # Robust net performance metrics
+      experiment.py                   # Self-describing experiment records + config hash
+      report.py                       # Labelled HTML notebook builder
+      __main__.py                     # Offline research demo (python -m ...)
     services/
       trading_service.py              # Orchestrates data → risk → broker → portfolio
       strategy_service.py             # Signals → risk → paper broker (paper orders only)
@@ -165,6 +187,7 @@ beyond `pytest`.
 | `tests/test_kite_provider.py` | Kite adapter mapping, CSV master, candles, sessions, retries and typed errors (mocked HTTP) |
 | `tests/test_utils_http_retry.py` | HTTP transport, retry/backoff behaviour |
 | `tests/test_backtest.py` | Backtest engine: exact-cost P&L, slippage/commission, drawdown, equity curve, no look-ahead, signal timing, long & short round trips, determinism, risk gating, end-of-data open positions, paper-only offline safety |
+| `tests/test_research.py` | Research framework: cost-breakdown math, execution assumptions, regime close sequences, split/walk-forward boundaries, parameter sensitivity, benchmark arithmetic, metrics (incl. None cases), experiment provenance hashes, engine wiring of costs/execution |
 
 ---
 
@@ -250,6 +273,71 @@ closed by a `BUY`).
 
 ---
 
+## Strategy research & robustness
+
+`fno_ai_paper_trading.research` is a deterministic, paper-only framework built
+on the backtest harness. Its purpose is scientific: decide whether the MA-cross
+strategy has a meaningful edge **after realistic costs**, over in-sample and
+out-of-sample periods alike. It deliberately does **not** contain an optimizer
+or a sweep that hunts for the best-looking parameter set.
+
+```bash
+# Offline demo (deterministic synthetic regimes, illustrative costs)
+python -m fno_ai_paper_trading.research
+
+# Generate the labelled HTML notebook → reports/research_report.html
+python scripts/generate_research_report.py
+```
+
+### Components
+
+| Module | What it does |
+|---|---|
+| `costs.py` | Configurable Indian cost schedule (`IndiaCostSchedule`): brokerage, STT (sell side), exchange/transaction charges, SEBI, stamp duty (buy side), GST, and other per-order charges. Exact `Decimal` math, no per-fill rounding. `nse_fo_illustrative()` provides **documented example values — not a claim of any broker's real fees**. |
+| `execution.py` | `ExecutionAssumptions`: slippage + half-spread + market-impact combine into a single `total_adverse_rate` applied to each fill. |
+| `regimes.py` | Six deterministic, hand-shaped price paths (uptrend/downtrend, choppy, volatile, reversal, low-vol) — no randomness, no floating point. |
+| `split.py` | Chronological, contiguous 60/20/20 train/validation/out-of-sample split. |
+| `walkforward.py` | Rolling `[train][test] → advance` evaluation; every test window is strictly out-of-sample, and `build_strategy(train_bars)` is where a "fit on train" step would live. |
+| `sensitivity.py` | Runs explicitly enumerated `(fast, slow)` combinations only; invalid combinations are reported as skipped, never silently executed. |
+| `benchmark.py` | Gross buy-and-hold on the same bars (100% exposure), for like-for-like comparison. |
+| `metrics.py` | Net-of-cost metrics: P&L, return, CAGR, max drawdown + duration, win rate, profit factor, expectancy, annualized vol / Sharpe / Sortino, exposure. Returns `None` (rendered "n/a") where insufficient data makes a number meaningless. |
+| `experiment.py` | One self-describing experiment record: strategy, parameters, dataset, dates, capital, cost/execution assumptions, and a deterministic `config_hash` (SHA-256). `run_experiment(...)` runs the backtest, computes metrics, and optionally attaches the benchmark. |
+| `report.py` | Composes the labelled HTML notebook (run via `scripts/generate_research_report.py`). |
+
+### Backtest wiring
+
+`BacktestConfig` accepts two optional duck-typed objects without changing legacy
+fields:
+
+- `cost_schedule` — anything with `compute(side, notional, quantity) -> .total`;
+  when set, the engine charges the full schedule total per fill instead of
+  `commission_rate`/`commission_fixed`.
+- `execution` — anything with `total_adverse_rate`; when set, it replaces
+  `slippage_rate` as the combined adverse-price fraction per fill.
+
+Both defaults are `None`, so existing configs/numbering are unchanged
+(regression-tested).
+
+### Methodology & overfitting protections
+
+- Costs and slippage are **charged before** any profitability claim is made.
+- Parameters are fixed upfront (e.g. `fast=5, slow=21`), never selected by
+  scanning a grid on the same data the result is reported on.
+- In-sample and out-of-sample segments are strictly disjoint and contiguous; the
+  strategy is re-instantiated on out-of-sample bars (no trading-ahead leakage).
+- Walk-forward compounds each window's return; each window is evaluated only on
+  its own test bars.
+- Regime datasets are documented, deterministic shapes — results on them are
+  mechanics checks, not forecasts.
+
+> **Disclaimer:** all research datasets are synthetic, all fees are illustrative,
+> and results are historical/synthetic evidence of the framework's behaviour
+> only. Nothing here is investment advice or a claim of future profitability.
+> Replace the illustrative schedule with your broker's actual fees before
+> drawing any conclusion.
+
+---
+
 ## Configuration reference
 
 All variables (prefixed `FNO_`) are read from environment variables or `.env`.
@@ -304,7 +392,8 @@ Never commit real values to `.env` — the file is git-ignored.
 | Phase | Scope |
 |---|---|
 | **Phase 2 (done)** | Strategy engine, real market-data provider interface, moving-average crossover strategy, read-only Kite Connect adapter, deterministic backtest harness |
-| **Phase 3** | Historical-data CLI/tooling, AI analysis/explainability (behind an interface, never autonomous execution) |
+| **Phase 3 (research, done)** | Deterministic research & robustness framework: Indian cost model, execution assumptions, regime datasets, in/out-of-sample splits, walk-forward, parameter sensitivity, benchmark, robust metrics, experiment records, HTML notebook |
+| **Phase 3 (upcoming)** | Historical-data CLI/tooling, AI analysis/explainability (behind an interface, never autonomous execution) |
 | **Phase 4** | Real broker adapter behind an interface, required to remain disabled by default |
 
 ---

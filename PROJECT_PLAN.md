@@ -782,6 +782,70 @@ are explicit `Decimal` arithmetic).
 
 ---
 
+# 17b. Strategy Research & Robustness Framework
+
+Implemented 2026-09-07 in the `fno_ai_paper_trading.research` package as a
+deterministic, paper-only addition to the backtest harness. Purpose: evaluate
+whether a strategy has an edge **after realistic costs**, with in-sample and
+out-of-sample evidence, never to cherry-pick a profitable-looking configuration.
+
+**Delivered:**
+
+- `costs.py` — configurable Indian cost schedule (`IndiaCostSchedule`) and per-
+  fill breakdown (`ChargeBreakdown`): brokerage, STT (sell side), exchange
+  charges, SEBI, stamp duty (buy side), GST on the taxable base (brokerage +
+  exchange + SEBI), and other per-order charges. Exact `Decimal` arithmetic.
+  `nse_fo_illustrative()` ships **documented illustrative values, explicitly not
+  a claim of current real fees**.
+- `execution.py` — `ExecutionAssumptions` (slippage + half-spread + impact →
+  single `total_adverse_rate` applied per fill).
+- `regimes.py` — six deterministic, hand-verifiable synthetic regimes
+  (sustained uptrend/downtrend, sideways/choppy, volatile, trend reversal,
+  low-volatility), float-free close formulas.
+- `split.py` — chronological contiguous train/validation/out-of-sample split
+  (default 60/20/20, must sum to 1).
+- `walkforward.py` — rolling `[train][test] → advance` windows (non-overlapping,
+  step ≥ test), each test window strictly out-of-sample; `build_strategy(train)`
+  is the explicit "fit on train" seam.
+- `sensitivity.py` — evaluates only explicitly enumerated `(fast, slow)`
+  combinations; invalid pairs are skipped and reported, never executed. This is
+  **not** an optimizer.
+- `benchmark.py` — gross buy-and-hold benchmark (100% exposure) on identical
+  bars; unfunded positions raise.
+- `metrics.py` — net-of-cost metrics (P&L, return, CAGR, drawdown + duration,
+  win rate, profit factor, expectancy, annualized vol / Sharpe / Sortino,
+  exposure) with documented "unavailable" (None) semantics.
+- `experiment.py` — self-describing experiment record (`ExperimentConfig`) with
+  strategy/dataset/date/capital/cost/slippage provenance and a deterministic
+  `config_hash` (SHA-256, first 16 hex); `run_experiment(...)` returns metrics
+  plus an optional benchmark.
+- `report.py` + `scripts/generate_research_report.py` — labelled HTML notebook
+  (`reports/research_report.html`, git-ignored) covering costs, execution,
+  regimes, per-regime experiments, in/out-of-sample, walk-forward, sensitivity,
+  and benchmark comparison.
+- Backtest wiring (backward compatible): `BacktestConfig.cost_schedule`
+  (duck-typed `compute(side, notional, quantity) -> .total`) and
+  `BacktestConfig.execution` (duck-typed `total_adverse_rate`) override the
+  legacy commission/slippage fields when set; defaults `None` keep existing
+  behaviour unchanged.
+- `backtest/datasets.py` now exposes `closes_to_bars` as a public alias for the
+  regime builders.
+- `tests/test_research.py` (45 tests): hand-verified cost math, execution
+  assumptions, exact regime close sequences, split/walk-forward boundaries,
+  sensitivity skip semantics, benchmark arithmetic, metrics None-cases, config
+  hashes, and engine wiring of the cost schedule / execution assumptions.
+
+**Anti-overfitting stance.** No grid search, no optimizer, no ML. Parameters are
+fixed explicitly; sensitivity runs only user-enumerated combinations; every
+claim is reported net of the configured costs with the out-of-sample evidence
+shown alongside.
+
+**Interface to safety rules.** The research package imports only the paper-only
+backtest engine and deterministic mock instruments — no credentials, no network,
+no live execution path (verified by tests and by the offline demos).
+
+---
+
 # 18. Analytics
 
 Future analytics should include:
@@ -1018,11 +1082,14 @@ F&O AI Paper Trading System
 
 ## Current Phase
 
-**Phase 2 — Real Market Data + Strategy Foundation + Backtesting**
+**Phase 2 (& backtest) — completed; Strategy Research & Robustness Framework
+delivered (2026-09-07, commit pending); remaining roadmap: historical-data CLI
+/ AI analysis (plan Phase 3), real broker adapter (Phase 4).**
 
-Status:
-
-**IN PROGRESS** (implemented 2026-09-07; remaining Phase 2 work: historical-data CLI/tooling is deferred to Phase 3)
+Status: **RESEARCH FRAMEWORK IMPLEMENTED** — see §17b and the Change Log. The
+core market-data + strategy + backtest work is complete; remaining items are the
+scheduled downstream capabilities (AI analysis, real market data CLI, real
+broker adapter), which are explicitly out of this phase's scope.
 
 ---
 
@@ -1193,6 +1260,21 @@ The system should be capable of using **real market information while remaining 
 
 ## 2026-09-07
 
+* Strategy Research & Robustness framework implemented (see §17b), commit
+  message intended: `feat: add strategy research and robustness framework`.
+  * `research/` package: `costs.py`, `execution.py`, `regimes.py`, `split.py`,
+    `walkforward.py`, `sensitivity.py`, `benchmark.py`, `metrics.py`,
+    `experiment.py`, `report.py`, `__main__.py` (offline demo).
+  * Backtest wiring: `BacktestConfig.cost_schedule` + `BacktestConfig.execution`
+    (duck-typed, backward compatible); `closes_to_bars` public alias in
+    `backtest/datasets.py`.
+  * `scripts/generate_research_report.py` produces `reports/research_report.html`
+    (git-ignored).
+  * Full suite: 201 tests pass (156 + 45 new); test report regenerated.
+  * Methodology: costs/execution charged before any claim, fixed parameters,
+    strictly disjoint in/out-of-sample splits, walk-forward OOS-only evaluation,
+    explicit (non-optimizing) sensitivity, gross benchmark, illustrative-cost
+    disclaimer throughout.
 * Phase 2 backtest harness implemented (completing Phase 2):
   * `src/fno_ai_paper_trading/backtest/` package added: `config.py`
     (`BacktestConfig` execution assumptions), `engine.py` (`BacktestEngine` +

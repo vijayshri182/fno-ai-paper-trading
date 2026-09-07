@@ -33,6 +33,10 @@ def _closes_to_bars(instrument: Instrument, closes: list, start: datetime = date
     return bars
 
 
+# Public alias so other packages (e.g. research regimes) build deterministic bars.
+closes_to_bars = _closes_to_bars
+
+
 def build_profitable_series(instrument: Instrument) -> list:
     """Rises after warm-up, tops out, then retreats.
 

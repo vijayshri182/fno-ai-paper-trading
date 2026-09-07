@@ -24,6 +24,16 @@ class BacktestConfig:
     commission_fixed: Decimal = Decimal("0")  # flat fee per fill
     slippage_rate: Decimal = Decimal("0.001")  # fraction of price per fill
 
+    # --- alternative cost / execution models (duck-typed) ---
+    # ``cost_schedule``: any object with
+    #     compute(side: OrderSide, notional: Decimal, quantity: int) -> obj
+    # whose result has a ``.total`` Decimal. When set, the engine uses it for
+    # the full fill charge instead of commission_rate/commission_fixed.
+    cost_schedule: object | None = None
+    # ``execution``: any object with a ``total_adverse_rate`` Decimal property.
+    # When set, it replaces slippage_rate as the combined adverse-price fraction.
+    execution: object | None = None
+
     # --- risk limits ---
     enable_risk_manager: bool = True
     max_position_quantity: int = 75
