@@ -393,6 +393,61 @@ in `test_research.py`). Regenerated `reports/test_report.html` and
 
 ---
 
+## 4f. 2026-09-07 — Real-data baseline research pipeline
+
+**Objective.** Wire the existing Upstox historical-data provider, dataset store,
+backtest harness, and research framework into a single reproducible real-data
+study on the NIFTY 50 index. Keep the baseline strategy un-tuned; report honest
+in-sample / out-of-sample evidence; block cleanly when no Upstox token is
+available.
+
+**Design decisions (recorded before coding).**
+
+1. **Reuse, don't rebuild.** The pipeline uses `UpstoxHistoricalDataProvider`,
+   `save_dataset`/`load_dataset`, `validate_bars`, `run_experiment`,
+   `run_dataset_experiment`, `split_bars`, `run_parameter_sensitivity`,
+   `run_walk_forward`, `buy_and_hold`, and the existing HTML report builders.
+   No new market-data transport, no new cost model, no new backtest engine.
+2. **Baseline parameters are locked.** `MovingAverageCrossStrategy(fast=5,
+   slow=21)` is used everywhere. Sensitivity is run only on the in-sample data
+   to check robustness, not to select a "best" parameter set for the OOS period.
+3. **No look-ahead / OOS honesty.** The dataset is split 60/20/20 (train /
+   validation / test). Parameter sensitivity uses only train+validation. The
+   test segment, walk-forward test windows, and regime slices are evaluated with
+   the locked baseline.
+4. **Clean credential handling.** The acquisition script exits code 2 when
+   `UPSTOX_ACCESS_TOKEN` is absent. A `--smoke` mode uses deterministic
+   synthetic data and clearly labels the output as a pipeline smoke test, so no
+   real data is fabricated.
+5. **Cost-model limitation is explicit.** NIFTY 50 is a broad index; the
+   illustrative NSE F&O cost schedule is unlikely to match its exact trading
+   costs. The report lists this under limitations.
+
+**Change log.**
+
+- Added `research/real_data.py` with `DatasetStatistics`,
+  `compute_dataset_stats(...)`, `evaluate_regimes(...)`, and
+  `run_real_data_research(...)`.
+- Added `scripts/research_real_data.py`: fetches NIFTY 50 1d data from Upstox
+  (read-only, token required), validates, saves, runs the full research
+  pipeline, and writes `reports/real_data_research_report.html`; `--smoke` runs
+  offline for pipeline validation.
+- Added `tests/test_real_data_research.py` (7 tests) covering statistics,
+  end-to-end pipeline, determinism, OOS separation, CLI token gating, and smoke
+  report generation.
+- Updated README and PROJECT_PLAN.
+
+**Verification.**
+
+- `pytest -q`: **331 passed** (324 existing + 7 new), 0 failed.
+- `python scripts/research_real_data.py --smoke` runs offline, writes the smoke
+  report, and prints a summary (240 synthetic bars, MA(5,21), benchmark,
+  walk-forward, sensitivity).
+- `python scripts/research_real_data.py` without a token exits code 2 with a
+  clear message and writes no report.
+- No credentials, tokens, or dataset files are committed; `datasets/` and
+  `reports/` remain git-ignored.
+
 ## 5. Open Topics / Risks
 
 - The Kite Connect credential flow (api key + access token) is implemented and

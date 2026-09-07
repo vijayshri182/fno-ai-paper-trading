@@ -1083,16 +1083,18 @@ F&O AI Paper Trading System
 ## Current Phase
 
 **Phase 2 (& backtest) — completed; Strategy Research & Robustness Framework
-delivered (2026-09-07); Phase 3 audit fixes + Upstox historical-data readiness
-(2026-09-07, commit pending); remaining roadmap: historical-data CLI / AI
-analysis (plan Phase 3), real broker adapter (Phase 4).**
+delivered (2026-09-07); Upstox historical-data readiness implemented
+(2026-09-07, commit pushed); real-data baseline research pipeline implemented
+(2026-09-07): reproducible NIFTY 50 1d study with validation, IS/OOS split,
+benchmark, parameter sensitivity, walk-forward OOS and regime analysis.
+Real-data execution is gated on `UPSTOX_ACCESS_TOKEN`; offline smoke tests are
+provided. Remaining roadmap: AI analysis (Phase 3), real broker adapter (Phase 4).**
 
-Status: **RESEARCH FRAMEWORK IMPLEMENTED + AUDITED + HISTORY-READY** — see §17b,
-the data-layer notes above and the Change Log. The core market-data + strategy +
-backtest work is complete; remaining items are the scheduled downstream
-capabilities (AI analysis, real market data CLI, real broker adapter), which are
-explicitly out of this phase's scope. Real historical research starts when the
-user supplies `UPSTOX_ACCESS_TOKEN` (read-only historical data only).
+Status: **RESEARCH FRAMEWORK + REAL-DATA PIPELINE IMPLEMENTED** — see §17b,
+the data-layer notes above, the Change Log, and `scripts/research_real_data.py`.
+The core market-data + strategy + backtest work is complete; real historical
+research runs when the user supplies `UPSTOX_ACCESS_TOKEN` (read-only historical
+data only). No live execution path exists.
 
 ---
 
@@ -1260,6 +1262,28 @@ The system should be capable of using **real market information while remaining 
 ---
 
 # 31. Change Log
+
+## 2026-09-07 (evening) — Real-data baseline research pipeline
+
+* Implemented a reproducible real-data research study for NIFTY 50 daily bars:
+  * `research/real_data.py` — `run_real_data_research(...)` orchestrates
+    acquisition-agnostic analysis: dataset validation, descriptive statistics,
+    in-sample / out-of-sample split, full-period buy-and-hold benchmark,
+    parameter sensitivity on in-sample data (small enumerated grid), rolling
+    walk-forward OOS evaluation, and date-based regime slices. Uses the existing
+    `MovingAverageCrossStrategy` with locked baseline parameters (fast=5,
+    slow=21) and the existing illustrative cost/slippage schedules.
+  * `scripts/research_real_data.py` — CLI that either fetches real NIFTY 50
+    daily data via the read-only Upstox adapter (requires `UPSTOX_ACCESS_TOKEN`)
+    or runs `--smoke` with deterministic synthetic data for offline validation.
+    Produces a labelled HTML report under `reports/` and persists datasets under
+    `datasets/` (both git-ignored). Exits with code 2 when no token is supplied,
+    never fabricating data.
+  * `tests/test_real_data_research.py` — 7 tests: dataset statistics, end-to-end
+    pipeline run on synthetic data, deterministic repeatability, OOS separation,
+    CLI token-gating, and offline smoke report generation.
+  * README + PROJECT_PLAN updated.
+* Full suite: **331 passed** (324 + 7 new).
 
 ## 2026-09-07 (afternoon) — Phase 3 audit + Upstox history readiness
 

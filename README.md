@@ -301,6 +301,11 @@ neutral provider interface), while staying 100% offline by default.
   `python scripts/acquire_dataset.py --instrument "NIFTY 50" --interval 1d
   --days 400 --token "$UPSTOX_ACCESS_TOKEN"`. Fails with exit code 2 when
   validation does not pass; `--no-save` keeps the fetch read-only.
+- `scripts/research_real_data.py` — run a full reproducible baseline study on
+  NIFTY 50 daily data: acquisition, validation, in-sample/OOS split,
+  buy-and-hold benchmark, parameter sensitivity, walk-forward OOS, regime
+  slices, and a labelled HTML report. Requires `UPSTOX_ACCESS_TOKEN`; use
+  `--smoke` for offline pipeline validation with deterministic synthetic data.
 - `research/experiment.run_dataset_experiment` — runs a backtest against a
   `StoredDataset`, re-validates it first (raises `ValueError` on bad data) and
   records the SHA-256 `data_hash` in the experiment provenance.
@@ -312,6 +317,8 @@ neutral provider interface), while staying 100% offline by default.
 python scripts/upstox_smoke_test.py --save
 python scripts/acquire_dataset.py --instrument "NIFTY 50" --interval 1d --days 400
 python scripts/acquire_dataset.py --instrument BANKNIFTY --interval 15m --days 60 --name banknifty_15m
+python scripts/research_real_data.py                 # full baseline study + report
+python scripts/research_real_data.py --smoke         # offline pipeline smoke test
 ```
 
 > Read-only, credential-free-by-default, and git-ignored by design: with no
