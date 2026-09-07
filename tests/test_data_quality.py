@@ -11,6 +11,7 @@ from fno_ai_paper_trading.data.validation import (
     ValidationReport,
     format_report,
     validate_bars,
+    validation_to_dict,
 )
 from fno_ai_paper_trading.models.market import MarketPrice
 
@@ -146,3 +147,39 @@ class TestSpacingAndTimezone:
         report = validate_bars([bars[0], aware])
         assert report.ok
         assert any("timezone" in w.message for w in report.warnings)
+
+
+class TestMachineReadableReport:
+    def test_ok_report_dict(self) -> None:
+        assert validation_to_dict(validate_bars(_daily_series())) == {
+            "ok": True,
+            "num_errors": 0,
+            "num_warnings": 0,
+            "issues": [],
+        }
+
+    def test_error_report_dict(self) -> None:
+        d = validation_to_dict(validate_bars([], allow_empty=False))
+        assert d["ok"] is False
+        assert d["num_errors"] == 1
+        assert d["num_warnings"] == 0
+        issue = d["issues"][0]
+        assert issue["level"] == "error"
+        assert issue["index"] is None
+        assert issue["message"]
+
+    def test_issue_index_and_warnings_preserved(self) -> None:
+        bars = _daily_series(2)
+        dup = _bar(bars[0].timestamp, close="101")
+        d = validation_to_dict(validate_bars([bars[0], dup, bars[1]], interval_minutes=1440))
+        dup_issues = [i for i in d["issues"] if "duplicate" in i["message"]]
+        assert dup_issues and dup_issues[0]["index"] == 1
+        assert d["num_errors"] >= 1
+        assert d["ok"] is False
+
+    def test_dict_is_json_serializable(self) -> None:
+        import json
+
+        d = validation_to_dict(validate_bars([], allow_empty=False))
+        text = json.dumps(d)
+        assert '"level": "error"' in text

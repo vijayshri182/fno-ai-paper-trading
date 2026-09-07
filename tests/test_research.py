@@ -10,20 +10,24 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
 from fno_ai_paper_trading.backtest.config import BacktestConfig
 from fno_ai_paper_trading.backtest.datasets import build_profitable_series
 from fno_ai_paper_trading.backtest.engine import BacktestEngine
+from fno_ai_paper_trading.data.dataset_store import StoredDataset, save_dataset
 from fno_ai_paper_trading.models.enums import InstrumentType, OrderSide
 from fno_ai_paper_trading.models.instruments import Instrument
+from fno_ai_paper_trading.models.market import MarketPrice
 from fno_ai_paper_trading.research.benchmark import BenchmarkResult, buy_and_hold
 from fno_ai_paper_trading.research.costs import ChargeBreakdown, IndiaCostSchedule
 from fno_ai_paper_trading.research.execution import ExecutionAssumptions
 from fno_ai_paper_trading.research.experiment import (
     ExperimentConfig,
     ExperimentResult,
+    run_dataset_experiment,
     run_experiment,
 )
 from fno_ai_paper_trading.research.metrics import PerformanceMetrics, compute_metrics
@@ -689,3 +693,57 @@ def test_backtest_consumes_bars_from_generic_provider_interface() -> None:
     result = BacktestEngine().run(bars, _strategy(), ZERO_COST)
     assert result.num_bars_processed == len(bars)
     assert result.orders_submitted >= 1  # strategy turned signals into paper orders
+
+
+# ---------------------------------------------------------------------------
+# Dataset-driven experiments (real-data pipeline handoff)
+# ---------------------------------------------------------------------------
+
+class TestDatasetDrivenExperiments:
+    def test_dataset_experiment_records_data_hash(self, tmp_path: Path) -> None:
+        bars = build_profitable_series(_future())
+        saved = save_dataset(
+            bars, instrument=_future(), provider="upstox", interval="1d", directory=tmp_path
+        )
+        exp = run_dataset_experiment(
+            saved,
+            _strategy(),
+            ZERO_COST,
+            name="from_dataset",
+            strategy_params={"fast": 2, "slow": 3},
+        )
+        assert exp.config.dataset_hash == saved.data_hash
+        assert exp.config.dataset_name == saved.path.stem
+        assert exp.metrics.num_trades == 1  # the documented profitable series trades once
+
+    def test_dataset_experiment_invalid_series_refused(self) -> None:
+        bars = build_profitable_series(_future())[:2]
+        duplicate = MarketPrice(
+            instrument=bars[0].instrument,
+            timestamp=bars[0].timestamp,
+            open=bars[0].open,
+            high=bars[0].high,
+            low=bars[0].low,
+            close=bars[0].close,
+        )
+        fake = StoredDataset(
+            bars=[bars[0], duplicate],
+            metadata={"data_hash": "f" * 64},
+            path=Path("fake.csv"),
+        )
+        with pytest.raises(ValueError, match="failed validation"):
+            run_dataset_experiment(fake, _strategy(), ZERO_COST, name="bad", strategy_params={})
+
+    def test_dataset_hash_differs_across_datasets(self, tmp_path: Path) -> None:
+        a = save_dataset(
+            build_profitable_series(_future())[:6],
+            instrument=_future(), provider="upstox", interval="1d", directory=tmp_path / "a",
+        )
+        b = save_dataset(
+            build_profitable_series(_future())[:8],
+            instrument=_future(), provider="upstox", interval="1d", directory=tmp_path / "b",
+        )
+        ea = run_dataset_experiment(a, _strategy(), ZERO_COST, name="x", strategy_params={})
+        eb = run_dataset_experiment(b, _strategy(), ZERO_COST, name="x", strategy_params={})
+        assert ea.config.dataset_hash != eb.config.dataset_hash
+        assert ea.config.config_hash != eb.config.config_hash

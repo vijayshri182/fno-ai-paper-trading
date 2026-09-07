@@ -29,7 +29,7 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -475,6 +475,116 @@ class TestInstrumentKeyHelper:
 
     def test_upstox_base_url_constant(self) -> None:
         assert UPSTOX_BASE_URL == "https://api.upstox.com"
+
+
+# ---------------------------------------------------------------------------
+# Window chunking — ranges longer than one documented Upstox request
+# ---------------------------------------------------------------------------
+
+def _candle_row(ts: datetime, *, close: float = 100.0, volume: int = 1000) -> list:
+    return [ts.isoformat(), close, close + 1.0, close - 1.0, close, volume, None]
+
+
+class TestWindowChunking:
+    def test_range_under_limit_uses_single_request(self, monkeypatch) -> None:
+        provider, calls = _provider(
+            monkeypatch, [_ok_json({"candles": [_candle_row(datetime(2026, 1, 2, 9, 15))]})]
+        )
+        bars = provider.get_historical_ohlcv(
+            _index(), interval="1m",
+            start=datetime(2026, 1, 1), end=datetime(2026, 1, 5),
+        )
+        assert len(bars) == 1
+        assert len(calls) == 1
+        assert calls[0]["url"].endswith("/2026-01-05/2026-01-01")
+
+    def test_range_exactly_at_minute_cap_is_single_request(self, monkeypatch) -> None:
+        # 30 calendar days == the 1-minute request cap -> one call.
+        provider, calls = _provider(monkeypatch, [_ok_json({"candles": []})])
+        assert provider.get_historical_ohlcv(
+            _index(), interval="1m",
+            start=datetime(2026, 1, 1), end=datetime(2026, 1, 31),
+        ) == []
+        assert len(calls) == 1
+
+    def test_long_minute_range_is_chunked_and_merged(self, monkeypatch) -> None:
+        rows1 = [
+            _candle_row(datetime(2026, 1, 2, 9, 15), close=100.0),
+            _candle_row(datetime(2026, 1, 31, 9, 15), close=101.0),
+        ]
+        rows2 = [
+            _candle_row(datetime(2026, 2, 2, 9, 15), close=102.0),
+            _candle_row(datetime(2026, 2, 10, 9, 15), close=103.0),
+        ]
+        provider, calls = _provider(
+            monkeypatch,
+            [_ok_json({"candles": rows1}), _ok_json({"candles": rows2})],
+        )
+        bars = provider.get_historical_ohlcv(
+            _index(), interval="1m",
+            start=datetime(2026, 1, 1), end=datetime(2026, 2, 10),
+        )
+        assert len(bars) == 4
+        assert len(calls) == 2
+        # chunk 1 covers [2026-01-01, 2026-01-31]; chunk 2 starts the next day.
+        assert calls[0]["url"].endswith("/2026-01-31/2026-01-01")
+        assert calls[1]["url"].endswith("/2026-02-10/2026-02-01")
+        timestamps = [b.timestamp for b in bars]
+        assert timestamps == sorted(timestamps)  # merged series stays chronological
+        assert timestamps[0] == datetime(2026, 1, 2, 9, 15)
+        assert timestamps[-1] == datetime(2026, 2, 10, 9, 15)
+
+    def test_daily_year_is_single_request(self, monkeypatch) -> None:
+        provider, calls = _provider(monkeypatch, [_ok_json({"candles": []})])
+        assert provider.get_historical_ohlcv(
+            _index(), interval="1d",
+            start=datetime(2025, 1, 1), end=datetime(2026, 1, 1),
+        ) == []
+        assert len(calls) == 1
+
+    def test_daily_multi_decade_range_is_chunked(self, monkeypatch) -> None:
+        provider, calls = _provider(
+            monkeypatch,
+            [
+                _ok_json({"candles": [_candle_row(datetime(2000, 1, 3, 9, 15), close=100.0)]}),
+                _ok_json({"candles": []}),
+                _ok_json({"candles": []}),
+                _ok_json({"candles": [_candle_row(datetime(2035, 1, 1, 9, 15), close=200.0)]}),
+            ],
+        )
+        bars = provider.get_historical_ohlcv(
+            _index(), interval="1d",
+            start=datetime(2000, 1, 1), end=datetime(2035, 1, 1),
+        )
+        assert len(bars) == 2
+        assert len(calls) == 4  # ~12,784 calendar days split at the 3,500-day cap
+        first_end = (datetime(2000, 1, 1) + timedelta(days=3500)).date().isoformat()
+        assert calls[0]["url"].endswith(f"/{first_end}/2000-01-01")
+        assert "/2035-01-01/" in calls[-1]["url"]  # last window's inclusive to_date
+        assert not calls[-1]["url"].endswith("/2035-01-01/2000-01-01")  # was chunked
+        assert bars[0].timestamp < bars[1].timestamp
+
+    def test_weekly_range_has_no_chunking(self, monkeypatch) -> None:
+        provider, calls = _provider(monkeypatch, [_ok_json({"candles": []})])
+        assert provider.get_historical_ohlcv(
+            _index(), interval="1w",
+            start=datetime(2015, 1, 1), end=datetime(2026, 1, 1),
+        ) == []
+        assert len(calls) == 1
+
+    def test_merged_series_must_be_globally_chronological(self, monkeypatch) -> None:
+        # chunk 1 carries a bar dated later than a bar in chunk 2.
+        rows1 = [_candle_row(datetime(2026, 2, 5, 9, 15), close=103.0)]
+        rows2 = [_candle_row(datetime(2026, 1, 15, 9, 15), close=102.0)]
+        provider, _ = _provider(
+            monkeypatch,
+            [_ok_json({"candles": rows1}), _ok_json({"candles": rows2})],
+        )
+        with pytest.raises(MarketDataError, match="out of order"):
+            provider.get_historical_ohlcv(
+                _index(), interval="1m",
+                start=datetime(2026, 1, 1), end=datetime(2026, 2, 10),
+            )
 
 
 # ---------------------------------------------------------------------------

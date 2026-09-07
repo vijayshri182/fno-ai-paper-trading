@@ -19,7 +19,6 @@ from __future__ import annotations
 import argparse
 import sys
 from datetime import datetime, timedelta
-from decimal import Decimal
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -29,6 +28,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from fno_ai_paper_trading.data.dataset_store import save_dataset  # noqa: E402
+from fno_ai_paper_trading.data.instrument_registry import (  # noqa: E402
+    instrument_from_upstox_key,
+)
 from fno_ai_paper_trading.data.upstox_provider import (  # noqa: E402
     UpstoxHistoricalDataProvider,
     upstox_instrument_key,
@@ -37,27 +39,8 @@ from fno_ai_paper_trading.data.validation import (  # noqa: E402
     format_report,
     validate_bars,
 )
-from fno_ai_paper_trading.models.enums import InstrumentType  # noqa: E402
-from fno_ai_paper_trading.models.instruments import Instrument  # noqa: E402
 
 DEFAULT_INSTRUMENT_KEY = "NSE_INDEX|Nifty 50"
-
-
-def _build_instrument(key: str) -> Instrument:
-    try:
-        segment, symbol = key.split("|", 1)
-    except ValueError as exc:
-        raise SystemExit(f"instrument key must be SEGMENT|SYMBOL, got {key!r}") from exc
-    return Instrument(
-        symbol=symbol.strip(),
-        instrument_type=InstrumentType.FUTURE,  # nominal type; data is index OHLCV
-        underlying_symbol=symbol.strip(),
-        exchange=segment.split("_")[0].strip() or "NSE",
-        exchange_token=key,
-        tick_size=Decimal("0.05"),
-        multiplier=1,
-        lot_size=1,
-    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -98,7 +81,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     key = upstox_instrument_key(*(args.instrument_key.split("|", 1)))
-    instrument = _build_instrument(key)
+    instrument = instrument_from_upstox_key(key)
 
     print("Upstox historical-data smoke test — READ-ONLY (no orders, no writes)")
     print(f"instrument key : {key}")

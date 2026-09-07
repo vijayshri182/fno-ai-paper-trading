@@ -37,6 +37,7 @@ class Signal(str, Enum):
 class InstrumentType(str, Enum):
     """Category of a financial instrument."""
 
+    INDEX = "INDEX"  # Index (e.g. NIFTY 50) used as a research benchmark/data vehicle
     FUTURE = "FUTURE"
     OPTION_CE = "OPTION_CE"  # Call option
     OPTION_PE = "OPTION_PE"  # Put option

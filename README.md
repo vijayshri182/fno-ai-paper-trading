@@ -285,17 +285,33 @@ neutral provider interface), while staying 100% offline by default.
   historical-candle client (`GET /v3/historical-candle/...` only — no order
   APIs, ever). Returns normalized `MarketPrice` bars; maps HTTP/transport errors
   to the typed `data.errors` hierarchy; requires `UPSTOX_ACCESS_TOKEN`.
+- `data/instrument_registry.py` — curated research instruments (Nifty 50,
+  Bank Nifty, Fin Nifty indices) with `instrument_from_upstox_key`, so the
+  provider and scripts never hard-code Upstox segment strings.
+- Range chunking: Upstox caps history per request (1 month for ≤15-minute
+  bars, 1 quarter for hourly bars, ~1 decade for daily bars). Ranges longer
+  than one request are fetched as contiguous, non-overlapping windows and
+  merged into one chronological, duplicate-free series.
 - `data/dataset_store.py` — one-time downloads persist locally as
   `datasets/<name>.csv` + `.meta.json` (SHA-256 `data_hash`), so research can be
   rerun offline, deterministically. `datasets/` is git-ignored.
 - `data/validation.py` — report-only dataset checks (ordering, duplicates,
   OHLC sanity, timezone hygiene, cadence gaps) that never repair data.
+- `scripts/acquire_dataset.py` — fetch → validate → store one real dataset:
+  `python scripts/acquire_dataset.py --instrument "NIFTY 50" --interval 1d
+  --days 400 --token "$UPSTOX_ACCESS_TOKEN"`. Fails with exit code 2 when
+  validation does not pass; `--no-save` keeps the fetch read-only.
+- `research/experiment.run_dataset_experiment` — runs a backtest against a
+  `StoredDataset`, re-validates it first (raises `ValueError` on bad data) and
+  records the SHA-256 `data_hash` in the experiment provenance.
 - `scripts/upstox_smoke_test.py` — opt-in connectivity check (read-only). Exits
   with code 2 unless `UPSTOX_ACCESS_TOKEN` is set; never writes market data.
 
 ```bash
-# Optional, real-data check (requires your own UPSTOX_ACCESS_TOKEN in the env)
+# Optional, real-data pipeline (requires your own UPSTOX_ACCESS_TOKEN in the env)
 python scripts/upstox_smoke_test.py --save
+python scripts/acquire_dataset.py --instrument "NIFTY 50" --interval 1d --days 400
+python scripts/acquire_dataset.py --instrument BANKNIFTY --interval 15m --days 60 --name banknifty_15m
 ```
 
 > Read-only, credential-free-by-default, and git-ignored by design: with no

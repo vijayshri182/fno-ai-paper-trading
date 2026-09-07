@@ -22,6 +22,8 @@ from typing import Any, Callable, Mapping
 from fno_ai_paper_trading.backtest.config import BacktestConfig
 from fno_ai_paper_trading.backtest.engine import BacktestEngine
 from fno_ai_paper_trading.backtest.result import BacktestResult
+from fno_ai_paper_trading.data.dataset_store import StoredDataset
+from fno_ai_paper_trading.data.validation import format_report, validate_bars
 from fno_ai_paper_trading.models.market import MarketPrice
 from fno_ai_paper_trading.research.benchmark import BenchmarkResult, buy_and_hold
 from fno_ai_paper_trading.research.metrics import PerformanceMetrics, compute_metrics
@@ -72,6 +74,7 @@ class ExperimentConfig:
     strategy_name: str
     strategy_params: Mapping[str, Any]
     dataset_name: str
+    dataset_hash: str = ""  # SHA-256 of the exact dataset bytes (when persisted)
     start_date: date | None = None
     end_date: date | None = None
     initial_capital: Decimal = Decimal("0")
@@ -97,6 +100,7 @@ class ExperimentConfig:
             "strategy_name": self.strategy_name,
             "strategy_params": dict(self.strategy_params),
             "dataset_name": self.dataset_name,
+            "dataset_hash": self.dataset_hash,
             "start_date": self.start_date.isoformat() if self.start_date else None,
             "end_date": self.end_date.isoformat() if self.end_date else None,
             "initial_capital": str(self.initial_capital),
@@ -137,6 +141,7 @@ def run_experiment(
     name: str,
     strategy_params: Mapping[str, Any],
     dataset_name: str,
+    dataset_hash: str = "",
     cost_assumptions: str = "",
     slippage_assumptions: str = "",
     benchmark_quantity: int | None = None,
@@ -144,13 +149,19 @@ def run_experiment(
     risk_free_rate: Decimal = Decimal("0"),
     engine: BacktestEngine | None = None,
 ) -> ExperimentResult:
-    """Run one experiment and compute metrics (+ an optional benchmark)."""
+    """Run one experiment and compute metrics (+ an optional benchmark).
+
+    ``dataset_hash`` (the persisted dataset's SHA-256, when available) is
+    recorded in the experiment provenance so a result can be traced back to the
+    exact dataset bytes it ran on.
+    """
     start, end = _period(bars)
     config = ExperimentConfig(
         name=name,
         strategy_name=strategy.name,
         strategy_params=dict(strategy_params),
         dataset_name=dataset_name,
+        dataset_hash=dataset_hash,
         start_date=start,
         end_date=end,
         initial_capital=backtest_config.initial_capital,
@@ -181,3 +192,47 @@ def run_experiment(
         except ValueError:
             benchmark = None
     return ExperimentResult(config=config, result=result, metrics=metrics, benchmark=benchmark)
+
+
+def run_dataset_experiment(
+    dataset: StoredDataset,
+    strategy: Strategy,
+    backtest_config: BacktestConfig,
+    *,
+    name: str,
+    strategy_params: Mapping[str, Any],
+    cost_assumptions: str = "",
+    slippage_assumptions: str = "",
+    benchmark_quantity: int | None = None,
+    bars_per_year: int = 252,
+    risk_free_rate: Decimal = Decimal("0"),
+    engine: BacktestEngine | None = None,
+) -> ExperimentResult:
+    """Run one backtest experiment against a persisted local dataset.
+
+    The dataset is re-validated before use — an invalid series raises
+    :class:`ValueError` instead of silently feeding garbage into the engine —
+    and its SHA-256 ``data_hash`` is recorded in the experiment provenance so
+    the result can be traced to the exact dataset bytes it ran on.
+    """
+    report = validate_bars(dataset.bars, allow_empty=False)
+    if not report.ok:
+        raise ValueError(
+            f"dataset {dataset.path} failed validation ({len(report.errors)} "
+            f"error(s)); refusing to run: {format_report(report)}"
+        )
+    return run_experiment(
+        dataset.bars,
+        strategy,
+        backtest_config,
+        name=name,
+        strategy_params=strategy_params,
+        dataset_name=dataset.path.stem,
+        dataset_hash=dataset.data_hash,
+        cost_assumptions=cost_assumptions,
+        slippage_assumptions=slippage_assumptions,
+        benchmark_quantity=benchmark_quantity,
+        bars_per_year=bars_per_year,
+        risk_free_rate=risk_free_rate,
+        engine=engine,
+    )

@@ -23,6 +23,10 @@ official API docs):
   ``to_date`` is required and inclusive; ``from_date`` is optional
 * candle row: ``[iso_timestamp, open, high, low, close, volume, open_interest]``
 * data depth: minutes/hours since Jan 2022, days since Jan 2000
+* per-request retrieval caps (see ``UPSTOX_MAX_WINDOW_DAYS``): 1 month for
+  minute bars up to 15, 1 quarter for 30-minute and hourly bars, ~1 decade for
+  daily bars, unlimited for weekly/monthly. Ranges longer than one request are
+  fetched as contiguous, non-overlapping windows and merged transparently.
 
 Rules honoured here (same as the Kite adapter):
 
@@ -66,6 +70,16 @@ _ERROR_CODE_DATES = frozenset({"UDAPI1015", "UDAPI1016", "UDAPI1014", "UDAPI1022
 _ERROR_CODE_INTERVAL = frozenset({"UDAPI1146", "UDAPI1147"})
 _ERROR_CODE_RANGE = frozenset({"UDAPI1148"})
 
+# Per-request retrieval caps for ``GET /v3/historical-candle``, in calendar
+# days, keyed by canonical interval token. Values stay inside the documented
+# limits (minutes <=15: 1 month; minutes >15 / hours: 1 quarter; days: 1
+# decade). ``None`` = single request covers the whole range.
+UPSTOX_MAX_WINDOW_DAYS: dict[str, int | None] = {
+    "1m": 30, "3m": 30, "5m": 30, "10m": 30, "15m": 30,
+    "30m": 89, "1h": 89, "2h": 89, "3h": 89, "4h": 89,
+    "1d": 3500, "1w": None, "1M": None,
+}
+
 
 def upstox_instrument_key(segment: str, symbol: str) -> str:
     """Build an Upstox V3 instrument key, e.g. ``NSE_FO|NIFTY 27 MAR 2025``.
@@ -80,6 +94,28 @@ def upstox_instrument_key(segment: str, symbol: str) -> str:
     if _INSTRUMENT_KEY_RE.fullmatch(key) is None:
         raise ValueError(f"invalid Upstox instrument key {key!r}; expected SEGMENT|SYMBOL")
     return key
+
+
+def _historical_date_windows(
+    start: datetime, end: datetime, max_days: int | None
+) -> list[tuple[str, str]]:
+    """Split ``[start, end]`` into ``(from_date, to_date)`` request windows.
+
+    Returns ``YYYY-MM-DD`` strings for the Upstox path. A single window covers
+    the whole range when ``max_days`` is ``None`` or the range already fits;
+    otherwise contiguous, non-overlapping day windows step forward from
+    ``start`` so the merged series stays chronological.
+    """
+    end_date = end.date()
+    if max_days is None or (end_date - start.date()).days <= max_days:
+        return [(start.date().isoformat(), end_date.isoformat())]
+    windows: list[tuple[str, str]] = []
+    cursor = start.date()
+    while cursor < end_date:
+        stop = min(end_date, cursor + timedelta(days=max_days))
+        windows.append((cursor.isoformat(), stop.isoformat()))
+        cursor = stop + timedelta(days=1)
+    return windows
 
 
 class UpstoxHistoricalDataProvider(MarketDataProvider):
@@ -277,29 +313,35 @@ class UpstoxHistoricalDataProvider(MarketDataProvider):
         key = self._instrument_key(instrument)
         try:
             unit, number = upstox_unit_interval(interval)
+            token = canonical_interval(interval)
         except ValueError as exc:
             raise MarketDataError(str(exc)) from exc
 
-        to_date = end.strftime("%Y-%m-%d")
-        from_date = start.strftime("%Y-%m-%d")
-        path = (
-            f"/v3/historical-candle/{key}/{unit}/{number}/{to_date}/{from_date}"
-        )
-        response = self._get(path)
-        payload = response.json
-        if not isinstance(payload, dict) or payload.get("status") not in ("success", None):
-            detail = self._error_from_body(response.text)
-            raise MarketDataError(
-                f"Upstox returned an unsuccessful response for {key}: {detail.get('message')}"
-            )
-        candles = ((payload.get("data") or {}).get("candles")) or []
-        if not isinstance(candles, list):
-            raise MarketDataError(f"unexpected Upstox candle payload shape for {key}")
+        # Upstox caps how much history one request may return (see
+        # UPSTOX_MAX_WINDOW_DAYS); longer ranges are fetched as contiguous,
+        # non-overlapping windows and merged into one chronological series.
+        windows = _historical_date_windows(start, end, UPSTOX_MAX_WINDOW_DAYS.get(token))
 
         bars: list[MarketPrice] = []
-        for index, candle in enumerate(candles):
-            bars.append(self._candle_to_bar(instrument, candle, index, key))
+        for from_date, to_date in windows:
+            path = (
+                f"/v3/historical-candle/{key}/{unit}/{number}/{to_date}/{from_date}"
+            )
+            response = self._get(path)
+            payload = response.json
+            if not isinstance(payload, dict) or payload.get("status") not in ("success", None):
+                detail = self._error_from_body(response.text)
+                raise MarketDataError(
+                    f"Upstox returned an unsuccessful response for {key}: {detail.get('message')}"
+                )
+            candles = ((payload.get("data") or {}).get("candles")) or []
+            if not isinstance(candles, list):
+                raise MarketDataError(f"unexpected Upstox candle payload shape for {key}")
 
+            for index, candle in enumerate(candles):
+                bars.append(self._candle_to_bar(instrument, candle, index, key))
+
+        # The merged series must be globally chronological and duplicate-free.
         for previous, current in zip(bars, bars[1:]):
             if current.timestamp <= previous.timestamp:
                 raise MarketDataError(
@@ -369,7 +411,9 @@ class UpstoxHistoricalDataProvider(MarketDataProvider):
 
         Bars are chronological (oldest first) with naive-IST timestamps. An
         empty window returns an empty list. Duplicate or out-of-order candles
-        from the provider raise :class:`MarketDataError`.
+        from the provider raise :class:`MarketDataError`. Ranges longer than a
+        single Upstox request (see ``UPSTOX_MAX_WINDOW_DAYS``) are fetched as
+        contiguous, non-overlapping windows and merged transparently.
         """
         now = self._now_fn()
         end = end if end is not None else now

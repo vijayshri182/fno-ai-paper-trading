@@ -20,6 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from fno_ai_paper_trading.models.market import MarketPrice
 
@@ -182,3 +183,21 @@ def format_report(report: ValidationReport) -> str:
     for issue in report.issues:
         lines.append(str(issue))
     return "\n".join(lines)
+
+
+def validation_to_dict(report: ValidationReport) -> dict[str, Any]:
+    """Serialize a :class:`ValidationReport` to a JSON-compatible dict.
+
+    The dict carries a boolean verdict plus every issue as
+    ``{level, message, index}`` so pipelines and CLIs can surface the exact
+    failure without parsing human text.
+    """
+    return {
+        "ok": report.ok,
+        "num_errors": len(report.errors),
+        "num_warnings": len(report.warnings),
+        "issues": [
+            {"level": issue.level, "message": issue.message, "index": issue.index}
+            for issue in report.issues
+        ],
+    }
