@@ -40,6 +40,30 @@ def _period(bars: list[MarketPrice]) -> tuple[date | None, date | None]:
     return bars[0].timestamp.date(), bars[-1].timestamp.date()
 
 
+def _backtest_settings_canonical(config: BacktestConfig) -> str:
+    """Deterministic snapshot of the backtest cost/risk scalars an experiment runs with.
+
+    Custom duck-typed ``cost_schedule`` / ``execution`` objects have no stable
+    JSON representation, so those are captured via the human-readable
+    ``cost_assumptions`` / ``slippage_assumptions`` strings instead.
+    """
+    try:
+        return json.dumps(
+            {
+                "commission_rate": str(config.commission_rate),
+                "commission_fixed": str(config.commission_fixed),
+                "slippage_rate": str(config.slippage_rate),
+                "enable_risk_manager": bool(config.enable_risk_manager),
+                "max_position_quantity": int(config.max_position_quantity),
+                "max_order_notional": str(config.max_order_notional),
+                "max_daily_loss": str(config.max_daily_loss),
+            },
+            sort_keys=True,
+        )
+    except (TypeError, ValueError):
+        return ""
+
+
 @dataclass(frozen=True)
 class ExperimentConfig:
     """Immutable provenance for one experiment."""
@@ -56,6 +80,7 @@ class ExperimentConfig:
     quantity: int = 0
     bars_per_year: int = 252
     risk_free_rate: Decimal = Decimal("0")
+    backtest_settings: str = ""
     created_at: str = field(default_factory=_now_iso)
     framework_version: str = FRAMEWORK_VERSION
 
@@ -80,6 +105,7 @@ class ExperimentConfig:
             "quantity": self.quantity,
             "bars_per_year": self.bars_per_year,
             "risk_free_rate": str(self.risk_free_rate),
+            "backtest_settings": self.backtest_settings,
             "framework_version": self.framework_version,
         }
         return json.dumps(payload, sort_keys=True, default=_default)
@@ -133,6 +159,7 @@ def run_experiment(
         quantity=backtest_config.quantity,
         bars_per_year=bars_per_year,
         risk_free_rate=risk_free_rate,
+        backtest_settings=_backtest_settings_canonical(backtest_config),
     )
     engine = engine or BacktestEngine()
     result = engine.run(bars, strategy, backtest_config)

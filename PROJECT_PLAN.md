@@ -1083,13 +1083,16 @@ F&O AI Paper Trading System
 ## Current Phase
 
 **Phase 2 (& backtest) — completed; Strategy Research & Robustness Framework
-delivered (2026-09-07, commit pending); remaining roadmap: historical-data CLI
-/ AI analysis (plan Phase 3), real broker adapter (Phase 4).**
+delivered (2026-09-07); Phase 3 audit fixes + Upstox historical-data readiness
+(2026-09-07, commit pending); remaining roadmap: historical-data CLI / AI
+analysis (plan Phase 3), real broker adapter (Phase 4).**
 
-Status: **RESEARCH FRAMEWORK IMPLEMENTED** — see §17b and the Change Log. The
-core market-data + strategy + backtest work is complete; remaining items are the
-scheduled downstream capabilities (AI analysis, real market data CLI, real
-broker adapter), which are explicitly out of this phase's scope.
+Status: **RESEARCH FRAMEWORK IMPLEMENTED + AUDITED + HISTORY-READY** — see §17b,
+the data-layer notes above and the Change Log. The core market-data + strategy +
+backtest work is complete; remaining items are the scheduled downstream
+capabilities (AI analysis, real market data CLI, real broker adapter), which are
+explicitly out of this phase's scope. Real historical research starts when the
+user supplies `UPSTOX_ACCESS_TOKEN` (read-only historical data only).
 
 ---
 
@@ -1257,6 +1260,28 @@ The system should be capable of using **real market information while remaining 
 ---
 
 # 31. Change Log
+
+## 2026-09-07 (afternoon) — Phase 3 audit + Upstox history readiness
+
+* Audit fixes (commit message intended: `feat: audit phase 3 and add upstox historical data readiness`):
+  * `BacktestResult`/`PerformanceMetrics` gained `slippage_cost` and a
+    `transaction_costs` property (commission + slippage); engine accumulates
+    per-fill adverse-price cost; hand-verified triples.
+  * `ExperimentConfig` folds `backtest_settings` (canonical JSON of
+    commission/slippage/risk scalars) into the deterministic `config_hash`.
+  * `canonical_interval` is case-sensitive for the minute/month pair (`1m` vs
+    `1M`); casing/whitespace still tolerated for all other tokens.
+* Historical-data readiness (vendor-neutral, read-only, offline-safe):
+  * `data/intervals.py` — canonical interval tokens + Upstox/Kite mappings.
+  * `data/upstox_provider.py` — `UpstoxHistoricalDataProvider`, historical OHLCV
+    read-only, typed error mapping, candle validation, naive-IST normalization.
+  * `data/dataset_store.py` — local CSV+JSON dataset cache with SHA-256
+    `data_hash`; `datasets/` git-ignored.
+  * `data/validation.py` — report-only dataset quality checks.
+  * `config/settings.py` — `UpstoxSettings` (`UPSTOX_*`).
+  * `scripts/upstox_smoke_test.py` — opt-in read-only connectivity check.
+  * `.env.example` — Upstox section; tests added for all new modules.
+  * Full suite: **298 tests pass** (201 + 97 new); reports regenerated.
 
 ## 2026-09-07
 

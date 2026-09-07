@@ -273,6 +273,37 @@ closed by a `BUY`).
 
 ---
 
+## Historical data readiness (Upstox, read-only)
+
+The project is prepared for real historical research via **Upstox** (vendor-
+neutral provider interface), while staying 100% offline by default.
+
+- `data/intervals.py` — one canonical interval token set (`1m` … `1M`) mapped to
+  each vendor's bucket names (Upstox `unit`/`interval` pairs, Kite bucket
+  labels), so research never knows a provider's nomenclature.
+- `data/upstox_provider.py` — `UpstoxHistoricalDataProvider`, a **read-only**
+  historical-candle client (`GET /v3/historical-candle/...` only — no order
+  APIs, ever). Returns normalized `MarketPrice` bars; maps HTTP/transport errors
+  to the typed `data.errors` hierarchy; requires `UPSTOX_ACCESS_TOKEN`.
+- `data/dataset_store.py` — one-time downloads persist locally as
+  `datasets/<name>.csv` + `.meta.json` (SHA-256 `data_hash`), so research can be
+  rerun offline, deterministically. `datasets/` is git-ignored.
+- `data/validation.py` — report-only dataset checks (ordering, duplicates,
+  OHLC sanity, timezone hygiene, cadence gaps) that never repair data.
+- `scripts/upstox_smoke_test.py` — opt-in connectivity check (read-only). Exits
+  with code 2 unless `UPSTOX_ACCESS_TOKEN` is set; never writes market data.
+
+```bash
+# Optional, real-data check (requires your own UPSTOX_ACCESS_TOKEN in the env)
+python scripts/upstox_smoke_test.py --save
+```
+
+> Read-only, credential-free-by-default, and git-ignored by design: with no
+> token set, the full app, backtests, and tests run offline on the in-memory
+> provider.
+
+---
+
 ## Strategy research & robustness
 
 `fno_ai_paper_trading.research` is a deterministic, paper-only framework built
@@ -359,6 +390,12 @@ Defaults are shown next to each variable in `.env.example`.
 | `FNO_KITE_BASE_URL` | `https://api.kite.trade` | Kite endpoint base URL |
 | `FNO_KITE_TIMEOUT_SECONDS` | `10` | HTTP timeout for Kite calls |
 | `FNO_KITE_MAX_RETRIES` | `3` | Retries on rate-limit/5xx/network errors |
+| `UPSTOX_CLIENT_ID` | *(empty)* | Upstox SSO client id (token-generation flow only, optional) |
+| `UPSTOX_CLIENT_SECRET` | *(empty)* | Upstox SSO client secret (token-generation flow only, optional)—**never commit it** |
+| `UPSTOX_ACCESS_TOKEN` | *(empty)* | Upstox access token used for API calls—**never commit a real token** |
+| `UPSTOX_BASE_URL` | `https://api.upstox.com` | Upstox V3 endpoint base URL |
+| `UPSTOX_TIMEOUT_SECONDS` | `10` | HTTP timeout for Upstox calls |
+| `UPSTOX_MAX_RETRIES` | `3` | Retries on rate-limit/5xx/network errors |
 
 Never commit real values to `.env` — the file is git-ignored.
 
@@ -370,20 +407,24 @@ Never commit real values to `.env` — the file is git-ignored.
   `False`. No code path in the system contacts an external broker or API. The
   strategy service and the backtest engine submit paper orders only.
 - **No secrets in code:** all credentials belong in `.env` (git-ignored) or
-  environment variables, never in source. The Kite adapter refuses to run
-  without credentials and raises a typed `ProviderConfigurationError`.
+  environment variables, never in source. The Kite and Upstox adapters refuse to
+  send data without credentials and raise a typed `ProviderConfigurationError`
+  when misconfigured.
 - **No AI/strategy claims:** the strategy engine is deterministic (moving
-  average crossover). AI analysis is planned for Phase 3 and will sit behind an
-  interface with non-autonomous execution.
+  average crossover). AI analysis is planned and will sit behind an interface
+  with non-autonomous execution.
 - **Market data is offline-safe:** the only provider exercised by the demos is
-  `InMemoryMarketDataProvider`. The Kite Connect adapter is a read-only market
-  data client, unit-tested against mocked HTTP; it never places orders and it
-  is exercised live only when `FNO_KITE_API_KEY` / `FNO_KITE_ACCESS_TOKEN` are
-  configured by the user.
+  `InMemoryMarketDataProvider`. The Kite Connect and Upstox adapters are
+  read-only market-data clients, unit-tested against mocked HTTP; they never
+  place orders and are exercised live only when the relevant credentials are
+  configured by the user. The Upstox adapter performs **historical OHLCV reads
+  only** and has no order-routing surface.
 - **Backtesting is offline and paper-only:** the engine instantiates its own
-  paper broker and never reads credentials, connects to a network, or touches
-  the Kite adapter. Backtest results reflect the configured execution
+  paper broker and never reads credentials, connects to a network, or touches a
+  real data adapter. Backtest results reflect the configured execution
   assumptions only and are not a basis for real-money decisions.
+- **Downloaded datasets stay local:** `datasets/` is git-ignored and validated
+  before use; nothing is uploaded anywhere.
 
 ---
 
@@ -393,7 +434,8 @@ Never commit real values to `.env` — the file is git-ignored.
 |---|---|
 | **Phase 2 (done)** | Strategy engine, real market-data provider interface, moving-average crossover strategy, read-only Kite Connect adapter, deterministic backtest harness |
 | **Phase 3 (research, done)** | Deterministic research & robustness framework: Indian cost model, execution assumptions, regime datasets, in/out-of-sample splits, walk-forward, parameter sensitivity, benchmark, robust metrics, experiment records, HTML notebook |
-| **Phase 3 (upcoming)** | Historical-data CLI/tooling, AI analysis/explainability (behind an interface, never autonomous execution) |
+| **Phase 3 (historical, ready)** | Local dataset cache + read-only Upstox historical adapter + interval/validation tooling — enabled when the user configures `UPSTOX_ACCESS_TOKEN` |
+| **Phase 3 (upcoming)** | Historical-data CLI/download pipeline, AI analysis/explainability (behind an interface, never autonomous execution) |
 | **Phase 4** | Real broker adapter behind an interface, required to remain disabled by default |
 
 ---

@@ -143,6 +143,7 @@ class BacktestEngine:
         orders_submitted = 0
         orders_filled = 0
         closed_trades: list = []
+        slippage_cost = Decimal("0")
 
         for i, bar in enumerate(bars):
             # --- strategy sees only past + present ---
@@ -167,6 +168,7 @@ class BacktestEngine:
                         old_qty = portfolio.current_quantity(fill.instrument.symbol)
                         trade = portfolio.apply_fill(fill)
                         orders_filled += 1
+                        slippage_cost += abs(fill.price - bar.close) * fill.quantity * fill.instrument.multiplier
                         if self._is_closing_fill(old_qty, order.quantity, side):
                             closed_trades.append(trade)
 
@@ -176,7 +178,7 @@ class BacktestEngine:
             peak_equity = max(peak_equity, equity_point.equity)
 
         return self._build_result(config, portfolio, equity_curve, bars, signals_generated,
-                                  orders_submitted, orders_filled, closed_trades)
+                                  orders_submitted, orders_filled, closed_trades, slippage_cost)
 
     # ------------------------------------------------------------------
     # helpers
@@ -245,6 +247,7 @@ class BacktestEngine:
         orders_submitted: int,
         orders_filled: int,
         closed_trades: list | None = None,
+        slippage_cost: Decimal = Decimal("0"),
     ) -> BacktestResult:
         final_equity = equity_curve[-1].equity if equity_curve else config.initial_capital
         total_pnl = final_equity - config.initial_capital
@@ -292,6 +295,7 @@ class BacktestEngine:
             gross_profit=gross_profit,
             gross_loss=gross_loss,
             total_commission=total_commission,
+            slippage_cost=slippage_cost,
             profit_factor=profit_factor,
             max_drawdown=max_drawdown,
             max_drawdown_pct=max_drawdown_pct,

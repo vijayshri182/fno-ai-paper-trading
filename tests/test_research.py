@@ -8,6 +8,7 @@ metric computation surfaces immediately.
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from decimal import Decimal
 
 import pytest
@@ -585,3 +586,106 @@ def test_cost_schedule_and_execution_compose_with_legacy_backwards_compat() -> N
     b = BacktestEngine().run(build_profitable_series(_future()), _strategy(), plain)
     assert a.total_commission == b.total_commission
     assert a.total_pnl == b.total_pnl
+
+
+# ---------------------------------------------------------------------------
+# Cost transparency — slippage vs commission (audit follow-up)
+# ---------------------------------------------------------------------------
+
+SLIDE = BacktestConfig(
+    quantity=10, commission_rate=Decimal("0"), commission_fixed=Decimal("0"), slippage_rate=Decimal("0.05")
+)
+
+
+def test_result_reports_slippage_and_transaction_costs() -> None:
+    # BUY fill 110 -> 115.5, SELL fill 120 -> 114.
+    result = BacktestEngine().run(build_profitable_series(_future()), _strategy(), SLIDE)
+    assert result.total_commission == Decimal("0")
+    assert result.slippage_cost == Decimal("115")  # (5.5 + 6) * 10
+    assert result.transaction_costs == Decimal("115")
+    assert result.total_pnl == Decimal("-15")  # net already includes friction
+
+
+def test_slippage_cost_is_zero_without_friction() -> None:
+    result = BacktestEngine().run(build_profitable_series(_future()), _strategy(), ZERO_COST)
+    assert result.slippage_cost == Decimal("0")
+    assert result.transaction_costs == Decimal("0")
+
+
+def test_transaction_costs_combine_commission_and_slippage() -> None:
+    config = BacktestConfig(
+        quantity=10, commission_rate=Decimal("0.001"), commission_fixed=Decimal("0"),
+        slippage_rate=Decimal("0.05"),
+    )
+    result = BacktestEngine().run(build_profitable_series(_future()), _strategy(), config)
+    expected_commission = Decimal("115.5") * Decimal("10") * Decimal("0.001") + Decimal("114") * Decimal("10") * Decimal("0.001")
+    assert result.total_commission == expected_commission
+    assert result.slippage_cost == Decimal("115")
+    assert result.transaction_costs == expected_commission + Decimal("115")
+
+
+def test_metrics_carry_slippage_and_transaction_costs() -> None:
+    metrics = compute_metrics(BacktestEngine().run(build_profitable_series(_future()), _strategy(), SLIDE))
+    assert metrics.slippage_cost == Decimal("115")
+    assert metrics.total_commission == Decimal("0")
+    assert metrics.transaction_costs == Decimal("115")
+
+
+# ---------------------------------------------------------------------------
+# Experiment provenance — config hash folds backtest settings (audit follow-up)
+# ---------------------------------------------------------------------------
+
+def test_experiment_hash_folds_backtest_settings() -> None:
+    base = dict(
+        name="x", strategy_name="moving_average_cross", strategy_params={"fast": 5, "slow": 21},
+        dataset_name="sideways_choppy",
+    )
+    cheap = ExperimentConfig(**base, backtest_settings='{"commission_rate": "0.0003"}')
+    dear = ExperimentConfig(**base, backtest_settings='{"commission_rate": "0.003"}')
+    same = ExperimentConfig(**base, backtest_settings='{"commission_rate": "0.0003"}')
+    assert cheap.config_hash == same.config_hash
+    assert cheap.config_hash != dear.config_hash
+
+
+def test_run_experiment_hash_changes_with_commission() -> None:
+    bars = build_sideways_choppy(_future(), bars=120)
+    kw = dict(name="h", strategy_params={"fast": 5, "slow": 21}, dataset_name="sideways_choppy",
+              benchmark_quantity=None)
+    cheap = run_experiment(
+        bars, _strategy(), BacktestConfig(quantity=5, commission_rate=Decimal("0")), **kw
+    )
+    dear = run_experiment(
+        bars, _strategy(), BacktestConfig(quantity=5, commission_rate=Decimal("0.005")), **kw
+    )
+    assert cheap.config.config_hash != dear.config.config_hash
+    assert '"commission_rate": "0"' in cheap.config.backtest_settings
+    assert '"commission_rate": "0.005"' in dear.config.backtest_settings
+    assert cheap.metrics.total_commission < dear.metrics.total_commission
+
+
+def test_run_experiment_backtest_settings_are_deterministic() -> None:
+    bars = build_sideways_choppy(_future(), bars=120)
+    kw = dict(name="det2", strategy_params={}, dataset_name="sideways_choppy", benchmark_quantity=None)
+    a = run_experiment(bars, _strategy(), ZERO_COST, **kw)
+    b = run_experiment(bars, _strategy(), ZERO_COST, **kw)
+    assert a.config.backtest_settings == b.config.backtest_settings
+    assert a.config.config_hash == b.config.config_hash
+
+
+# ---------------------------------------------------------------------------
+# Vendor-neutral provider interface feeds the backtest (audit follow-up)
+# ---------------------------------------------------------------------------
+
+def test_backtest_consumes_bars_from_generic_provider_interface() -> None:
+    from fno_ai_paper_trading.data.mock_provider import InMemoryMarketDataProvider, build_crossing_ohlcv
+
+    future = _future()
+    provider = InMemoryMarketDataProvider(history={future.symbol: build_crossing_ohlcv(future)})
+    bars = provider.get_historical_ohlcv(
+        future, interval="day",
+        start=datetime(2026, 9, 1, 9, 15), end=datetime(2026, 9, 30, 9, 15),
+    )
+    assert bars  # the provider interface served a real series
+    result = BacktestEngine().run(bars, _strategy(), ZERO_COST)
+    assert result.num_bars_processed == len(bars)
+    assert result.orders_submitted >= 1  # strategy turned signals into paper orders

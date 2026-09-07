@@ -19,6 +19,9 @@ Documented assumptions
   (default 0.1 years); otherwise it is ``None``.
 * Exposure/time-in-market is the fraction of bars during which any position is
   open, expressed as a percentage.
+* ``slippage_cost`` and ``total_commission`` are reported separately so friction
+  can be attributed; ``transaction_costs`` is their sum. ``net_pnl`` already
+  nets out both (it equals final equity minus initial capital).
 """
 from __future__ import annotations
 
@@ -56,6 +59,7 @@ class PerformanceMetrics:
     avg_losing_trade: Decimal | None
     expectancy: Decimal | None
     total_commission: Decimal
+    slippage_cost: Decimal
     gross_profit: Decimal
     gross_loss: Decimal
     annualized_volatility: Decimal | None
@@ -64,6 +68,11 @@ class PerformanceMetrics:
     exposure_pct: Decimal
     bars_in_market: int
     total_bars: int
+
+    @property
+    def transaction_costs(self) -> Decimal:
+        """Total broker price of trading: slippage + commission."""
+        return self.total_commission + self.slippage_cost
 
 
 def compute_metrics(
@@ -120,6 +129,7 @@ def compute_metrics(
         avg_losing_trade=avg_loss,
         expectancy=expectancy,
         total_commission=result.total_commission,
+        slippage_cost=result.slippage_cost,
         gross_profit=result.gross_profit,
         gross_loss=result.gross_loss,
         annualized_volatility=vol,

@@ -336,6 +336,63 @@ as synthetic/historical evidence.
 
 ---
 
+## 4e. 2026-09-07 — Phase 3 audit fixes + Upstox historical-data readiness
+
+**Objective.** Audit the Phase 3 research framework for cost/slippage
+transparency, out-of-sample integrity and reproducibility; fix any defects; then
+make the project ready for real historical research via Upstox behind a
+vendor-neutral provider interface — read-only, no credentials in the repo,
+optionally testable with a real token, fully offline by default.
+
+**Audit findings fixed.**
+
+1. **Slippage was invisible.** Backtest results reported net P&L and commission
+   but never the slippage component separately, so total friction could not be
+   attributed. `BacktestResult`/`PerformanceMetrics` now carry `slippage_cost`
+   and a `transaction_costs` property (= commission + slippage). The engine
+   accumulates `abs(fill.price − bar.close) × quantity × multiplier` per fill.
+   Hand-verified: BUY@110→115.5, SELL@120→114, qty 10 → `slippage_cost = 115`.
+2. **Experiment hash ignored cost settings.** Two runs with different
+   commissions produced the same `config_hash`. `ExperimentConfig` now folds a
+   canonical JSON of commission/slippage/risk scalars (`backtest_settings`) into
+   the deterministic SHA-256 hash; regression-tested (different commission ⇒
+   different hash, identical config ⇒ identical hash).
+3. **Case collision in interval tokens.** `canonical_interval("1M")` (month)
+   lowercased into `1m` (minute). Interval resolution is now case-sensitive for
+   the minute/month pair while still tolerating casing/whitespace for other
+   tokens.
+
+**Historical-data readiness (vendor-neutral).**
+
+- `data/intervals.py` — canonical interval tokens (`1m`…`1M`) + per-vendor
+  mappings (Upstox `unit`/`interval`, Kite bucket labels) + minute lengths.
+- `data/upstox_provider.py` — `UpstoxHistoricalDataProvider`, historical OHLCV
+  read-only (`GET /v3/historical-candle/...`), normalized `MarketPrice` bars,
+  typed error mapping (401/403→AuthenticationError, 404→InstrumentNotFound,
+  UDAPI date-range codes→MarketDataError, 429→RateLimitError, 5xx→Unavailable),
+  candle validation (timestamps ISO/epoch, ordering, duplicates), timezone→naive
+  IST. No order-touching surface at all.
+- `data/dataset_store.py` — local cache: `<name>.csv` (canonical columns) +
+  `<name>.meta.json` (provider, interval, instrument, range, count,
+  checkpointed-at, SHA-256 `data_hash`); rejects mis-ordered/duplicate input
+  rather than silently re-sorting. `datasets/` is git-ignored.
+- `data/validation.py` — report-only dataset checks (OHLC sanity, ordering,
+  duplicates, timezone hygiene, cadence gaps); warns on >5× gaps; never repairs.
+- `config/settings.py` — `UpstoxSettings` + `load_upstox_settings`
+  (`UPSTOX_*` env vars, requires only the access token).
+- `scripts/upstox_smoke_test.py` — opt-in read-only connectivity check; exits 2
+  without a token; optional `--save` writes a validated local dataset.
+- `.env.example` — Upstox section (placeholders only) + `.gitignore` gains
+  `datasets/`.
+
+**Tests.** 298 passed (201 existing + new: `test_intervals.py`,
+`test_upstox_provider.py` [mocked HTTP, incl. smoke-script gating via empty
+env], `test_dataset_store.py`, `test_data_quality.py`, and audit-fix sections
+in `test_research.py`). Regenerated `reports/test_report.html` and
+`reports/research_report.html` (both git-ignored).
+
+---
+
 ## 5. Open Topics / Risks
 
 - The Kite Connect credential flow (api key + access token) is implemented and
