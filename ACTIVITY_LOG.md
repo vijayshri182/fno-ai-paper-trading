@@ -21,10 +21,13 @@
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Foundation (models, config, provider interface, paper broker, portfolio, risk, tests) | **DONE** — commit `448e02f` |
-| 2 | Real market data + first deterministic strategy + backtest harness | **DONE** — commits `a86ec64`, `feat: add deterministic backtest harness` |
-| 3 | Strategy research & robustness evaluation (costs, regimes, in/out-of-sample, walk-forward, sensitivity, benchmark, metrics, experiments, HTML notebook) | **DONE** — `feat: add strategy research and robustness framework` |
-| 4 | Historical-data CLI, AI analysis / decision support | Planned (not started) |
-| 5 | Backtesting engine + analytics | Folded into Phase 2 (engine implemented); analytics extended by the research framework (Phase 3) |
+| 2 | Real market data + first deterministic strategy + backtest harness | **DONE** — commits `a86ec64`, `a1c1d7d` |
+| 3 | Strategy research & robustness evaluation (costs, regimes, in/out-of-sample, walk-forward, sensitivity, benchmark, metrics, experiments, HTML notebook) | **DONE** — commits `fb3f1c5`, `3a60a41` |
+| 4 | Historical-data CLI + real-data research (NIFTY 50 1d 2015–2024) | **DONE** — commits `da1b59a`, `e1a2b38`; real dataset acquired 2026-09-08 |
+| 5 | AI analysis / decision support; backtesting engine + analytics | **Backtest engine:** folded into Phase 2 (implemented); analytics extended by the research framework (Phase 3). **AI analysis / decision support:** planned (not started) |
+| 6 | Paper Trading V1 — current-data paper session | **SPECIFIED / PLANNED** — spec `59d831d` (PROJECT_PLAN §17d assigns Phase 6); session loop, sizing, persistence NOT IMPLEMENTED |
+
+*Phase numbers in this table follow the activity log's own scheme; for plan-level numbering see PROJECT_PLAN §17d (Paper Trading V1 = Phase 6).*
 
 ---
 
@@ -368,9 +371,12 @@ optionally testable with a real token, fully offline by default.
   mappings (Upstox `unit`/`interval`, Kite bucket labels) + minute lengths.
 - `data/upstox_provider.py` — `UpstoxHistoricalDataProvider`, historical OHLCV
   read-only (`GET /v3/historical-candle/...`), normalized `MarketPrice` bars,
-  typed error mapping (401/403→AuthenticationError, 404→InstrumentNotFound,
-  UDAPI date-range codes→MarketDataError, 429→RateLimitError, 5xx→Unavailable),
-  candle validation (timestamps ISO/epoch, ordering, duplicates), timezone→naive
+  typed error mapping as of this commit (401/403→AuthenticationError, 404→
+  InstrumentNotFound, UDAPI date-range codes→MarketDataError, 429→RateLimitError,
+  5xx→Unavailable; the 403→AuthenticationError mapping was corrected on
+  2026-09-08 — see §4g: 401 stays AuthenticationError, 403 becomes a
+  Cloudflare-aware MarketDataError), candle validation (timestamps ISO/epoch,
+  ordering, duplicates), timezone→naive
   IST. No order-touching surface at all.
 - `data/dataset_store.py` — local cache: `<name>.csv` (canonical columns) +
   `<name>.meta.json` (provider, interval, instrument, range, count,
@@ -458,9 +464,148 @@ available.
 - Added regression tests covering `NSE_INDEX|Nifty 50` encoding.
 - Adjusted CLI token-gating tests so an empty `UPSTOX_ACCESS_TOKEN` env var
   correctly prevents `python-dotenv` from loading a token from `.env`.
-- Real-data run attempted after the fix: request reached Upstox but the
-  configured access token was rejected with HTTP 403, so acquisition remains
-  blocked on credentials.
+- Real-data run attempted after the fix: the request *reached* Upstox but came
+  back HTTP 403. That was initially mis-attributed to the access token being
+  rejected, and acquisition was wrongly described as "blocked on credentials".
+  **This reading was wrong.** On 2026-09-08 (§4g) the 403 was traced to a
+  Cloudflare WAF "browser signature banned" block (Error 1010) caused by the
+  stdlib `urllib` TLS fingerprint — a transport/fingerprint problem, not a
+  credential rejection. The same token reached the API once Windows used
+  `curl.exe` (Schannel TLS); acquisition and the real-data research run then
+  succeeded.
+
+---
+
+## 4g. 2026-09-08 — Cloudflare-safe Upstox transport: real-data acquisition + baseline research
+
+**Root cause of the HTTP 403.** The 403 was **not** a credential rejection.
+Every stdlib `urllib` request to `api.upstox.com` was stopped by the Cloudflare
+WAF with HTTP 403 / Error 1010 "browser signature banned" — a TLS-fingerprint /
+transport block. Proof: the same access token succeeded via `curl.exe`.
+
+**Transport resolution (`d0bd276` encode + `fc03a08` curl transport, both
+2026-09-08; `utils/http.py`).**
+
+- On Windows the HTTP layer now shells out to `curl.exe` (schannel TLS);
+  on non-Windows it keeps the stdlib `urllib` fallback.
+- Auth/request headers are written to a temporary header file and passed via
+  `curl -H @file`, so the access token never appears on the command line.
+- Response headers are captured with `curl -D` into a scratch file and parsed
+  (after `--location` redirects only the last `HTTP/...` block is kept).
+- The public transport interface is preserved unchanged: `http_request` /
+  `http_get` / `HttpResponse` / `HttpError`; `is_retryable_status` still treats
+  only 429 and 5xx as retryable.
+- `data/upstox_provider.py` error mapping corrected to distinguish:
+  * `401` → `AuthenticationError` — access token rejected.
+  * `403` → `MarketDataError`; when the body flags Cloudflare
+    (`"cloudflare": true`), raised as "request blocked before the API (HTTP 403,
+    Cloudflare \<code\> \<error_name\>)", otherwise the generic API 403 carries
+    the server's reason.
+  * Historical response ordering normalized: Upstox returns candles
+    newest-first within a window; the provider now reverses them to ascending
+    and validates the merged series is globally chronological and
+    duplicate-free.
+
+**Real-data acquisition (2026-09-08).**
+
+- Dataset: `datasets/upstox_Nifty_50_1d_20150101_20241231` (CSV + `meta.json`);
+  `datasets/` is git-ignored. Pulled via `scripts/acquire_dataset.py` /
+  `scripts/upstox_smoke_test.py` (commit `da1b59a`) and the curated instrument
+  registry (`data/instrument_registry.py`).
+- Instrument: NIFTY 50 index (`NSE_INDEX|Nifty 50`, `lot_size=1`,
+  `multiplier=1`).
+- Period: 2015-01-01 through 2024-12-31; **2,477 daily bars**; validation
+  passed.
+- Dataset SHA-256 `data_hash`: begins `2dde47d4`, ends `6021b660`.
+- This is **historical research data only** — input to the baseline study
+  below, not used by any live or paper session.
+
+**Baseline research (MA(5,21) on the real dataset, 2026-09-08).**
+
+| Item | Value |
+|---|---|
+| Full-period net return | **−17.66%** (74 trades, 20.13% max drawdown) |
+| Out-of-sample net return (locked params) | **+7.08%** (11 trades, 3.29% max drawdown) |
+| Buy-and-hold benchmark (gross) | **+30.72%** |
+
+- These are **historical backtest/research results only** — not live or paper
+  trading results, and **not a profitability claim**.
+- The historical study does **not** use a ₹1,00,000 virtual account; it reports
+  net-of-cost returns from the research configuration in
+  `scripts/research_real_data.py`.
+- Test suite at the close of this work: **334 passed** (offline, deterministic).
+
+---
+
+## 4h. 2026-09-08 — Paper Trading V1 specification, config scaffolding, architecture doc
+
+**Config scaffolding (commit `4518dda`, `chore: add paper trading config
+scaffolding`).** Five additive `PaperSettings` fields with defaults only:
+
+| Field | Default |
+|---|---|
+| `paper_interval` | `"5m"` |
+| `paper_lookback_days` | `3` |
+| `paper_risk_per_trade_pct` | `0.01` (1%) |
+| `paper_stop_loss_pct` | `0.02` (2%) |
+| `paper_state_dir` | `"paper_state"` |
+
+**CONFIGURED-SCAFFOLDED** — they are configuration scaffolding/defaults only:
+not read by any code and not wired into `load_settings()`, so no runtime
+behavior changes.
+
+**V1 specification (commit `59d831d`, `docs: define paper trading v1
+specification`).** `docs/trading/PAPER_TRADING_V1.md` records the agreed V1
+contract:
+
+- Virtual starting capital ₹1,00,000; 5-minute **completed** candles; NIFTY 50
+  index; **LONG-ONLY**; `MovingAverageCrossStrategy(fast=5, slow=21)`; max
+  **1% risk per trade**; **2% fixed stop-loss**; risk-based sizing with
+  valid-quantity/lot rounding; paper session only — no real orders, no live
+  trading; persistence and the session loop are **not** part of the current
+  build.
+- 30 acceptance criteria; status **SPECIFICATION** (planned). The document is a
+  contract/plan — the implementation is not yet written. Per its §2.4, the plan
+  assigns Paper Trading V1 to **Phase 6** (PROJECT_PLAN §17d).
+
+**Architecture documentation (commit `baeab01`, `docs: add system
+architecture`).** `docs/architecture/ARCHITECTURE.md` created with the 20
+required architecture sections; IMPLEMENTED / CONFIGURED-SCAFFOLDED / PLANNED
+boundaries are documented explicitly.
+
+---
+
+## 4i. 2026-09-09 — Project plan alignment + current repository state
+
+**Project plan alignment (commit `f2c1030`, `docs: align project plan with
+current state`).** `PROJECT_PLAN.md` aligned with the actual repository state:
+implementation status, real-data research results, the V1 contract, the
+architecture, the roadmap (Paper V1 = Phase 6), and the current test status.
+
+**Current repository state (as of `f2c1030`).**
+
+- Test suite: **334 passed** (offline, deterministic).
+- Branch: `master`; **HEAD == origin/master** at `f2c1030`; working tree clean.
+- No secrets committed; `.env` remains git-ignored.
+
+**Status boundary (explicit).**
+
+- **IMPLEMENTED:** data acquisition (read-only Upstox adapter), dataset
+  validation, historical research/backtesting harness, MA(5,21) strategy
+  baseline, paper-trading foundation components (domain models, provider ABC,
+  `PaperBroker`, `Portfolio`, `RiskManager`, services), and the
+  architecture/specification documentation.
+- **CONFIGURED-SCAFFOLDED:** the five `PaperSettings` V1 fields (defaults only;
+  not consumed by any runtime path).
+- **NOT IMPLEMENTED / PLANNED:** current-data paper-session loop;
+  completed-candle scheduler; V1 risk-based position sizing; V1 2% stop
+  execution; lot-size-aware sizing; persistence/state recovery; operational
+  paper-session monitoring (as applicable); any live/real-money trading.
+- **Boundary note:** the existing `RiskManager` static caps (max quantity 75 /
+  max notional 250,000 / max daily loss 10,000) are absolute ceiling limits and
+  are **not** the same mechanism as the planned V1 1%-of-equity risk sizing.
+
+---
 
 ## 5. Open Topics / Risks
 
