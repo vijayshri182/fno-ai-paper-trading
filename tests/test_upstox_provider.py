@@ -278,7 +278,9 @@ class TestNormalization:
         with pytest.raises(MarketDataError, match="duplicate"):
             provider.get_historical_ohlcv(_index(), interval="1d")
 
-    def test_out_of_order_candles_rejected(self, monkeypatch) -> None:
+    def test_descending_candles_are_normalized(self, monkeypatch) -> None:
+        # Upstox returns candles newest-first within a window; the provider must
+        # normalize that to ascending order, not reject it.
         payload = {
             "candles": [
                 ["2026-08-07T09:15:00+05:30", 102.0, 108.0, 101.0, 106.0, 11, None],
@@ -286,8 +288,9 @@ class TestNormalization:
             ]
         }
         provider, _ = _provider(monkeypatch, [_ok_json(payload)])
-        with pytest.raises(MarketDataError, match="out of order"):
-            provider.get_historical_ohlcv(_index(), interval="1d")
+        bars = provider.get_historical_ohlcv(_index(), interval="1d")
+        timestamps = [bar.timestamp for bar in bars]
+        assert timestamps == sorted(timestamps)
 
     def test_invalid_ohlc_semantics_rejected(self, monkeypatch) -> None:
         payload = {"candles": [["2026-08-06T09:15:00+05:30", 100.0, 99.0, 98.0, 102.0, 10, None]]}
@@ -400,9 +403,23 @@ class TestErrorsAndRetries:
             provider.get_historical_ohlcv(_index(), interval="1d")
         assert len(calls) == 1
 
-    def test_403_raises_authentication_error(self, monkeypatch) -> None:
+    def test_403_exposes_server_detail(self, monkeypatch) -> None:
+        # Cloudflare Error 1010 sits in front of api.upstox.com; the 403 body
+        # must be surfaced instead of being reported as a rejected token.
+        body = {
+            "status": 403,
+            "detail": "The site owner has blocked access based on your browser's signature.",
+            "error_code": 1010,
+            "error_name": "browser_signature_banned",
+            "cloudflare_error": True,
+        }
+        provider, _ = _provider(monkeypatch, [_http_error(403, body)])
+        with pytest.raises(MarketDataError, match="browser_signature_banned"):
+            provider.get_historical_ohlcv(_index(), interval="1d")
+
+    def test_403_plain_body_raises_market_data_error(self, monkeypatch) -> None:
         provider, _ = _provider(monkeypatch, [_http_error(403)])
-        with pytest.raises(AuthenticationError):
+        with pytest.raises(MarketDataError, match="HTTP 403"):
             provider.get_historical_ohlcv(_index(), interval="1d")
 
     def test_404_raises_instrument_not_found(self, monkeypatch) -> None:

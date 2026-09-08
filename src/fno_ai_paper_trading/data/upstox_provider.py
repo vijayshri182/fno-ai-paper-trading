@@ -193,9 +193,19 @@ class UpstoxHistoricalDataProvider(MarketDataProvider):
             except HttpError as exc:
                 detail = self._error_from_body(exc.text)
                 code = detail.get("code")
-                if exc.status in (401, 403):
+                if exc.status == 401:
                     raise AuthenticationError(
-                        f"Upstox rejected the access token (HTTP {exc.status})"
+                        f"Upstox rejected the access token (HTTP 401): {detail.get('message')}"
+                    ) from exc
+                if exc.status == 403:
+                    reason = detail.get("message") or "no error detail in the response body"
+                    if detail.get("cloudflare") == "true":
+                        raise MarketDataError(
+                            f"Upstox request blocked before the API (HTTP 403, "
+                            f"Cloudflare {detail.get('code')} {detail.get('error_name')}): {reason}"
+                        ) from exc
+                    raise MarketDataError(
+                        f"Upstox returned HTTP 403 for {exc.url}: {reason}"
                     ) from exc
                 if exc.status == 404:
                     raise InstrumentNotFoundError(f"Upstox returned 404 for {exc.url}") from exc
@@ -241,7 +251,7 @@ class UpstoxHistoricalDataProvider(MarketDataProvider):
 
     @staticmethod
     def _error_from_body(text: str) -> dict[str, str]:
-        """Best-effort extraction of ``error_code``/``error_message`` from a body."""
+        """Best-effort extraction of error fields from an Upstox or Cloudflare body."""
         if not text:
             return {}
         try:
@@ -249,14 +259,21 @@ class UpstoxHistoricalDataProvider(MarketDataProvider):
         except (ValueError, TypeError):
             return {}
         code = payload.get("error_code") or ""
-        message = payload.get("error_message") or ""
+        message = payload.get("error_message") or payload.get("detail") or payload.get("title") or ""
+        error_name = payload.get("error_name") or ""
+        cloudflare = bool(payload.get("cloudflare_error"))
         errors = payload.get("errors")
         if isinstance(errors, list) and errors:
             first = errors[0]
             if isinstance(first, dict):
                 code = code or first.get("code") or ""
                 message = message or first.get("message") or ""
-        return {"code": str(code), "message": str(message)}
+        return {
+            "code": str(code),
+            "message": str(message),
+            "error_name": str(error_name),
+            "cloudflare": "true" if cloudflare else "false",
+        }
 
     # ------------------------------------------------------- instrument keys
 
@@ -344,8 +361,15 @@ class UpstoxHistoricalDataProvider(MarketDataProvider):
             if not isinstance(candles, list):
                 raise MarketDataError(f"unexpected Upstox candle payload shape for {key}")
 
+            window_bars: list[MarketPrice] = []
             for index, candle in enumerate(candles):
-                bars.append(self._candle_to_bar(instrument, candle, index, key))
+                window_bars.append(self._candle_to_bar(instrument, candle, index, key))
+            # Upstox returns candles newest-first within a window; normalize to
+            # ascending so the merged series stays chronological. Windows that
+            # already arrive ascending are left untouched.
+            if len(window_bars) > 1 and window_bars[0].timestamp > window_bars[-1].timestamp:
+                window_bars.reverse()
+            bars.extend(window_bars)
 
         # The merged series must be globally chronological and duplicate-free.
         for previous, current in zip(bars, bars[1:]):

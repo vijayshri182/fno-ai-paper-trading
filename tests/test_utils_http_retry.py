@@ -1,12 +1,13 @@
-"""Tests for the dependency-free HTTP transport and retry helper."""
+"""Tests for the curl.exe HTTP transport and retry helper."""
 from __future__ import annotations
 
-import io
 import json
-from urllib.error import HTTPError
+import subprocess
+from pathlib import Path
 
 import pytest
 
+from fno_ai_paper_trading.utils import http as http_module
 from fno_ai_paper_trading.utils.http import HttpError, http_get, is_retryable_status
 from fno_ai_paper_trading.utils.retry import RetryExhausted, describe_last_error, retry_call
 
@@ -15,61 +16,78 @@ from fno_ai_paper_trading.utils.retry import RetryExhausted, describe_last_error
 # HTTP transport
 # ---------------------------------------------------------------------------
 
-class _FakeResponse:
-    def __init__(self, status: int, body: bytes, headers: dict | None = None) -> None:
-        self.status = status
-        self._body = body
-        self.headers = headers or {"content-type": "application/json"}
+def _fake_curl(status: int, body: bytes, headers: dict[str, str] | None = None):
+    """Build a fake ``subprocess.run`` that emulates a curl.exe invocation.
 
-    def read(self) -> bytes:
-        return self._body
+    Emulates ``curl -D <file> -o -`` by writing an ``HTTP/1.1`` block into the
+    ``-D`` target file and returning ``body`` on stdout.
+    """
 
-    def __enter__(self) -> "_FakeResponse":
-        return self
+    def runner(cmd, **kwargs):
+        dump_file = None
+        for index, arg in enumerate(cmd):
+            if arg == "-D":
+                dump_file = cmd[index + 1]
+        assert dump_file is not None, "expected -D <headers-dump> in the curl command"
+        reason = "OK"
+        if status == 429:
+            reason = "Too Many Requests"
+        elif status < 200 or status >= 300:
+            reason = "Error"
+        lines = [f"HTTP/1.1 {status} {reason}".rstrip()]
+        for name, value in (headers or {"content-type": "application/json"}).items():
+            lines.append(f"{name}: {value}")
+        Path(dump_file).write_bytes(("\r\n".join(lines) + "\r\n").encode("utf-8"))
+        return subprocess.CompletedProcess(cmd, 0, stdout=body, stderr=b"")
 
-    def __exit__(self, *args) -> None:
-        return None
+    return runner
 
 
 class TestHttpGet:
-    def _patch(self, monkeypatch, fake):
-        captured = {}
-
-        def fake_urlopen(request, **kwargs):
-            captured["request"] = request
-            captured["headers"] = dict(request.header_items())
-            return fake
-
-        monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
-        return captured
+    def _use_curl(self, monkeypatch) -> None:
+        monkeypatch.setattr(http_module, "_use_curl", lambda: True)
 
     def test_get_returns_typed_response(self, monkeypatch) -> None:
         payload = {"last_price": 24200.5}
         body = json.dumps(payload).encode()
-        self._patch(monkeypatch, _FakeResponse(200, body))
+        monkeypatch.setattr(http_module, "_run_process", _fake_curl(200, body))
+        self._use_curl(monkeypatch)
         response = http_get("http://example.invalid/quote")
         assert response.status == 200
         assert response.json == payload
         assert "last_price" in response.text
 
     def test_query_params_are_encoded(self, monkeypatch) -> None:
-        captured = self._patch(monkeypatch, _FakeResponse(200, b"{}"))
+        captured: dict[str, list[str]] = {}
+
+        def runner(cmd, **kwargs):
+            captured["cmd"] = cmd
+            return _fake_curl(200, b"{}")(cmd, **kwargs)
+
+        monkeypatch.setattr(http_module, "_run_process", runner)
+        self._use_curl(monkeypatch)
         http_get("http://example.invalid/quote", params={"i": "NSE:26000", "x": "a b"})
-        assert "?i=NSE%3A26000&x=a+b" in captured["request"].full_url
+        assert "?i=NSE%3A26000&x=a+b" in captured["cmd"][-1]
 
     def test_headers_are_forwarded(self, monkeypatch) -> None:
-        captured = self._patch(monkeypatch, _FakeResponse(200, b"{}"))
+        captured: dict[str, str] = {}
+
+        def runner(cmd, **kwargs):
+            header_arg = next(arg for arg in cmd if arg.startswith("@"))
+            captured["header_file"] = Path(header_arg[1:]).read_text(encoding="utf-8")
+            captured["cmd"] = cmd
+            return _fake_curl(200, b"{}")(cmd, **kwargs)
+
+        monkeypatch.setattr(http_module, "_run_process", runner)
+        self._use_curl(monkeypatch)
         http_get("http://example.invalid/quote", headers={"X-Kite-Version": "3"})
-        forwarded = {k.lower(): v for k, v in captured["headers"].items()}
-        assert forwarded["x-kite-version"] == "3"
+        assert "X-Kite-Version: 3" in captured["header_file"]
+        assert "GET" in captured["cmd"]
 
     def test_error_status_raises_http_error(self, monkeypatch) -> None:
         body = b'{"error": "too many requests"}'
-
-        def raise_http(*args, **kwargs):
-            raise HTTPError("http://example.invalid/quote", 429, "Too Many Requests", {}, io.BytesIO(body))
-
-        monkeypatch.setattr("urllib.request.urlopen", raise_http)
+        monkeypatch.setattr(http_module, "_run_process", _fake_curl(429, body))
+        self._use_curl(monkeypatch)
         with pytest.raises(HttpError) as excinfo:
             http_get("http://example.invalid/quote")
         assert excinfo.value.status == 429
