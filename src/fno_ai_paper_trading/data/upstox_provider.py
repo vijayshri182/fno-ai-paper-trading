@@ -42,6 +42,7 @@ import time
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any, Callable
+from urllib.parse import quote
 
 from fno_ai_paper_trading.data.errors import (
     AuthenticationError,
@@ -324,8 +325,13 @@ class UpstoxHistoricalDataProvider(MarketDataProvider):
 
         bars: list[MarketPrice] = []
         for from_date, to_date in windows:
+            # URL-encode the instrument key so spaces, the segment separator, and
+            # any other special characters are safe inside the request path. The
+            # official Upstox docs percent-encode the pipe in curl examples
+            # (e.g. NSE_EQ%7CINE848E01016).
+            encoded_key = quote(key)
             path = (
-                f"/v3/historical-candle/{key}/{unit}/{number}/{to_date}/{from_date}"
+                f"/v3/historical-candle/{encoded_key}/{unit}/{number}/{to_date}/{from_date}"
             )
             response = self._get(path)
             payload = response.json

@@ -126,18 +126,27 @@ class TestRealDataResearchPipeline:
 class TestResearchRealDataCli:
     def test_cli_blocks_without_token(self, tmp_path: Path) -> None:
         env = dict(os.environ)
-        env.pop("UPSTOX_ACCESS_TOKEN", None)
-        cmd = [sys.executable, "scripts/research_real_data.py", "--outdir", str(tmp_path / "ds")]
-        proc = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=str(Path(__file__).resolve().parents[1]))
+        # Explicitly clear the token so load_dotenv() cannot supply one either.
+        env["UPSTOX_ACCESS_TOKEN"] = ""
+        script = str(Path(__file__).resolve().parents[1] / "scripts" / "research_real_data.py")
+        cmd = [sys.executable, script, "--outdir", str(tmp_path / "ds")]
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=str(tmp_path),
+        )
         assert proc.returncode == 2
         assert "UPSTOX_ACCESS_TOKEN" in proc.stderr
 
     def test_cli_smoke_runs_and_writes_report(self, tmp_path: Path) -> None:
         outdir = tmp_path / "datasets"
         report_dir = tmp_path / "reports"
+        script = str(Path(__file__).resolve().parents[1] / "scripts" / "research_real_data.py")
         cmd = [
             sys.executable,
-            "scripts/research_real_data.py",
+            script,
             "--smoke",
             "--outdir",
             str(outdir),
@@ -148,7 +157,7 @@ class TestResearchRealDataCli:
             cmd,
             capture_output=True,
             text=True,
-            cwd=str(Path(__file__).resolve().parents[1]),
+            cwd=str(tmp_path),
         )
         assert proc.returncode == 0, proc.stderr
         report = report_dir / "real_data_smoke_report.html"

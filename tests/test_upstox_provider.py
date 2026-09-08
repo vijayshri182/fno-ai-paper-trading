@@ -32,6 +32,7 @@ import sys
 from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 
@@ -134,9 +135,30 @@ class TestRequestShape:
             start=datetime(2026, 8, 1), end=datetime(2026, 8, 8),
         )
         request = calls[0]
-        assert f"/v3/historical-candle/{KEY}/minutes/5/2026-08-08/2026-08-01" in request["url"]
+        encoded_key = quote(KEY)
+        assert f"/v3/historical-candle/{encoded_key}/minutes/5/2026-08-08/2026-08-01" in request["url"]
         assert request["url"].startswith(BASE)
         assert request["params"] is None  # dates live in the path, not the query string
+
+    def test_instrument_key_with_space_is_url_encoded(self, monkeypatch) -> None:
+        # Regression for NSE_INDEX|Nifty 50: the space must be %20, not raw,
+        # and the pipe may be percent-encoded (%7C) per the Upstox docs.
+        provider, calls = _provider(monkeypatch, [_ok_json(_candles_payload())])
+        provider.get_historical_ohlcv(_index(), interval="1d")
+        url = calls[0]["url"]
+        assert " " not in url
+        assert "Nifty%2050" in url
+        assert "Nifty 50" not in url
+        # The segment separator must be preserved as either '|' or '%7C'.
+        assert ("NSE_INDEX|Nifty" in url) or ("NSE_INDEX%7CNifty" in url)
+
+    def test_url_encoding_does_not_manually_replace_characters(self, monkeypatch) -> None:
+        # Ensure we are not doing a hack like key.replace(" ", "_").
+        provider, calls = _provider(monkeypatch, [_ok_json(_candles_payload())])
+        provider.get_historical_ohlcv(_index(), interval="1d")
+        url = calls[0]["url"]
+        assert "Nifty_50" not in url
+        assert "Nifty%2050" in url
 
     def test_day_legacy_interval_maps_to_days_one(self, monkeypatch) -> None:
         provider, calls = _provider(monkeypatch, [_ok_json(_candles_payload())])

@@ -448,6 +448,20 @@ available.
 - No credentials, tokens, or dataset files are committed; `datasets/` and
   `reports/` remain git-ignored.
 
+**Post-delivery bug fix (same session).**
+
+- Fixed `upstox_provider.py` to URL-encode the instrument key in the
+  `GET /v3/historical-candle/...` path. The raw key `NSE_INDEX|Nifty 50`
+  contained a space, which the stdlib HTTP transport rejected. The key is now
+  percent-encoded using `urllib.parse.quote`, matching the Upstox docs' curl
+  examples.
+- Added regression tests covering `NSE_INDEX|Nifty 50` encoding.
+- Adjusted CLI token-gating tests so an empty `UPSTOX_ACCESS_TOKEN` env var
+  correctly prevents `python-dotenv` from loading a token from `.env`.
+- Real-data run attempted after the fix: request reached Upstox but the
+  configured access token was rejected with HTTP 403, so acquisition remains
+  blocked on credentials.
+
 ## 5. Open Topics / Risks
 
 - The Kite Connect credential flow (api key + access token) is implemented and
