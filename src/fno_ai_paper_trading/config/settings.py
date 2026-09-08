@@ -54,6 +54,12 @@ class PaperSettings:
     commission_fixed: Decimal  # flat fee per fill
     slippage_rate: Decimal  # fraction of price applied per fill, e.g. 0.001 = 0.1%
     log_level: str = "INFO"
+    # Live paper-session settings (v1: 5-minute cadence, long-only index).
+    paper_interval: str = "5m"  # canonical bar interval token for the session loop
+    paper_lookback_days: int = 3  # how many calendar days of bars each fetch pulls
+    paper_risk_per_trade_pct: Decimal = Decimal("0.01")  # 1% of current equity risked per trade
+    paper_stop_loss_pct: Decimal = Decimal("0.02")  # fixed 2% stop distance from entry price
+    paper_state_dir: str = "paper_state"  # git-ignored ledger/snapshot directory
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "initial_capital", positive_decimal(self.initial_capital, "initial_capital"))
