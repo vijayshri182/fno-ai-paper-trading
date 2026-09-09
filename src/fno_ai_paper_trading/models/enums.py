@@ -21,9 +21,10 @@ class OrderStatus(str, Enum):
 
 
 class OrderType(str, Enum):
-    """Type of order — only market-style orders for Phase 1."""
+    """Type of order — market-style orders for Phase 1, plus protective stops."""
 
     MARKET = "MARKET"
+    STOP = "STOP"
 
 
 class Signal(str, Enum):

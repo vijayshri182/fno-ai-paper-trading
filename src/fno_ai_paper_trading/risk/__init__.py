@@ -5,6 +5,7 @@ from fno_ai_paper_trading.risk.sizer import (
     SizerConfig,
     SizingResult,
 )
+from fno_ai_paper_trading.risk.stop_loss import StopDecision, StopExitResult, StopLossPolicy, enforce_stop
 
 __all__ = [
     "RiskBasedPositionSizer",
@@ -12,4 +13,8 @@ __all__ = [
     "RiskManager",
     "SizerConfig",
     "SizingResult",
+    "StopDecision",
+    "StopExitResult",
+    "StopLossPolicy",
+    "enforce_stop",
 ]

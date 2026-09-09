@@ -40,6 +40,10 @@ class BacktestConfig:
     max_order_notional: Decimal = Decimal("250000")
     max_daily_loss: Decimal = Decimal("10000")
 
+    # --- protective stop-loss (WS 6.4) ---
+    enable_stop_loss: bool = True
+    stop_loss_pct: Decimal = Decimal("0.02")  # fixed stop distance below the entry price
+
     def __post_init__(self) -> None:
         object.__setattr__(self, "initial_capital", positive_decimal(self.initial_capital, "initial_capital"))
         object.__setattr__(self, "quantity", positive_int(self.quantity, "quantity"))
@@ -53,3 +57,8 @@ class BacktestConfig:
             self, "max_order_notional", positive_decimal(self.max_order_notional, "max_order_notional")
         )
         object.__setattr__(self, "max_daily_loss", positive_decimal(self.max_daily_loss, "max_daily_loss"))
+        if self.enable_stop_loss:
+            stop_loss_pct = positive_decimal(self.stop_loss_pct, "stop_loss_pct")
+            if stop_loss_pct >= 1:
+                raise ValueError("stop_loss_pct must be < 1")
+            object.__setattr__(self, "stop_loss_pct", stop_loss_pct)

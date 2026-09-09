@@ -13,10 +13,12 @@ from fno_ai_paper_trading.broker.base import Broker
 from fno_ai_paper_trading.data.provider import MarketDataProvider
 from fno_ai_paper_trading.models.enums import OrderSide
 from fno_ai_paper_trading.models.instruments import Instrument
+from fno_ai_paper_trading.models.market import MarketPrice
 from fno_ai_paper_trading.models.order import Fill, Order
-from fno_ai_paper_trading.models.position import Trade
+from fno_ai_paper_trading.models.position import Position, Trade
 from fno_ai_paper_trading.portfolio.portfolio import Portfolio
 from fno_ai_paper_trading.risk.manager import RiskDecision, RiskManager
+from fno_ai_paper_trading.risk.stop_loss import StopLossPolicy, enforce_stop
 from fno_ai_paper_trading.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -97,4 +99,36 @@ class TradingService:
             fill=fill,
             trade=trade,
             reference_price=price,
+        )
+
+    def protective_exit(
+        self,
+        position: Position,
+        bar: MarketPrice,
+        policy: StopLossPolicy | None = None,
+    ) -> OrderResult | None:
+        """Execute the protective stop-loss exit for an open long position.
+
+        A thin delegate to :func:`enforce_stop` (the single authoritative stop
+        executor). The ``RiskManager`` is deliberately **not** consulted — a
+        protective exit must remain executable after the daily-loss limit is
+        reached. Normal ``Order`` state transitions (PENDING → SUBMITTED →
+        FILLED) and ``Portfolio.apply_fill`` accounting are preserved. Returns
+        ``None`` when the policy produces no decision or the broker cannot fill.
+        """
+        result = enforce_stop(
+            broker=self.broker,
+            portfolio=self.portfolio,
+            position=position,
+            bar=bar,
+            policy=policy,
+        )
+        if result is None or result.fill is None:
+            return None
+        return OrderResult(
+            decision=RiskDecision(approved=True, reasons=["protective stop exit"]),
+            order=result.order,
+            fill=result.fill,
+            trade=result.trade,
+            reference_price=result.reference_price,
         )

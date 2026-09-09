@@ -21,6 +21,7 @@ from fno_ai_paper_trading.models.market import MarketPrice
 from fno_ai_paper_trading.models.order import Fill, Order
 from fno_ai_paper_trading.portfolio.portfolio import Portfolio
 from fno_ai_paper_trading.risk.manager import RiskManager
+from fno_ai_paper_trading.risk.stop_loss import StopLossPolicy, enforce_stop
 from fno_ai_paper_trading.strategies.base import Strategy
 from fno_ai_paper_trading.utils.functions import new_id
 
@@ -135,6 +136,7 @@ class BacktestEngine:
         )
         portfolio = Portfolio(config.initial_capital)
         risk_manager = self._build_risk_manager(config)
+        stop_policy = StopLossPolicy(config.stop_loss_pct) if config.enable_stop_loss else None
 
         equity_curve: list[EquityPoint] = []
         peak_equity = config.initial_capital
@@ -170,6 +172,34 @@ class BacktestEngine:
                         slippage_cost += abs(fill.price - bar.close) * fill.quantity * fill.instrument.multiplier
                         if self._is_closing_fill(old_qty, order.quantity, side):
                             closed_trades.append(trade)
+
+            # --- protective stop-loss (WS 6.4): signal-first, stop-second ---
+            if stop_policy is not None:
+                open_position = portfolio.position_for(bar.instrument.symbol)
+                if open_position is not None and open_position.is_long:
+                    open_quantity = open_position.quantity
+                    broker.set_timestamp(bar.timestamp)
+                    stop_result = enforce_stop(
+                        broker=broker,
+                        portfolio=portfolio,
+                        position=open_position,
+                        bar=bar,
+                        policy=stop_policy,
+                    )
+                    if stop_result is not None and stop_result.fill is not None:
+                        orders_submitted += 1
+                        orders_filled += 1
+                        reference = stop_result.reference_price
+                        base_price = reference if reference is not None else stop_result.fill.price
+                        slippage_cost += (
+                            abs(stop_result.fill.price - base_price)
+                            * stop_result.fill.quantity
+                            * stop_result.fill.instrument.multiplier
+                        )
+                        if self._is_closing_fill(
+                            open_quantity, stop_result.fill.quantity, OrderSide.SELL
+                        ):
+                            closed_trades.append(stop_result.trade)
 
             # --- equity snapshot at this bar's close ---
             equity_point = self._snapshot(portfolio, bar, i, peak_equity)

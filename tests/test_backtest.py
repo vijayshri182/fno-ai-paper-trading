@@ -58,7 +58,20 @@ def test_profitable_series_pnl_and_trade_count() -> None:
 
 
 def test_losing_series_negative_pnl() -> None:
-    result = _engine().run(build_losing_series(_future()), _strategy(), ZERO_COST)
+    # Stop-loss is disabled to preserve this hand-verified WS 6.3 cost model:
+    # the bar-7 low (98) breaches the default 2% stop below the 110 entry
+    # (107.8), so with the WS 6.4 default the protective exit would fire at
+    # 107.8 instead of the strategy SELL@100. enable_stop_loss=False restores
+    # the exact pre-WS6.4 behavior for this scenario (see
+    # test_stop_loss.py::test_existing_losing_series_test_is_stop_loss_scoped).
+    config = BacktestConfig(
+        quantity=10,
+        commission_rate=Decimal("0"),
+        commission_fixed=Decimal("0"),
+        slippage_rate=Decimal("0"),
+        enable_stop_loss=False,
+    )
+    result = _engine().run(build_losing_series(_future()), _strategy(), config)
     # BUY@110 -> SELL@100, qty 10, zero costs -> -100 raw.
     assert result.num_trades == 1
     assert result.gross_loss == Decimal("-100")
@@ -188,7 +201,17 @@ def test_fill_price_is_bar_close_with_slippage() -> None:
 
 def test_trade_realized_pnl_is_signed() -> None:
     # Losing trades must have negative realized P&L (guards Phase 1 regression).
-    result = _engine().run(build_losing_series(_future()), _strategy(), ZERO_COST)
+    # Stop-loss disabled: with the WS 6.4 default the losing series' bar-7 low
+    # stops the long at 107.8 and the bar-8 SELL then opens a short (realized 0),
+    # which would defeat this sign guard's exact intent.
+    config = BacktestConfig(
+        quantity=10,
+        commission_rate=Decimal("0"),
+        commission_fixed=Decimal("0"),
+        slippage_rate=Decimal("0"),
+        enable_stop_loss=False,
+    )
+    result = _engine().run(build_losing_series(_future()), _strategy(), config)
     assert result.trades[-1].realized_pnl < 0
     assert result.total_pnl < 0
 

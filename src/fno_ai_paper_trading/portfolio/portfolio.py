@@ -107,6 +107,7 @@ class Portfolio:
                 instrument=fill.instrument,
                 quantity=new_qty,
                 average_entry_price=fill.price,
+                opened_at=fill.filled_at,
             )
             return realized
 
