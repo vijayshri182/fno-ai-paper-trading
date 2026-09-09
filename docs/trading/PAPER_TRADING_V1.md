@@ -98,10 +98,10 @@ by `RiskManager`, the backtest harness and the demos.
 | Capability | Status | Notes |
 |---|---|---|
 | Live 5-minute paper-session loop | **NOT IMPLEMENTED** | The central V1 feature; no `services/paper_session.py` exists today |
-| Risk-based position sizing | **NOT IMPLEMENTED** | `StrategyService` uses a fixed `quantity`; no sizer exists |
+| Risk-based position sizing | **IMPLEMENTED** | `risk/sizer.py` `RiskBasedPositionSizer`; optional in `StrategyService` (BUY entries sized; fixed-quantity path intact) |
 | Stop-loss | **NOT IMPLEMENTED** | No code evaluates stops or triggers stop exits |
 | Long-only gating | **IMPLEMENTED** at the domain/accounting layer; session wiring **PLANNED** | `Portfolio.long_only` / `PaperAccount` reject `SELL`-to-open and oversell fills at `apply_fill`; the live session loop that routes signals through it is **PLANNED** |
-| Cash/leverage guard | **PLANNED** | Will be enforced by the V1 position-sizing rule (Section 6) rather than the generic `Portfolio`; not implemented in this task |
+| Cash/leverage guard | **IMPLEMENTED** in the sizer | Enforced by the `RiskBasedPositionSizer` capital bound (Section 6, rule 6): sized quantity never exceeds available cash; generic `Portfolio` accounting unchanged |
 | Session state persistence | **NOT IMPLEMENTED** | `paper_state/` is neither created, written, nor git-ignored yet |
 | Env wiring for the five new fields | **NOT IMPLEMENTED** | `load_settings()` does not yet read `FNO_PAPER_*` for the five scaffolding fields |
 | Live/streaming quotes | **NOT IMPLEMENTED** | The Upstox adapter derives quotes from the historical endpoint; there is no tick/websocket path |
@@ -199,7 +199,7 @@ Per-candle lifecycle for V1. Each step is labeled with its current status.
 | 1 | Completed candle | Wait for the current 5m bar to finish; use its close. Never act on a forming (partial) bar. Skip trading when not in the NSE OPEN phase | Session loop: **PLANNED**; session clock helper `market_session`/`is_market_open`: **IMPLEMENTED** |
 | 2 | Strategy evaluation | `MovingAverageCrossStrategy.analyze(bars)` over the completed-candle history; `SignalResult` with `BUY`/`SELL`/`HOLD` | **IMPLEMENTED** (`strategies/moving_average_cross.py`) |
 | 3 | BUY/EXIT decision | Long-only mapping: `BUY` when flat or when the signal is BUY; `SELL` signal maps to **EXIT** of the long position only (never short-to-open). `HOLD` → no order | Mapping logic: **PLANNED** (architecture supports it in `StrategyService`; long-only gate does not exist) |
-| 4 | Order creation | `Order(instrument, side, quantity)` — quantity from the risk sizer (Section 6) | **IMPLEMENTED** (`models/order.py`; sizer **PLANNED**) |
+| 4 | Order creation | `Order(instrument, side, quantity)` — quantity from the risk sizer (Section 6) | **IMPLEMENTED** (`models/order.py`; quantity supplied by `RiskBasedPositionSizer`, `risk/sizer.py` — optional in `StrategyService`) |
 | 5 | Risk evaluation | `RiskManager.evaluate(order, portfolio, fill_price)` — enforces `max_position_quantity`, `max_order_notional`, `max_daily_loss` | **IMPLEMENTED** (`risk/manager.py`); rejection recorded as `RejectionReason` |
 | 6 | Simulated fill | `PaperBroker.place_order(order, market_price)` — applies slippage to the reference close and computes commission; rejects with `REJECTED` if no price | **IMPLEMENTED** (`broker/paper_broker.py`) |
 | 7 | Position update | `Portfolio.apply_fill(fill)` — updates cash, position quantity/average entry, records a `Trade`, updates realized P&L | **IMPLEMENTED** (`portfolio/portfolio.py`) |
@@ -226,7 +226,7 @@ Execution-path guarantees that exist today and must be preserved:
 
 ## 6. Position sizing and risk rules
 
-V1 sizing contract (the sizer is **PLANNED**; the data it needs is available):
+V1 sizing contract (**IMPLEMENTED** — `risk/sizer.py` `RiskBasedPositionSizer`; the data it needs is available):
 
 Let:
 
@@ -368,7 +368,7 @@ V1 conventions:
 | In-memory run | A `--once` mode evaluates the latest completed candle and exits; a `--loop` mode iterates until stopped |
 | Determinism inputs | Inject the "now" clock and the data source so the session is testable without network |
 | Duplicate-candle guard | Track the last consumed bar timestamp; never evaluate a bar twice |
-| Stop-loss + sizing | Per Sections 6–7 |
+| Stop-loss + sizing | Sizing per §6 (`RiskBasedPositionSizer`): **IMPLEMENTED**; stop-loss per §7: **PLANNED** |
 | State persistence | Explicitly **out of scope** for V1 unless separately approved. If/when added, it must write under `paper_state/`, that directory must be added to `.gitignore`, and it must be the session's only on-disk state |
 | Environment guard | The session must not start unless running in the `Environment.PAPER` context (or an explicitly overridden development/test sandbox), and must confirm a paper-only broker |
 
@@ -416,9 +416,13 @@ Concrete and testable. Each criterion must pass in the automated test suite
 
 ### Risk sizing
 
+All six risk-sizing criteria are **IMPLEMENTED** by `RiskBasedPositionSizer`
+(`risk/sizer.py`, `tests/test_sizer.py`); the session that consumes the sizer
+remains PLANNED.
+
 1. `qty = floor(risk_amount / (stop_distance × instrument.multiplier) / lot) × lot`; `Decimal` only.
 2. `risk_amount = 0.01 × current_equity`, with current equity = cash + open-position
-   market value at the reference close.
+   market value at the reference close (supplied at decision time, never read by the sizer).
 3. A computed `qty < lot` produces **no order** and a recorded skip reason.
 4. Notional `qty × price × instrument.multiplier` never exceeds available cash; when it
    would, qty is reduced to the largest satisfying whole lot or skipped if `< lot`.

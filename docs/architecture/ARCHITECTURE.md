@@ -273,7 +273,7 @@ These are **historical/synthetic research results** into `reports/real_data_rese
 
 **Implementation.** `strategies/moving_average_cross.py` `MovingAverageCrossStrategy(fast=5, slow=21)` emits BUY when the fast SMA crosses above the slow SMA and SELL on the opposite cross; it requires `slow + 1 = 22` bars before the first non-HOLD signal. It is the first and currently only strategy.
 
-**Services.** `services/strategy_service.py` is the only place strategy signals become orders: it evaluates the strategy on a bar window, passes the resulting signal through `RiskManager` (risk-gated), then submits a **paper order through `PaperBroker` only** via `TradingService`. `OrderResult` (or `SignalDecision`) reports the outcome. Quantity used by `StrategyService` is currently a fixed default of 1 — there is **no position-sizing model** yet; V1 risk-based sizing (1% of equity) is specified but not implemented. Strategies never call the broker directly and never bypass `RiskManager` (project safety rule §3.11–13).
+**Services.** `services/strategy_service.py` is the only place strategy signals become orders: it evaluates the strategy on a bar window, passes the resulting signal through `RiskManager` (risk-gated), then submits a **paper order through `PaperBroker` only** via `TradingService`. `OrderResult` (or `SignalDecision`) reports the outcome; a `SignalDecision` optionally carries its `SizingResult`. With no sizer injected, orders use the fixed `quantity` (default 1). When a `RiskBasedPositionSizer` is injected, a BUY entry is sized first from explicit decision-time inputs (equity marked to the bar close, available cash, entry price, instrument, current quantity) per the V1 formula — 1% of equity over a 2% stop distance, lot-rounded down, cash-bounded; a rejected sizing submits **no order** and records a `skip_reason` on the `SignalDecision`. SELL orders are never sized (V1 is long-only). Strategies never call the broker directly and never bypass `RiskManager` (project safety rule §3.11–13).
 
 ---
 
@@ -297,7 +297,7 @@ These are **historical/synthetic research results** into `reports/real_data_rese
 - `max_daily_loss` (default 10000) — realized daily loss already breached; further orders rejected.
 - Unknown instrument → rejected.
 
-These current limits are **static caps**, not the V1 session rules. V1 risk-based sizing (1% of current equity per trade, 2% fixed stop-loss distance) is specified in `docs/trading/PAPER_TRADING_V1.md` and scaffolded in `PaperSettings` but **not implemented** — see §17 and §18.
+These current limits are **static caps**, not the V1 session rules. V1 risk-based sizing (1% of current equity per trade over a 2% stop distance) is **implemented** as an optional `RiskBasedPositionSizer` (see §13) and still scaffolded in `PaperSettings` (env wiring is out of scope); the 2% stop-loss execution itself remains **not implemented** — see §13, §17 and §18.
 
 **Order flow (paper).**
 
@@ -350,14 +350,14 @@ These current limits are **static caps**, not the V1 session rules. V1 risk-base
 - `RiskManager` (see §10) is a mandatory pre-trade gate on every execution path: strategy service, trading service, and backtest engine. Rejection reasons map 1:1 to `RejectionReason` enum members; a rejected order yields `RiskDecision.rejected=True` and no fill.
 - Limits are **static, environment-configurable caps**: `max_position_quantity` (75), `max_order_notional` (250000), `max_daily_loss` (10000). Position toggling (quantity sign) is respected; the risk gate is evaluated against the resulting position.
 - V1 account-policy guards: `Portfolio.long_only` (rejects `SELL`-to-open/oversell fills at `apply_fill`) and `PaperAccount` (V1 virtual-account identity with `long_only` enabled by default) are implemented at the model/accounting layer.
+- V1 risk-based position sizing (`risk/sizer.py` `RiskBasedPositionSizer`): a pure, deterministic, `Decimal`-only sizer over explicit decision-time inputs (`equity`, `available_cash`, `entry_price`, `instrument`, `current_quantity`). It implements the full §6 contract — `risk_amount = equity * 1%`, `stop_distance = entry_price * 2%`, `stop_price = entry_price * (1 − 2%)`, raw quantity rounded **down** to whole instrument lots, single-position (`current_quantity != 0` skips), BUY-only (a SELL never passes through sizing), and a cash/no-leverage bound (`qty * entry * mult * (1 + commission_rate) + commission_fixed <= available_cash`). Every rejection returns an `approved=False` `SizingResult` with a `skip_reason`. `StrategyService` uses it for BUY entries when one is injected, and `RiskManager` remains the final authoritative gate over the sized order. `SizerConfig` mirrors the paper cost defaults (1% risk, 2% stop, 0.03% commission); the `PaperSettings.paper_*` env fields are still scaffolded-only (no consumer).
 
 **What is specified but NOT implemented (V1).**
 
-- Risk-based position sizing at **1% of current equity** per trade (`paper_risk_per_trade_pct`).
-- A fixed **2% stop-loss distance** from entry (`paper_stop_loss_pct`), with the "worse of market and stop" exit rule.
-- Rounding and lot-size-aware sizing per `docs/trading/PAPER_TRADING_V1.md` (round down to instrument lot size; capital-sized notional cap).
+- A fixed **2% stop-loss distance** from entry (`paper_stop_loss_pct`), with the "worse of market and stop" exit rule — no code evaluates stops or triggers a stop exit.
+- The current-data session loop that would consume the sizer (completed-candle scheduler), persistence and monitoring.
 
-**Boundary statement (documented gap).** The static `RiskManager` caps do **not** implement the V1 per-trade risk budget or stop-loss behavior. Until the V1 session work is done, risk-based sizing and stop orders do not exist; a strategy requesting any quantity within the static caps passes the gate.
+**Boundary statement (documented gap).** The static `RiskManager` caps are **absolute caps**; the 1%-of-equity sizing rule is enforced only when a `RiskBasedPositionSizer` is injected into `StrategyService`, and the 2% stop-loss behavior does not exist. A strategy requesting a fixed quantity within the static caps passes the gate as before.
 
 ---
 
@@ -450,10 +450,11 @@ Legend: **IMPLEMENTED** = exists and exercised by tests/demos; **CONFIGURED-SCAF
 | Strategy ABC + replay engine | IMPLEMENTED | `strategies/base.py`, `strategies/engine.py` |
 | Moving-average crossover strategy (22-bar warm-up) | IMPLEMENTED | `strategies/moving_average_cross.py` |
 | StrategyService (signals → risk → paper broker) | IMPLEMENTED | `services/strategy_service.py`, `tests/test_strategy_service.py` |
-| Position sizing from signal-to-notional | CONFIGURED-SCAFFOLDED | `StrategyService` uses fixed quantity default 1; no sizing model |
+| Risk-based position sizing (V1 sizer) | IMPLEMENTED | `risk/sizer.py`, `tests/test_sizer.py`; optional in `StrategyService` (fixed-quantity path preserved) |
 | RiskManager static caps (75 / 250000 / 10000) | IMPLEMENTED | `risk/manager.py`, `tests/test_risk.py` |
 | V1 account-policy guards (`long_only` via `Portfolio`/`PaperAccount`) | IMPLEMENTED | `portfolio/portfolio.py`, `portfolio/account.py`, `tests/test_account.py` |
-| Risk-based sizing (1% equity) + 2% stop-loss | PLANNED | `docs/trading/PAPER_TRADING_V1.md`; `paper_*` fields scaffolded only |
+| Risk-based sizing (1% equity, lot-rounded, cash-bounded) | IMPLEMENTED | `risk/sizer.py`, `risk/manager.py` unchanged (final gate) |
+| V1 2% stop-loss execution | PLANNED | `docs/trading/PAPER_TRADING_V1.md` §7; `paper_stop_loss_pct` scaffolded only |
 | PaperBroker simulated execution (slippage, commission) | IMPLEMENTED | `broker/paper_broker.py`, `tests/test_broker.py` |
 | Portfolio cash/positions/P&L + long-only account guard | IMPLEMENTED | `portfolio/portfolio.py`, `tests/test_portfolio.py`; optional `long_only` policy tested in `tests/test_account.py` |
 | Broker ABC (`is_live=False` guard) | IMPLEMENTED | `broker/base.py` |
@@ -467,7 +468,7 @@ Legend: **IMPLEMENTED** = exists and exercised by tests/demos; **CONFIGURED-SCAF
 | Real broker adapter | PLANNED | `PROJECT_PLAN.md` Phase 4; `Broker` ABC defined |
 | HTTP transport (curl.exe on Windows + urllib fallback) | IMPLEMENTED | `utils/http.py` |
 | Retry/backoff + structured logging | IMPLEMENTED | `utils/retry.py`, `utils/logging.py` |
-| Test suite | IMPLEMENTED | 378 tests pass offline (as of this task's verification) |
+| Test suite | IMPLEMENTED | 403 tests pass offline (as of this task's verification) |
 
 ---
 
@@ -477,9 +478,9 @@ Documented, intentional, or accepted gaps. Each is a deliberate boundary, not an
 
 1. **No live paper-session execution loop.** The V1 spec defines the full session pipeline (5-minute cadence, long-only NIFTY 50 index, completed-bar evaluation, stop-loss/rules on the worse of market and stop, equity/round-down sizing, ₹1,00,000 capital, no persistence), but the runtime does not yet implement it. `python src/main.py` runs demos; there is no scheduler that polls bars and manages a live paper position.
 2. **Scaffolded session config is inert.** The five `paper_*` fields in `PaperSettings` have no consumer; constructing settings ignores them. Any code that appears to use them does not exist.
-3. **Static risk caps ≠ V1 risk model.** The current `RiskManager` limits are absolute caps. V1's 1%-of-equity sizing, 2% stop distance, and lot-rounding are not enforced by any code path.
-4. **StrategyService has no sizing model.** Orders are submitted at a fixed quantity; notional caps are enforced by `RiskManager` only at the static limit.
-5. **Portfolio admits overdraw in default mode.** The generic `Portfolio` does not itself guard negative cash; the protection relies on the `RiskManager` static caps being consulted. The V1 `long_only` policy and `PaperAccount` model are implemented, but the V1 cash/leverage guard belongs to the position-sizing work stream and is not implemented here.
+3. **Static risk caps ≠ full V1 risk model.** The current `RiskManager` limits are absolute caps. The 1%-of-equity sizing, lot-rounding and cash bound are enforced **only when a `RiskBasedPositionSizer` is injected**; the 2% stop-loss distance is still not enforced by any code path.
+4. **`StrategyService` sizing is optional.** Without a sizer, orders are submitted at a fixed quantity and notional caps are enforced by `RiskManager` only at the static limit; with a `RiskBasedPositionSizer`, BUY entries are sized (1% equity, 2% stop, lot-rounding, cash bound) before the risk gate.
+5. **Portfolio admits overdraw in default mode.** The generic `Portfolio` does not itself guard negative cash; the protection relies on the `RiskManager` static caps and, when injected, on the sizer's cash bound. The V1 cash/no-leverage guard is enforced at sizing time by `RiskBasedPositionSizer` (largest whole-lot quantity fitting available cash), not by the generic `Portfolio`.
 6. **Paper broker fills at wall-clock time.** Deterministic testing/backtests are deterministic anyway (bar timestamps), but session-level reproducibility of the paper broker depends on the session implementation.
 7. **NSE calendar is static (HOLIDAYS_2026).** New dates are not auto-sourced; V1 must confirm the calendar applies to the Nifty 50 index.
 8. **Research results are historical/synthetic evidence.** Costs are illustrative (`IndiaCostSchedule.nse_fo_illustrative`); the MA(5,21) full-period real-data result is negative net of costs. Nothing here is investment advice or a claim of future profitability.
@@ -494,7 +495,7 @@ Documented, intentional, or accepted gaps. Each is a deliberate boundary, not an
 
 Derived from `README.md` "Future phases", `PROJECT_PLAN.md` §27/§28/§21, and the V1 specification.
 
-1. **V1 paper-session engine (next).** Implement the scheduled session loop per `docs/trading/PAPER_TRADING_V1.md`: completed-bar evaluation on 5-minute bars of the NIFTY 50 index, RiskManager-backed sizing (1% equity, round-down to lot), 2% stop-loss with the worse-of-market rule, and the `Environment.PAPER` entry point. This is where the scaffolded `paper_*` fields become live.
+1. **V1 paper-session engine (next).** Implement the scheduled session loop per `docs/trading/PAPER_TRADING_V1.md`: completed-bar evaluation on 5-minute bars of the NIFTY 50 index, consuming the now-implemented `RiskBasedPositionSizer` (1% equity, round-down to lot), adding the 2% stop-loss with the worse-of-market rule, and the `Environment.PAPER` entry point. This is where the scaffolded `paper_*` fields become live.
 2. **AI analysis / explainability.** Decision-support layer behind an interface; structured signals, logged safely; never executes orders, never bypasses `RiskManager` (`PROJECT_PLAN.md` §9).
 3. **Historical-data CLI pipeline.** Breadth and convenience around `scripts/acquire_dataset.py`: multi-instrument schedules, incremental updates, cache validation, health reports.
 4. **Real broker adapter (Phase 4).** A separate `RealBroker` implementation satisfying the `Broker` ABC, explicitly configured and activated, enforced through `RiskManager`, independently tested, with audit logs — never silently enabled.

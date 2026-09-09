@@ -25,7 +25,7 @@
 | 3 | Strategy research & robustness evaluation (costs, regimes, in/out-of-sample, walk-forward, sensitivity, benchmark, metrics, experiments, HTML notebook) | **DONE** — commits `fb3f1c5`, `3a60a41` |
 | 4 | Historical-data CLI + real-data research (NIFTY 50 1d 2015–2024) | **DONE** — commits `da1b59a`, `e1a2b38`; real dataset acquired 2026-09-08 |
 | 5 | AI analysis / decision support; backtesting engine + analytics | **Backtest engine:** folded into Phase 2 (implemented); analytics extended by the research framework (Phase 3). **AI analysis / decision support:** planned (not started) |
-| 6 | Paper Trading V1 — current-data paper session | **IN PROGRESS** — work stream 6.2 (domain/model completion): `PaperAccount`, `Order.transition()`, `Portfolio.long_only` guard **IMPLEMENTED** (uncommitted); sizing, session loop, persistence NOT IMPLEMENTED |
+| 6 | Paper Trading V1 — current-data paper session | **IN PROGRESS** — WS 6.2 (domain/model completion) **DONE** (`e853667`, pushed); WS 6.3 (V1 risk-based position sizing) **IMPLEMENTED** (uncommitted); 2% stop-loss, session loop, persistence, monitoring NOT IMPLEMENTED |
 
 *Phase numbers in this table follow the activity log's own scheme; for plan-level numbering see PROJECT_PLAN §17d (Paper Trading V1 = Phase 6).*
 
@@ -652,6 +652,89 @@ and this log.
 **Verification.** Targeted domain/execution tests: 44 passed. Complete suite:
 378 passed (up from 334). `git diff --check` clean. Only intended source/test/doc
 files modified; no `.env`/credentials/datasets/reports touched.
+
+**Status.** Committed as `e853667` (`feat: Phase 6 WS 6.2 paper-trading domain/model
+completion`) and pushed to `origin/master`; the subsequent sizing work stream is
+recorded in §4k.
+
+---
+
+## 4k. 2026-09-09 — Phase 6 WS 6.3: V1 risk-based position sizing
+
+**Scope.** Third Phase 6 work stream: implement the V1 risk-based position sizer
+(1% of current equity risked over a 2% stop distance, lot-rounded **down**,
+cash/no-leverage bound) as a pure component and wire it into `StrategyService`
+without disturbing the fixed-quantity path. Does **not** implement 2% stop-loss
+execution, the current-data session loop, persistence or live data.
+
+**Decisions (locked).**
+
+- Pure sizer: `RiskBasedPositionSizer` (`risk/sizer.py`) receives explicit
+  decision-time inputs only — `equity`, `available_cash`, `entry_price`,
+  `instrument`, `current_quantity` — never a `Portfolio`/`PaperAccount`. It never
+  performs accounting; the caller supplies the numbers.
+- Formula: `risk_amount = equity * risk_per_trade_pct`;
+  `stop_distance = entry_price * stop_loss_pct`;
+  `stop_price = entry_price * (1 - stop_loss_pct)`;
+  `raw_quantity = risk_amount / (stop_distance * instrument.multiplier)`;
+  `quantity = floor(raw_quantity / lot_size) * lot_size` — round **down** only.
+- Cash/no-leverage guard: largest whole-lot quantity with
+  `qty * entry * mult * (1 + commission_rate) + commission_fixed <= available_cash`;
+  skip with a recorded `skip_reason` when below one lot. Uses the existing paper
+  commission convention; the sizer only *estimates* the commission for the bound.
+- Single-position V1 and BUY-only: `current_quantity != 0` skips ("position
+  already open"); a `SELL` never passes through sizing (never creates a short).
+- `RiskManager` unchanged and authoritative: `max_position_quantity` /
+  `max_order_notional` / `max_daily_loss` still gate the sized order; sizing math
+  exists **only** in the sizer. `PaperSettings.paper_*` env wiring remains
+  scaffolded-only (no `load_settings()` consumer).
+- Backward compat: `sizer=None` leaves the fixed-`quantity` path equivalent; a
+  rejected sizing submits no order.
+
+**Implemented.**
+
+- `risk/sizer.py` (new): `SizerConfig` (frozen; validates risk>0, 0<stop<1,
+  non-negative commission params), `SizingResult` (frozen: approved, quantity,
+  risk_amount, stop_distance, stop_price, skip_reason), `RiskBasedPositionSizer`.
+  All money math is `Decimal` (`Decimal(str(value))` for float inputs); invalid /
+  non-finite inputs skip with a reason instead of raising.
+- `risk/__init__.py`: exports the three new public names.
+- `services/strategy_service.py`: optional `sizer` parameter; BUY entries are sized
+  before order construction with equity marked to the bar close
+  (`_decision_equity`); a rejected sizing appends a `SignalDecision` carrying the
+  `SizingResult` and submits no order. SELL path and the no-sizer path are
+  unchanged; `SignalDecision` gains a `sizing` field.
+- Tests: `tests/test_sizer.py` (new; 21 tests) covering the reference numbers
+  (qty 2 @ 100000 / 24000 / 1% / 2% / lot 1 / mult 1), round-down (2.5 → 2, never
+  up), below-increment skip, lot-75 rounding, multiplier scaling, current-vs-initial
+  equity, cash reduction (40000 → qty 1) and cash skip (10000), invalid
+  equity/entry/cash/non-finite inputs, invalid config, single-position skip,
+  determinism, and the §13.6 risk-budget property. `tests/test_strategy_service.py`
+  gains 4 scenarios: fixed-quantity path unchanged without a sizer, BUY sized /
+  SELL fixed (index lot 1), rejected sizing submits no order (future lot 75), and
+  `RiskManager` rejecting a sizer-approved sized order (notional cap).
+
+**Explicitly NOT implemented (unchanged).**
+
+- 2% stop-loss execution (worse-of-open-and-stop rule) and stop exits as paper
+  orders.
+- Current-data 5m paper-session loop / completed-candle scheduler.
+- Persistence / recovery under `paper_state/`, session monitoring, live trading.
+- `PaperSettings.paper_risk_per_trade_pct` / `paper_stop_loss_pct` are still
+  scaffolded-only; the sizer defaults mirror them but no env wiring was added.
+
+**Files changed.** `src/fno_ai_paper_trading/risk/sizer.py` (new),
+`src/fno_ai_paper_trading/risk/__init__.py`,
+`src/fno_ai_paper_trading/services/strategy_service.py`, `tests/test_sizer.py`
+(new), `tests/test_strategy_service.py`, plus targeted updates to
+`docs/trading/PAPER_TRADING_V1.md`, `docs/architecture/ARCHITECTURE.md` and this
+log. Only risk-based sizing is marked IMPLEMENTED; stop-loss, session loop,
+persistence, monitoring and live trading stay PLANNED. No profitability claims
+were added.
+
+**Verification.** Targeted sizer + strategy-service tests: 29 passed. Complete
+suite: 403 passed (up from 378). `git diff --check` clean. Only intended
+source/test/doc files changed; no `.env`/credentials/datasets/reports touched.
 
 **Status.** Uncommitted; awaiting review before Git checkpoint.
 
