@@ -12,6 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
+from typing import Callable
 
 from fno_ai_paper_trading.broker.base import Broker
 from fno_ai_paper_trading.models.enums import OrderSide, OrderStatus
@@ -44,10 +45,15 @@ class PaperBroker(Broker):
 
     is_live: bool = False  # never allow live execution from this class
 
-    def __init__(self, config: PaperBrokerConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: PaperBrokerConfig | None = None,
+        now_fn: Callable[[], datetime] | None = None,
+    ) -> None:
         if self.is_live:
             raise RuntimeError("PaperBroker must never execute live orders")
         self.config = config if config is not None else PaperBrokerConfig()
+        self._now = now_fn if now_fn is not None else datetime.now
         self._orders: dict[str, Order] = {}
         self._fills: list[Fill] = []
 
@@ -57,7 +63,7 @@ class PaperBroker(Broker):
             return None
 
         order.order_id = new_id("ORD")
-        order.submitted_at = datetime.now()
+        order.submitted_at = self._now()
         order.submit()
 
         fill_price = self._apply_slippage(market_price.close, order.side)
@@ -65,7 +71,7 @@ class PaperBroker(Broker):
 
         order.filled_quantity = order.quantity
         order.average_fill_price = fill_price
-        order.filled_at = datetime.now()
+        order.filled_at = self._now()
         order.transition(OrderStatus.FILLED)
 
         fill = Fill(

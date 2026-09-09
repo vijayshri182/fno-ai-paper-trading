@@ -58,12 +58,19 @@ class TradingService:
         side: OrderSide,
         quantity: int,
         reference_price: Decimal | None = None,
+        fill_bar: MarketPrice | None = None,
     ) -> OrderResult:
         """Validate, fill and record a single order.
 
         ``reference_price``: if ``None``, the last price from the data provider
         is used. A supplied price overrides the provider (useful for tests and
         backtesting).
+
+        ``fill_bar``: an optional :class:`MarketPrice` whose ``close`` the broker
+        fills against. When ``None``, the provider's latest bar is used. Supplying
+        a specific completed bar keeps paper fills pinned to that bar's close
+        (used by the deterministic paper session); the original behavior is the
+        default.
         """
         price = reference_price if reference_price is not None else self.provider.get_last_price(instrument)
         order = Order(instrument=instrument, side=side, quantity=quantity)
@@ -86,7 +93,7 @@ class TradingService:
         if not isinstance(self.broker, PaperBroker):
             raise RuntimeError("non-paper brokers are not supported in Phase 1")
 
-        market_price = self.provider.get_market_price(instrument)
+        market_price = fill_bar if fill_bar is not None else self.provider.get_market_price(instrument)
         fill = self.broker.place_order(order, market_price)
         if fill is None:
             return OrderResult(decision=decision, order=order, reference_price=price)
