@@ -58,8 +58,7 @@ class BacktestBroker(PaperBroker):
 
     def place_order(self, order: Order, market_price: MarketPrice | None = None) -> Fill | None:
         if market_price is None:
-            order.status = OrderStatus.REJECTED
-            order.rejection_reason = "no market price available for paper fill"
+            order.reject("no market price available for paper fill")
             return None
 
         ts = self._fill_timestamp or datetime.now()
@@ -67,15 +66,15 @@ class BacktestBroker(PaperBroker):
         order.order_id = new_id("ORD")
         order.created_at = ts
         order.submitted_at = ts
-        order.status = OrderStatus.SUBMITTED
+        order.submit()
 
         fill_price = self._apply_slippage(market_price.close, order.side)
         commission = self._resolve_commission(order, fill_price)
 
         order.filled_quantity = order.quantity
         order.average_fill_price = fill_price
-        order.status = OrderStatus.FILLED
         order.filled_at = ts
+        order.transition(OrderStatus.FILLED)
 
         fill = Fill(
             order_id=order.order_id,

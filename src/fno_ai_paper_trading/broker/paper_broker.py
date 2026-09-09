@@ -53,21 +53,20 @@ class PaperBroker(Broker):
 
     def place_order(self, order: Order, market_price: MarketPrice | None = None) -> Fill | None:
         if market_price is None:
-            order.status = OrderStatus.REJECTED
-            order.rejection_reason = "no market price available for paper fill"
+            order.reject("no market price available for paper fill")
             return None
 
         order.order_id = new_id("ORD")
         order.submitted_at = datetime.now()
-        order.status = OrderStatus.SUBMITTED
+        order.submit()
 
         fill_price = self._apply_slippage(market_price.close, order.side)
         commission = self._compute_commission(order, fill_price)
 
         order.filled_quantity = order.quantity
         order.average_fill_price = fill_price
-        order.status = OrderStatus.FILLED
         order.filled_at = datetime.now()
+        order.transition(OrderStatus.FILLED)
 
         fill = Fill(
             order_id=order.order_id,
@@ -86,8 +85,8 @@ class PaperBroker(Broker):
         order = self._orders.get(order_id)
         if order is None:
             return None
-        if order.status in (OrderStatus.PENDING, OrderStatus.SUBMITTED):
-            order.status = OrderStatus.CANCELLED
+        if order.status in (OrderStatus.PENDING, OrderStatus.SUBMITTED, OrderStatus.PARTIALLY_FILLED):
+            order.cancel()
         return order
 
     def get_order(self, order_id: str) -> Order | None:

@@ -51,7 +51,7 @@ Statuses used throughout this document:
 
 | Capability | Module(s) | Notes |
 |---|---|---|
-| Domain models | `models/enums.py`, `models/instruments.py`, `models/order.py`, `models/position.py`, `models/market.py` | `Order`, `Fill`, `Position`, `Trade`, `MarketPrice`, `MarketQuote`, `MarketSession` |
+| Domain models | `models/enums.py`, `models/instruments.py`, `models/order.py`, `models/position.py`, `models/market.py`, `portfolio/account.py` | `Order`, `Fill`, `Position`, `Trade`, `MarketPrice`, `MarketQuote`, `MarketSession`, `PaperAccount`; `Order.transition()` enforces deterministic lifecycle transitions |
 | Market-data abstraction | `data/provider.py` (`MarketDataProvider` ABC) | `get_ohlcv`, `get_historical_ohlcv`, `get_quote`, `get_market_price`, `get_last_price`, `get_market_session`, `get_instrument(s)` |
 | In-memory provider | `data/mock_provider.py` (`InMemoryMarketDataProvider`) | Deterministic; offline test/demo provider |
 | Paper broker | `broker/base.py`, `broker/paper_broker.py` (`PaperBroker`) | `is_live` hard-coded `False`; slippage + commission model; timestamped by wall clock |
@@ -100,8 +100,8 @@ by `RiskManager`, the backtest harness and the demos.
 | Live 5-minute paper-session loop | **NOT IMPLEMENTED** | The central V1 feature; no `services/paper_session.py` exists today |
 | Risk-based position sizing | **NOT IMPLEMENTED** | `StrategyService` uses a fixed `quantity`; no sizer exists |
 | Stop-loss | **NOT IMPLEMENTED** | No code evaluates stops or triggers stop exits |
-| Long-only gating | **NOT IMPLEMENTED** | The architecture can currently produce `SELL`-to-open (short) fills; V1 must forbid them |
-| Cash/leverage guard | **NOT IMPLEMENTED** | `Portfolio.apply_fill` does not reject a fill that would make cash negative |
+| Long-only gating | **IMPLEMENTED** at the domain/accounting layer; session wiring **PLANNED** | `Portfolio.long_only` / `PaperAccount` reject `SELL`-to-open and oversell fills at `apply_fill`; the live session loop that routes signals through it is **PLANNED** |
+| Cash/leverage guard | **PLANNED** | Will be enforced by the V1 position-sizing rule (Section 6) rather than the generic `Portfolio`; not implemented in this task |
 | Session state persistence | **NOT IMPLEMENTED** | `paper_state/` is neither created, written, nor git-ignored yet |
 | Env wiring for the five new fields | **NOT IMPLEMENTED** | `load_settings()` does not yet read `FNO_PAPER_*` for the five scaffolding fields |
 | Live/streaming quotes | **NOT IMPLEMENTED** | The Upstox adapter derives quotes from the historical endpoint; there is no tick/websocket path |
@@ -326,7 +326,9 @@ Data model (all **IMPLEMENTED** unless noted):
 
 - **Order** (`models/order.py`) — `instrument`, `side` (`BUY`/`SELL`), `quantity`,
   `order_type` (`MARKET`), lifecycle status (`PENDING → SUBMITTED → FILLED`; a
-  missing price rejects with `REJECTED`), `rejection_reason`, fill fields.
+  missing price rejects with `REJECTED`), `rejection_reason`, fill fields. Status
+  changes are enforced by `Order.transition()`; invalid transitions raise
+  `ValueError` and leave the order unchanged.
 - **Fill** (`models/order.py`) — per-execution record: `order_id`, `instrument`,
   `side`, `quantity`, `price`, `commission`, `filled_at`, `notional`.
 - **Position** (`models/position.py`) — signed `quantity` (long = positive), average

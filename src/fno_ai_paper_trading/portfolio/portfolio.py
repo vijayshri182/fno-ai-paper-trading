@@ -18,13 +18,31 @@ from fno_ai_paper_trading.utils.functions import new_id, positive_decimal
 
 @dataclass
 class Portfolio:
-    """Tracks cash, open positions, trade history and P&L."""
+    """Tracks cash, open positions, trade history and P&L.
+
+    All money values are :class:`decimal.Decimal`. Quantities are managed as
+    signed positions (long = positive, short = negative) and updated from
+    broker fills.
+
+    One opt-in account-policy guard is enforced inside :meth:`apply_fill`
+    (off by default to preserve the existing generic behavior):
+
+    - ``long_only``: a ``SELL`` fill that would open or increase a short
+      position (resulting quantity < 0) is rejected.
+
+    The guard is off by default so the generic :class:`Portfolio` keeps its
+    existing short-capable behavior. A V1 paper account enables it.
+
+    Guard violations raise ``ValueError`` *before* any state is mutated, so a
+    rejected fill leaves cash, positions and trade history unchanged.
+    """
 
     cash: Decimal
     positions: dict[str, Position] = field(default_factory=dict)
     trade_history: list[Trade] = field(default_factory=list)
     realized_pnl: Decimal = Decimal("0")
     initial_cash: Decimal = field(init=False)
+    long_only: bool = False
 
     def __post_init__(self) -> None:
         self.cash = positive_decimal(self.cash, "cash")
@@ -45,6 +63,15 @@ class Portfolio:
         """Apply a fill to cash and positions, recording a trade and P&L."""
         multiplier = fill.instrument.multiplier
         notional = fill.quantity * fill.price * multiplier
+        symbol = fill.instrument.symbol
+
+        if fill.side == OrderSide.SELL and self.long_only:
+            resulting = self.current_quantity(symbol) - fill.quantity
+            if resulting < 0:
+                raise ValueError(
+                    "long-only portfolio rejects a SELL fill that would open or increase a short position "
+                    f"({self.current_quantity(symbol)} -> {resulting})"
+                )
 
         if fill.side == OrderSide.BUY:
             self.cash -= notional + fill.commission

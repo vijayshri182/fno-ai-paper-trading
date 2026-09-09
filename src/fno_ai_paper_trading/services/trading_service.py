@@ -11,7 +11,7 @@ from decimal import Decimal
 
 from fno_ai_paper_trading.broker.base import Broker
 from fno_ai_paper_trading.data.provider import MarketDataProvider
-from fno_ai_paper_trading.models.enums import OrderSide, OrderStatus
+from fno_ai_paper_trading.models.enums import OrderSide
 from fno_ai_paper_trading.models.instruments import Instrument
 from fno_ai_paper_trading.models.order import Fill, Order
 from fno_ai_paper_trading.models.position import Trade
@@ -75,8 +75,7 @@ class TradingService:
 
         decision = self.risk_manager.evaluate(order, self.portfolio, price)
         if not decision.approved:
-            order.status = OrderStatus.REJECTED
-            order.rejection_reason = decision.summary
+            order.reject(decision.summary)
             logger.warning("order rejected: %s", decision.summary)
             return OrderResult(decision=decision, order=order, reference_price=price)
 

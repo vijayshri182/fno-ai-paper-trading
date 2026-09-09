@@ -214,7 +214,8 @@ Build/run facts: Python 3.13+; virtualenv `.venv`; `pip install -r requirements.
 
 - `models/market.py` `MarketPrice.__post_init__` enforces non-negative OHLCV and high ≥ open/close, low ≤ open/close.
 - `models/position.py` `Position` rejects zero quantity, non-negative entry price; `Trade` validates non-empty `trade_id`, finite signed `realized_pnl`, positive quantity, positive price, non-negative commission.
-- `models/order.py` validates order fields; `enum` members constrain side/type/status.
+- `models/order.py` validates order fields; `enum` members constrain side/type/status; `Order.transition()` enforces a deterministic lifecycle state machine.
+- `portfolio/account.py` `PaperAccount` represents V1 virtual-account identity and policy; `portfolio/portfolio.py` `Portfolio.long_only` rejects `SELL`-to-open/oversell fills at `apply_fill`.
 - `utils/functions.py` `non_negative_decimal`, `positive_decimal`, `positive_int`, `non_negative_int`, `to_decimal` (Decimal-str conversion, never silent binary float) back all money/int validation.
 
 **Storage format.** `data/dataset_store.py` persists a dataset as `<name>.csv` plus `.meta.json` containing a deterministic `data_hash` — SHA-256 over the canonical CSV text — and `SCHEMA_VERSION = "1"`. Timestamps are naive IST. `datasets/` is git-ignored.
@@ -287,7 +288,7 @@ These are **historical/synthetic research results** into `reports/real_data_rese
 - `place_order` validates, applies slippage (`_apply_slippage`), computes commission (`_compute_commission`), returns a `Fill`, and stamps fills with `datetime.now()` (wall clock) — the one place the backtest engine diverges by using bar timestamps instead.
 - Tracks order status transitions and supports cancellation; `get_order` returns the order or `None`.
 
-**Portfolio.** `portfolio/portfolio.py` `Portfolio` holds cash, positions (keyed by instrument), trade history, realized P&L; `apply_fill` debits/credits cash and records `Trade`s; `unrealized_pnl`, `realized_pnl_today`, `total_value` computed over current prices. Positions use signed quantity in `models/position.py` (positive = long). The `Portfolio` does **not** enforce a negative-cash guard — the `RiskManager` is the intended gate, and the portfolio alone will admit overdraw.
+**Portfolio.** `portfolio/portfolio.py` `Portfolio` holds cash, positions (keyed by instrument), trade history, realized P&L; `apply_fill` debits/credits cash and records `Trade`s; `unrealized_pnl`, `realized_pnl_today`, `total_value` computed over current prices. Positions use signed quantity in `models/position.py` (positive = long). By default `Portfolio` does **not** enforce a negative-cash guard — the `RiskManager` static caps are the intended gate, and the generic portfolio admits overdraw. A V1 paper account enables the `long_only` policy (`Portfolio.long_only=True`) so that `apply_fill` rejects any `SELL` fill that would open or increase a short position.
 
 **Risk gate.** `risk/manager.py` `RiskManager.evaluate(order, portfolio, fill_price, realized_today=None)` returns a `RiskDecision` (approved or rejected with `RejectionReason`s) checking:
 
@@ -348,6 +349,7 @@ These current limits are **static caps**, not the V1 session rules. V1 risk-base
 
 - `RiskManager` (see §10) is a mandatory pre-trade gate on every execution path: strategy service, trading service, and backtest engine. Rejection reasons map 1:1 to `RejectionReason` enum members; a rejected order yields `RiskDecision.rejected=True` and no fill.
 - Limits are **static, environment-configurable caps**: `max_position_quantity` (75), `max_order_notional` (250000), `max_daily_loss` (10000). Position toggling (quantity sign) is respected; the risk gate is evaluated against the resulting position.
+- V1 account-policy guards: `Portfolio.long_only` (rejects `SELL`-to-open/oversell fills at `apply_fill`) and `PaperAccount` (V1 virtual-account identity with `long_only` enabled by default) are implemented at the model/accounting layer.
 
 **What is specified but NOT implemented (V1).**
 
@@ -434,7 +436,7 @@ Legend: **IMPLEMENTED** = exists and exercised by tests/demos; **CONFIGURED-SCAF
 
 | Area | Status | Evidence |
 |---|---|---|
-| Domain models (Instrument, MarketPrice, Order, Fill, Position, Trade, enums) | IMPLEMENTED | `models/*`, `tests/test_models.py` |
+| Domain models (Instrument, MarketPrice, Order, Fill, Position, Trade, enums, PaperAccount) | IMPLEMENTED | `models/*`, `portfolio/account.py`, `tests/test_models.py`, `tests/test_account.py`, `tests/test_order_state.py` |
 | Config: env-driven `PaperSettings` / `KiteSettings` / `UpstoxSettings` | IMPLEMENTED | `config/settings.py` |
 | V1 paper-session fields (`paper_interval`, `paper_lookback_days`, `paper_risk_per_trade_pct`, `paper_stop_loss_pct`, `paper_state_dir`) | CONFIGURED-SCAFFOLDED | fields exist in `PaperSettings`; not consumed by `load_settings()` or any runtime |
 | In-memory deterministic provider | IMPLEMENTED | `data/mock_provider.py` |
@@ -450,9 +452,10 @@ Legend: **IMPLEMENTED** = exists and exercised by tests/demos; **CONFIGURED-SCAF
 | StrategyService (signals → risk → paper broker) | IMPLEMENTED | `services/strategy_service.py`, `tests/test_strategy_service.py` |
 | Position sizing from signal-to-notional | CONFIGURED-SCAFFOLDED | `StrategyService` uses fixed quantity default 1; no sizing model |
 | RiskManager static caps (75 / 250000 / 10000) | IMPLEMENTED | `risk/manager.py`, `tests/test_risk.py` |
+| V1 account-policy guards (`long_only` via `Portfolio`/`PaperAccount`) | IMPLEMENTED | `portfolio/portfolio.py`, `portfolio/account.py`, `tests/test_account.py` |
 | Risk-based sizing (1% equity) + 2% stop-loss | PLANNED | `docs/trading/PAPER_TRADING_V1.md`; `paper_*` fields scaffolded only |
 | PaperBroker simulated execution (slippage, commission) | IMPLEMENTED | `broker/paper_broker.py`, `tests/test_broker.py` |
-| Portfolio cash/positions/P&L | IMPLEMENTED | `portfolio/portfolio.py`, `tests/test_portfolio.py` |
+| Portfolio cash/positions/P&L + long-only account guard | IMPLEMENTED | `portfolio/portfolio.py`, `tests/test_portfolio.py`; optional `long_only` policy tested in `tests/test_account.py` |
 | Broker ABC (`is_live=False` guard) | IMPLEMENTED | `broker/base.py` |
 | Backtest engine (no look-ahead, deterministic) | IMPLEMENTED | `backtest/*`, `tests/test_backtest.py` |
 | Research framework (costs, execution, regimes, split, walk-forward, sensitivity, benchmark, metrics, experiments) | IMPLEMENTED | `research/*`, `tests/test_research.py` |
@@ -464,7 +467,7 @@ Legend: **IMPLEMENTED** = exists and exercised by tests/demos; **CONFIGURED-SCAF
 | Real broker adapter | PLANNED | `PROJECT_PLAN.md` Phase 4; `Broker` ABC defined |
 | HTTP transport (curl.exe on Windows + urllib fallback) | IMPLEMENTED | `utils/http.py` |
 | Retry/backoff + structured logging | IMPLEMENTED | `utils/retry.py`, `utils/logging.py` |
-| Test suite | IMPLEMENTED | 334 tests pass offline (as of this task's verification) |
+| Test suite | IMPLEMENTED | 378 tests pass offline (as of this task's verification) |
 
 ---
 
@@ -476,7 +479,7 @@ Documented, intentional, or accepted gaps. Each is a deliberate boundary, not an
 2. **Scaffolded session config is inert.** The five `paper_*` fields in `PaperSettings` have no consumer; constructing settings ignores them. Any code that appears to use them does not exist.
 3. **Static risk caps ≠ V1 risk model.** The current `RiskManager` limits are absolute caps. V1's 1%-of-equity sizing, 2% stop distance, and lot-rounding are not enforced by any code path.
 4. **StrategyService has no sizing model.** Orders are submitted at a fixed quantity; notional caps are enforced by `RiskManager` only at the static limit.
-5. **Portfolio admits overdraw.** `Portfolio.apply_fill` does not itself guard negative cash; the protection relies on the risk gate being consulted (as every execution path does today).
+5. **Portfolio admits overdraw in default mode.** The generic `Portfolio` does not itself guard negative cash; the protection relies on the `RiskManager` static caps being consulted. The V1 `long_only` policy and `PaperAccount` model are implemented, but the V1 cash/leverage guard belongs to the position-sizing work stream and is not implemented here.
 6. **Paper broker fills at wall-clock time.** Deterministic testing/backtests are deterministic anyway (bar timestamps), but session-level reproducibility of the paper broker depends on the session implementation.
 7. **NSE calendar is static (HOLIDAYS_2026).** New dates are not auto-sourced; V1 must confirm the calendar applies to the Nifty 50 index.
 8. **Research results are historical/synthetic evidence.** Costs are illustrative (`IndiaCostSchedule.nse_fo_illustrative`); the MA(5,21) full-period real-data result is negative net of costs. Nothing here is investment advice or a claim of future profitability.

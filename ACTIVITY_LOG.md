@@ -25,7 +25,7 @@
 | 3 | Strategy research & robustness evaluation (costs, regimes, in/out-of-sample, walk-forward, sensitivity, benchmark, metrics, experiments, HTML notebook) | **DONE** — commits `fb3f1c5`, `3a60a41` |
 | 4 | Historical-data CLI + real-data research (NIFTY 50 1d 2015–2024) | **DONE** — commits `da1b59a`, `e1a2b38`; real dataset acquired 2026-09-08 |
 | 5 | AI analysis / decision support; backtesting engine + analytics | **Backtest engine:** folded into Phase 2 (implemented); analytics extended by the research framework (Phase 3). **AI analysis / decision support:** planned (not started) |
-| 6 | Paper Trading V1 — current-data paper session | **SPECIFIED / PLANNED** — spec `59d831d` (PROJECT_PLAN §17d assigns Phase 6); session loop, sizing, persistence NOT IMPLEMENTED |
+| 6 | Paper Trading V1 — current-data paper session | **IN PROGRESS** — work stream 6.2 (domain/model completion): `PaperAccount`, `Order.transition()`, `Portfolio.long_only` guard **IMPLEMENTED** (uncommitted); sizing, session loop, persistence NOT IMPLEMENTED |
 
 *Phase numbers in this table follow the activity log's own scheme; for plan-level numbering see PROJECT_PLAN §17d (Paper Trading V1 = Phase 6).*
 
@@ -604,6 +604,56 @@ architecture, the roadmap (Paper V1 = Phase 6), and the current test status.
 - **Boundary note:** the existing `RiskManager` static caps (max quantity 75 /
   max notional 250,000 / max daily loss 10,000) are absolute ceiling limits and
   are **not** the same mechanism as the planned V1 1%-of-equity risk sizing.
+
+---
+
+## 4j. 2026-09-09 — Phase 6 WS 6.2: Paper-trading domain/model completion
+
+**Scope.** First Phase 6 work stream: complete the missing paper-trading domain
+models identified by `docs/trading/PAPER_TRADING_V1.md` without implementing the
+session loop, risk sizing, stop-loss, persistence or live data.
+
+**Implemented.**
+
+- `PaperAccount` (`portfolio/account.py`) — explicit virtual-account state with
+  `account_id`, `initial_capital`, `created_at` and an embedded `Portfolio`;
+  long-only policy enabled by default for V1.
+- `Portfolio.long_only` guard (`portfolio/portfolio.py`) — `apply_fill` rejects
+  any `SELL` fill that would create or increase a short position before any
+  cash/position state is mutated. Generic `Portfolio` behavior is preserved by
+  default (`long_only=False`).
+- `Order.transition()` state machine (`models/order.py`) — deterministic lifecycle
+  transitions, terminal-state protection, integrity checks for `FILLED`,
+  `PARTIALLY_FILLED` and `REJECTED`, plus convenience helpers `submit()`,
+  `reject()`, `cancel()`, `mark_filled()`.
+- Wired execution paths through `Order.transition()`: `PaperBroker`,
+  `BacktestBroker` (`backtest/engine.py`) and `TradingService`
+  (`services/trading_service.py`).
+
+**Explicitly NOT implemented.**
+
+- V1 risk-based position sizing (1% equity → quantity, lot rounding, capital
+  bound) and 2% stop-loss execution.
+- Current-data paper-session loop and completed-candle scheduler.
+- Persistence / recovery under `paper_state/`.
+- Live/real-money trading.
+
+**Files changed.** `src/fno_ai_paper_trading/portfolio/account.py` (new),
+`src/fno_ai_paper_trading/portfolio/portfolio.py`,
+`src/fno_ai_paper_trading/portfolio/__init__.py`,
+`src/fno_ai_paper_trading/models/order.py`,
+`src/fno_ai_paper_trading/broker/paper_broker.py`,
+`src/fno_ai_paper_trading/backtest/engine.py`,
+`src/fno_ai_paper_trading/services/trading_service.py`,
+`tests/test_order_state.py` (new), `tests/test_account.py` (new), plus targeted
+updates to `docs/trading/PAPER_TRADING_V1.md`, `docs/architecture/ARCHITECTURE.md`
+and this log.
+
+**Verification.** Targeted domain/execution tests: 44 passed. Complete suite:
+378 passed (up from 334). `git diff --check` clean. Only intended source/test/doc
+files modified; no `.env`/credentials/datasets/reports touched.
+
+**Status.** Uncommitted; awaiting review before Git checkpoint.
 
 ---
 
