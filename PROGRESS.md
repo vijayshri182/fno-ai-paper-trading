@@ -5,7 +5,7 @@
 > the **actual repository state** (files, tests, commits). No progress is
 > reported from intent — only from code, tests and git.
 >
-> **State as of:** 2026-09-11 · HEAD `aedd0bc` (`docs: update progress tracker and activity log after WS 6.7`).
+> **State as of:** 2026-09-11 · HEAD `3166aee` (`docs: update progress tracker and activity log after WS 6.7`).
 > Working tree clean. Full suite: **546 passed** (offline, deterministic).
 
 ---
@@ -28,12 +28,12 @@ trading, AI and real-broker integration remain explicitly out of scope.
 | Item | Value |
 |---|---|
 | Branch | `master` |
-| HEAD SHA | `aedd0bc` |
-| origin/master | `aedd0bc` |
+| HEAD SHA | `3166aee` |
+| origin/master | `3166aee` |
 | HEAD == origin/master | ✅ yes (after push) |
 | Working tree | clean |
 
-Committed: `aedd0bc` (docs) → `0e5ce1c` (WS 6.7) → `118e976` (WS 6.5) → `b05a17c` (WS 6.4b) → `75d3a44` (WS 6.4) → `b4f8129` (WS 6.3) → `e853667` (WS 6.2). All pushed.
+Committed: `3166aee` (docs) → `0e5ce1c` (WS 6.7) → `118e976` (WS 6.5) → `b05a17c` (WS 6.4b) → `75d3a44` (WS 6.4) → `b4f8129` (WS 6.3) → `e853667` (WS 6.2). All pushed.
 
 ## 2. Current phase
 
@@ -41,7 +41,7 @@ Committed: `aedd0bc` (docs) → `0e5ce1c` (WS 6.7) → `118e976` (WS 6.5) → `b
 
 | Work stream | Scope | Status |
 |---|---|---|
-| 6.1 | Documentation / plan alignment | IN PROGRESS — specs exist; need refresh after WS 6.4b |
+| 6.1 | Documentation / plan alignment | IN PROGRESS — this revision refreshes `PAPER_TRADING_V1.md`, `PROJECT_PLAN.md` and `ARCHITECTURE.md` to the implemented state |
 | 6.2 | Paper-trading domain/model completion | **DONE** — commit `e853667` |
 | 6.3 | V1 position sizing and risk enforcement | **DONE** — commit `b4f8129` |
 | 6.4(+b) | Current-data paper-session engine + stop-loss | **DONE** — commit `75d3a44` (stop-loss) + commit `b05a17c` (session runtime) |

@@ -871,7 +871,7 @@ Upstox historical pipeline; source dataset:
 > be profitable. The full-period MA(5,21) result is negative net of the configured
 > illustrative costs. The historical study does **not** claim a ₹1,00,000 virtual
 > account; backtests run historical data and report net-of-cost returns, while the
-> V1 paper session (still planned) starts from virtual ₹1,00,000 on current data.
+> V1 paper session starts from virtual ₹1,00,000 on current data.
 
 ---
 
@@ -897,9 +897,11 @@ real broker. It is fully specified in `docs/trading/PAPER_TRADING_V1.md`.
 | 8 | Position sizing | Risk-based quantity computed from (equity, entry, risk %, stop %) via exact `Decimal`; rounded **down** to the instrument lot size; skip below lot; bounded by available cash |
 | 9 | Real orders / real money | Never |
 | 10 | Leverage | None; notional bounded by available cash (existing `max_order_notional` also applies) |
-| 11 | Persistence | In-memory session; `paper_state/` explicitly out of scope (unless separately approved) |
+| 11 | Persistence | JSON snapshots under git-ignored `paper_state/` (WS 6.5); a database / multi-session ledger remains out of scope |
 
-This is a **specification**, not an implementation. V1 holds **no code today**.
+This is the agreed **contract and now-implemented** capability: the Phase 6 work
+streams (WS 6.2–6.7) delivered the implementation described below; only the items
+listed under PLANNED / NOT IMPLEMENTED hold no code today.
 
 ## Current boundaries (status vs. source)
 
@@ -910,45 +912,48 @@ This is a **specification**, not an implementation. V1 holds **no code today**.
 * HTTP transport: Windows `curl.exe` path with `urllib` fallback (see Change Log 2026-09-08).
 * Strategy baseline: `MovingAverageCrossStrategy(fast=5, slow=21)` with warm-up.
 * Foundation components already present and tested: domain models, `MarketDataProvider` ABC, `PaperBroker`, `Portfolio`, `RiskManager`, `TradingService`, `StrategyService`, market-hours clock, typed error hierarchy.
+* Phase 6 session layer (WS 6.2–6.7): `PaperSession` runtime, `RiskBasedPositionSizer`, `risk/stop_loss.py`, `persistence/session_store.py`, and `tests/test_acceptance_replay.py` — see §17d for per-work-stream status.
 
-### CONFIGURED-SCAFFOLDED (declared configuration only; no runtime behavior)
+### DECLARED CONFIG (partial consumers; no env wiring yet)
 
-Committed at `src/fno_ai_paper_trading/config/settings.py`; fields have defaults
-only, are not read by any code, and are **not** wired into `load_settings()`:
+Declared at `src/fno_ai_paper_trading/config/settings.py:57-62`. Three fields are
+**consumed as `PaperSession` defaults** (WS 6.4b) — `paper_interval`,
+`paper_risk_per_trade_pct`, `paper_stop_loss_pct`; two are declared but not consumed
+by any runtime — `paper_lookback_days`, `paper_state_dir` (the persistence store uses
+the constant `DEFAULT_STATE_DIR = "paper_state"`). None of the five are wired into
+`load_settings()` (no `FNO_PAPER_INTERVAL` etc. yet):
 
-| Field | Default |
-|---|---|
-| `paper_interval` | `"5m"` |
-| `paper_lookback_days` | `3` |
-| `paper_risk_per_trade_pct` | `0.01` (1%) |
-| `paper_stop_loss_pct` | `0.02` (2%) |
-| `paper_state_dir` | `"paper_state"` |
+| Field | Default | Consumer |
+|---|---|---|
+| `paper_interval` | `"5m"` | `PaperSession` interval default (WS 6.4b) |
+| `paper_lookback_days` | `3` | none (declared only) |
+| `paper_risk_per_trade_pct` | `0.01` (1%) | `PaperSession` sizer default (WS 6.4b) |
+| `paper_stop_loss_pct` | `0.02` (2%) | `PaperSession` stop-policy default (WS 6.4b) |
+| `paper_state_dir` | `"paper_state"` | none (store uses `DEFAULT_STATE_DIR`) |
 
 The already-wired runtime settings are `FNO_PAPER_INITIAL_CAPITAL` (100000),
 `FNO_PAPER_MAX_POSITION_QUANTITY` (75), `FNO_PAPER_MAX_ORDER_NOTIONAL` (250000),
 `FNO_PAPER_MAX_DAILY_LOSS` (10000), commission/slippage — all consumed by
-`RiskManager`, the backtest harness and the demos.
+`RiskManager`, the backtest harness, the demos and `PaperSession`.
 
 ### PLANNED / NOT IMPLEMENTED
 
-* Live/current-data paper-session loop (`services/paper_session.py`) and completed-candle scheduler.
-* V1 risk-based position sizing (1% equity → quantity, lot rounding, capital bound).
-* 2% stop-loss execution within the V1 session.
-* Long-only gating (SELL-to-open rejection) at the session level.
-* Paper-session persistence / state recovery (`paper_state/`).
-* Operational monitoring / reporting for the running session.
-* Env wiring for the five scaffolded `paper_*` fields (`FNO_PAPER_INTERVAL`, etc.).
+* Env wiring for the five scaffolded `paper_*` fields (`FNO_PAPER_INTERVAL`, etc.)
+  plus `.env.example` rows.
+* Operational monitoring / reporting for the running session (WS 6.6).
+* Live/streaming quotes (V1 derives prices from completed historical candles).
 
 ## Important boundary: static caps ≠ V1 sizing
 
 The **existing `RiskManager` static limits** — `max_position_quantity` (75),
 `max_order_notional` (250000), `max_daily_loss` (10000) — are **implemented** and
-must continue to gate every order. They are **absolute ceiling caps**.
+continue to gate every order. They are **absolute ceiling caps**.
 
 The **V1 1%-risk sizing rule** (quantity = 1% of current equity risked over a 2%
-stop distance, lot-rounded) is a **planned, different mechanism** that computes an
-order quantity. The existing caps do **not** implement V1 sizing and must not be
-presented as equivalent. V1 sizing is not yet in any code path.
+stop distance, lot-rounded) is a **separate mechanism** that computes an order
+quantity. It is implemented by `RiskBasedPositionSizer` (WS 6.3, `risk/sizer.py`)
+and routed through the session (WS 6.4b); the caps remain the final authority — V1
+sizing is **not** a replacement for the caps.
 
 ## Historical backtest vs. V1 capital — clarification
 
@@ -956,51 +961,51 @@ presented as equivalent. V1 sizing is not yet in any code path.
   in **net-of-cost return terms**; it used the research capital/quantity configured
   in `scripts/research_real_data.py` and must **not** be claimed to have used a
   ₹1,00,000 virtual account. It is a research baseline, not a profitability claim.
-* The **V1 paper session** will start from virtual ₹1,00,000 (`initial_capital`
+* **V1 paper session** starts from virtual ₹1,00,000 (`initial_capital`
   default) on **current** data with simulated orders. These are two separate things.
 
 ---
 
 # 17d. Roadmap — Remaining Work
 
-Future work beyond the historical-research milestone. None of the following is
-complete; the live/current-data paper path is **PLANNED** and live trading stays
+Phase 6 delivery status below; the historical-research milestone and the
+live/current-data paper path are implemented and committed. Live trading stays
 explicitly out of scope.
 
 Per `docs/trading/PAPER_TRADING_V1.md` §2.4, the plan assigns **Phase 6** to Paper
-Trading V1. Phase 6 is broken into ordered work streams; each is PLANNED until
-implementation actually starts.
+Trading V1. Phase 6 is broken into ordered work streams, each annotated with its
+delivery state.
 
 **Phase 6 — Paper Trading V1 (live/current-data paper session)**
-*Work stream 6.1 — Documentation / plan alignment*
+*Work stream 6.1 — Documentation / plan alignment* — **IN PROGRESS (this revision)**
 * Keep `PAPER_TRADING_V1.md`, `ARCHITECTURE.md` and this plan consistent with the
   repository as implementation proceeds; validate cross-references.
 
-*Work stream 6.2 — Paper-trading domain/model completion*
+*Work stream 6.2 — Paper-trading domain/model completion* — **DONE** (`e853667`)
 * Complete the remaining session-level domain gaps identified by the V1 spec:
   long-only gating, cash/leverage guard, duplicate-candle guard.
 
-*Work stream 6.3 — V1 position sizing and risk enforcement*
+*Work stream 6.3 — V1 position sizing and risk enforcement* — **DONE** (`b4f8129`)
 * Implement the V1 sizer (1% equity → quantity, lot rounding, capital bound) and
   route it through the existing `RiskManager` static caps (cap gate remains the
   final authority — V1 sizing is **not** a replacement for the caps).
 
-*Work stream 6.4 — Current-data paper-session engine*
+*Work stream 6.4 — Current-data paper-session engine* — **DONE** (`75d3a44`
+stop-loss; `b05a17c` session runtime)
 * `services/paper_session.py`: completed-5m-candle loop, NSE OPEN-phase + holiday
   gating, 22-bar warm-up, stop-loss evaluation, `--once`/`--loop` modes,
   deterministic (injected clock + data source). Consumes the Upstox adapter.
 
-*Work stream 6.5 — State persistence and recovery*
-* Optional/approved: session ledger + snapshots under git-ignored `paper_state/`
-  (per V1 spec §10).
+*Work stream 6.5 — State persistence and recovery* — **DONE** (`118e976`)
+* Session ledger + snapshots under git-ignored `paper_state/` (per V1 spec §10).
 
-*Work stream 6.6 — Session operations / monitoring*
+*Work stream 6.6 — Session operations / monitoring* — **PLANNED** (next)
 * Logging, health checks, scheduled runs, and reporting for the running session
   (e.g. dashboard/HTML output consistent with `research/report.py`).
 
-*Work stream 6.7 — Paper-session testing and acceptance*
+*Work stream 6.7 — Paper-session testing and acceptance* — **DONE** (`0e5ce1c`)
 * Deterministic replay tests for the session; execute the V1 acceptance criteria
-  (§13 of `PAPER_TRADING_V1.md`) offline in the automated suite.
+  (§13 of `PAPER_TRADING_V1.md`) offline in the automated suite (30 tests).
 
 **Phase 7 — Future broker/live boundary work (AFTER paper trading is proven stable)**
 
@@ -1249,23 +1254,21 @@ F&O AI Paper Trading System
 
 ## Current Phase
 
-**COMPLETE / DONE THROUGH RESEARCH — Phase 2 (& backtest) completed; Strategy
-Research & Robustness Framework delivered (2026-09-07); Upstox historical-data
-readiness implemented (2026-09-07); real-data baseline research pipeline
-implemented (2026-09-07): reproducible NIFTY 50 1d study with validation, IS/OOS
-split, benchmark, parameter sensitivity, walk-forward OOS and regime analysis;
-historical-data HTTP transport hardened for Cloudflare (2026-09-08); Paper
-Trading V1 contract and configuration scaffolding committed (2026-09-08);
-architecture document added (2026-09-08). Real-data execution is gated on
-`UPSTOX_ACCESS_TOKEN`; offline smoke tests are provided.**
+**IN PROGRESS — Phase 6 (Paper Trading V1).** Strategy/backtest/research work is
+done; WS 6.2–6.5 + 6.7 are implemented, committed and pushed (see §17d and the
+Change Log); WS 6.1 (documentation alignment) is being completed, and WS 6.6
+(session operations / monitoring) is next. Real-data execution is gated on
+`UPSTOX_ACCESS_TOKEN`; offline smoke tests are provided.
 
-Status: **RESEARCH FRAMEWORK + REAL-DATA PIPELINE IMPLEMENTED; PAPER TRADING V1
-SPECIFIED (PLANNED / NOT IMPLEMENTED)** — see §17b, §17c–17d, the data-layer
-notes above, the Change Log, and `scripts/research_real_data.py`. The core
-market-data + strategy + backtest + research work is complete; real historical
-research runs when the user supplies `UPSTOX_ACCESS_TOKEN` (read-only historical
-data only). The live/current-data paper-session loop does **not** exist; live
-trading remains explicitly out of scope.
+Status: **RESEARCH FRAMEWORK + REAL-DATA PIPELINE + PHASE 6 PAPER TRADING V1
+IMPLEMENTED** — see §17b, §17c–17d, the data-layer notes above, the Change Log,
+`ACTIVITY_LOG.md`, and `scripts/research_real_data.py`. Real historical research
+runs when the user supplies `UPSTOX_ACCESS_TOKEN` (read-only historical data
+only). The live/current-data paper-session loop is implemented
+(`services/paper_session.py`, WS 6.4b) with stop-loss (WS 6.4), persistence
+(WS 6.5) and 30 offline acceptance-replay tests (WS 6.7). Only WS 6.6 monitoring
+and `FNO_PAPER_*` env wiring for the five scaffolded fields remain. Live trading
+remains explicitly out of scope.
 
 ---
 
@@ -1434,6 +1437,22 @@ The system should be capable of using **real market information while remaining 
 
 # 31. Change Log
 
+## 2026-09-11 — Phase 6 delivery (WS 6.2–6.7) + WS 6.1 documentation alignment
+
+* Paper-trading domain completion (WS 6.2, `e853667`): `PaperAccount`, long-only
+  policy, cash/duplicate guards.
+* V1 risk-based position sizing (WS 6.3, `b4f8129`): `RiskBasedPositionSizer`.
+* Automatic 2% stop-loss (WS 6.4, `75d3a44`) + deterministic paper-session runtime
+  (WS 6.4b, `b05a17c`): `services/paper_session.py`.
+* State persistence / recovery (WS 6.5, `118e976`): `persistence/session_store.py`,
+  git-ignored `paper_state/`.
+* Offline acceptance replay (WS 6.7, `0e5ce1c`): 30 tests covering all §13
+  criteria; full suite **546 passing**.
+* WS 6.1 doc alignment (this change): `PROJECT_PLAN.md` §17c/§17d/Current Phase,
+  `docs/trading/PAPER_TRADING_V1.md` and `docs/architecture/ARCHITECTURE.md`
+  refreshed to the implemented state; remaining PLANNED items are WS 6.6
+  monitoring, `FNO_PAPER_*` env wiring, and live/streaming quotes.
+
 ## 2026-09-08 — Paper V1 scaffolding + Cloudflare-safe Upstox transport + architecture docs
 
 * HTTP transport hardening (Cloudflare resolution):
@@ -1455,8 +1474,9 @@ The system should be capable of using **real market information while remaining 
   `docs: define paper trading v1 specification`): `docs/trading/PAPER_TRADING_V1.md`
   — complete V1 specification (5-minute completed candles, NIFTY 50 index,
   long-only, MA(5,21), 2% stop-loss, 1% risk-per-trade sizing, ₹1,00,000 virtual
-  capital, in-memory only) with 30 acceptance criteria. V1 itself remains
-  **PLANNED / NOT IMPLEMENTED** (see §17c).
+  capital, JSON snapshot persistence) with 30 acceptance criteria. At the time V1
+  itself remained **PLANNED / NOT IMPLEMENTED** (see §17c); it has since been
+  delivered by WS 6.2–6.7 (see the 2026-09-11 Change Log entry).
 * Architecture document (commit `baeab01`,
   `docs: add system architecture`): `docs/architecture/ARCHITECTURE.md` — 20-section,
   source-verified architecture with IMPLEMENTED / CONFIGURED-SCAFFOLDED / PLANNED

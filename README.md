@@ -52,6 +52,8 @@ src/
       engine.py                       # Replays bars through a strategy
     risk/
       manager.py                      # RiskManager — pre-trade quantity/notional/loss checks
+      sizer.py                        # RiskBasedPositionSizer — V1 1%-equity sizing (WS 6.3)
+      stop_loss.py                    # StopLossPolicy + enforce_stop — 2% stop exits (WS 6.4)
     broker/
       base.py                         # Broker ABC (is_live = False guard)
       paper_broker.py                 # PaperBroker — simulated fills, slippage, commission
@@ -78,6 +80,9 @@ src/
     services/
       trading_service.py              # Orchestrates data → risk → broker → portfolio
       strategy_service.py             # Signals → risk → paper broker (paper orders only)
+      paper_session.py                # PaperSession — live 5m polling session (WS 6.4b)
+    persistence/
+      session_store.py                # JSON snapshot persistence (WS 6.5)
     utils/
       logging.py                      # Structured logging setup (no secrets in output)
       functions.py                    # Decimal helpers, id generation, notional calc
@@ -428,7 +433,8 @@ Never commit real values to `.env` — the file is git-ignored.
 
 - **No live execution:** the `PaperBroker.is_live` property is hard-coded to
   `False`. No code path in the system contacts an external broker or API. The
-  strategy service and the backtest engine submit paper orders only.
+  paper session (`PaperSession`), the strategy service and the backtest engine
+  submit paper orders only.
 - **No secrets in code:** all credentials belong in `.env` (git-ignored) or
   environment variables, never in source. The Kite and Upstox adapters refuse to
   send data without credentials and raise a typed `ProviderConfigurationError`
@@ -459,6 +465,7 @@ Never commit real values to `.env` — the file is git-ignored.
 | **Phase 3 (research, done)** | Deterministic research & robustness framework: Indian cost model, execution assumptions, regime datasets, in/out-of-sample splits, walk-forward, parameter sensitivity, benchmark, robust metrics, experiment records, HTML notebook |
 | **Phase 3 (historical, ready)** | Local dataset cache + read-only Upstox historical adapter + interval/validation tooling — enabled when the user configures `UPSTOX_ACCESS_TOKEN` |
 | **Phase 3 (upcoming)** | Historical-data CLI/download pipeline, AI analysis/explainability (behind an interface, never autonomous execution) |
+| **Phase 6 (Paper Trading V1, in progress)** | Live/current-data paper session: completed-5m-candle loop, 1% risk sizing, 2% stop-loss, long-only NIFTY 50, persistence under git-ignored `paper_state/`, 30 offline acceptance-replay tests — see `docs/trading/PAPER_TRADING_V1.md` |
 | **Phase 4** | Real broker adapter behind an interface, required to remain disabled by default |
 
 ---

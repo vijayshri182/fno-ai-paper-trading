@@ -1,7 +1,7 @@
 # F&O AI Paper Trading System — Architecture
 
 > Scope: source-of-truth architecture document for `fno-ai-paper-trading`.
-> Status: reflects the repository as of `59d831d` (`docs: define paper trading v1 specification`).
+> Status: reflects the repository as of the WS 6.1 alignment (2026-09-11).
 > This document is generated from and verified against the actual source code — it describes what exists, marks what is configured-but-not-wired, and labels everything else as planned.
 
 ---
@@ -25,7 +25,7 @@
 - **No live order execution.** No code path places real-money orders or contacts a broker order API. `PaperBroker.is_live` is hard-coded to `False` and raising live construction is rejected (`broker/paper_broker.py`).
 - **No AI analysis yet.** AI is planned (Phase 3) and will sit behind an interface; it must never bypass the `RiskManager` and never place orders directly.
 - **No dashboard/UI.** Analytics/reporting produce flat HTML files; a web dashboard is a future consideration.
-- **No persistence of paper-session state.** A configurable state directory exists (`PaperSettings.paper_state_dir`) but no session ledger or persistence layer is implemented.
+- **No database / multi-session ledger.** Paper-session state persists as JSON snapshots under git-ignored `paper_state/` (WS 6.5); a durable database is out of scope.
 
 **Audience.** Engineers extending the codebase, reviewers validating claims, and operators running research. Every section references the concrete module that implements the described behavior.
 
@@ -297,7 +297,7 @@ These are **historical/synthetic research results** into `reports/real_data_rese
 - `max_daily_loss` (default 10000) — realized daily loss already breached; further orders rejected.
 - Unknown instrument → rejected.
 
-These current limits are **static caps**, not the V1 session rules. V1 risk-based sizing (1% of current equity per trade over a 2% stop distance) is **implemented** as an optional `RiskBasedPositionSizer` (see §13) and still scaffolded in `PaperSettings` (env wiring is out of scope); the 2% stop-loss execution itself remains **not implemented** — see §13, §17 and §18.
+These current limits are **static caps**, not the V1 session rules. V1 risk-based sizing (1% of current equity per trade over a 2% stop distance) is **implemented** as `RiskBasedPositionSizer` (see §13) and consumed by the V1 paper session (WS 6.4b); the 2% stop-loss execution is **implemented** by `risk/stop_loss.py` and wired into the session (WS 6.4/6.4b) — see §13–§18. The `FNO_PAPER_*` env wiring for the five scaffolded `PaperSettings.paper_*` fields remains out of scope.
 
 **Order flow (paper).**
 
@@ -320,13 +320,13 @@ These current limits are **static caps**, not the V1 session rules. V1 risk-base
 
 | Settings | Env prefix | Purpose |
 |---|---|---|
-| `PaperSettings` | `FNO_` | Paper-run defaults: capital, risk caps, commission/slippage, log level, environment. **Plus five scaffolded V1 paper-session fields that are NOT wired into `load_settings()`**: `paper_interval` ("5m"), `paper_lookback_days` (3), `paper_risk_per_trade_pct` (0.01), `paper_stop_loss_pct` (0.02), `paper_state_dir` ("paper_state"). |
+| `PaperSettings` | `FNO_` | Paper-run defaults: capital, risk caps, commission/slippage, log level, environment. **Plus five V1 paper-session fields**: `paper_interval` ("5m"), `paper_lookback_days` (3), `paper_risk_per_trade_pct` (0.01), `paper_stop_loss_pct` (0.02), `paper_state_dir` ("paper_state"). Three are consumed as `PaperSession` defaults (WS 6.4b); none are wired into `load_settings()` yet. |
 | `KiteSettings` | `FNO_KITE_*` | Read-only Kite client: api_key, access_token (empty by default), base_url, timeout, max_retries; `configured` is True only when both credentials present. |
 | `UpstoxSettings` | `UPSTOX_*` | Read-only Upstox client: client_id/secret (SSO flow placeholders), access_token, base_url, timeout, max_retries; `configured` True when a token is present. |
 
 - `load_settings`, `load_kite_settings`, `load_upstox_settings` load `.env` (or an explicit file) then read process env; exported variables take precedence.
 - **Secrets:** all real credentials belong in git-ignored `.env` or the environment; `.env.example` contains only template/empty values; no module hard-codes credentials and no module logs them (`utils/logging.py` explicitly never emits environment values).
-- **Wiring gap.** `PaperSettings` validates the five `paper_*` fields in `__post_init__` but `load_settings()` constructs `PaperSettings` without those fields (they keep their dataclass defaults). Nothing in the system consumes `paper_*` yet — the V1 paper-session loop is specified, not implemented.
+- **Wiring note.** `PaperSettings` validates the five `paper_*` fields in `__post_init__`; `load_settings()` constructs `PaperSettings` without those fields (they keep their dataclass defaults). `PaperSession` consumes three of the five as defaults (`paper_interval`, `paper_risk_per_trade_pct`, `paper_stop_loss_pct`, WS 6.4b); `FNO_PAPER_*` env wiring for all five is still not implemented.
 
 ---
 
@@ -339,7 +339,10 @@ These current limits are **static caps**, not the V1 session rules. V1 risk-base
 - `HOLIDAYS_2026`: 26 January, 3 April, 25 December.
 - Helpers: `is_trading_day(day)` (weekday and not a holiday), `market_phase(now)` (PRE_OPEN/OPEN/CLOSED), `is_market_open(now)`, `market_session(now)` returning a `MarketSession` (open/closed, phase, observed_at, open_time, close_time, exchange, label); next-open rollover handled.
 
-**Purpose.** Gating logic for when a future live paper-session loop may act; today it drives provider market-status calls (`KiteProvider.get_market_status`, `get_market_session`) and unit tests (`tests/test_market_hours.py`). The V1 spec references these phases for the session scheduler.
+**Purpose.** Gating logic for the paper-session loop (WS 6.4b): the session skips
+trading outside the NSE OPEN phase and on holidays; it also drives provider
+market-status calls (`KiteProvider.get_market_status`, `get_market_session`) and
+unit tests (`tests/test_market_hours.py`).
 
 ---
 
@@ -350,14 +353,28 @@ These current limits are **static caps**, not the V1 session rules. V1 risk-base
 - `RiskManager` (see §10) is a mandatory pre-trade gate on every execution path: strategy service, trading service, and backtest engine. Rejection reasons map 1:1 to `RejectionReason` enum members; a rejected order yields `RiskDecision.rejected=True` and no fill.
 - Limits are **static, environment-configurable caps**: `max_position_quantity` (75), `max_order_notional` (250000), `max_daily_loss` (10000). Position toggling (quantity sign) is respected; the risk gate is evaluated against the resulting position.
 - V1 account-policy guards: `Portfolio.long_only` (rejects `SELL`-to-open/oversell fills at `apply_fill`) and `PaperAccount` (V1 virtual-account identity with `long_only` enabled by default) are implemented at the model/accounting layer.
-- V1 risk-based position sizing (`risk/sizer.py` `RiskBasedPositionSizer`): a pure, deterministic, `Decimal`-only sizer over explicit decision-time inputs (`equity`, `available_cash`, `entry_price`, `instrument`, `current_quantity`). It implements the full §6 contract — `risk_amount = equity * 1%`, `stop_distance = entry_price * 2%`, `stop_price = entry_price * (1 − 2%)`, raw quantity rounded **down** to whole instrument lots, single-position (`current_quantity != 0` skips), BUY-only (a SELL never passes through sizing), and a cash/no-leverage bound (`qty * entry * mult * (1 + commission_rate) + commission_fixed <= available_cash`). Every rejection returns an `approved=False` `SizingResult` with a `skip_reason`. `StrategyService` uses it for BUY entries when one is injected, and `RiskManager` remains the final authoritative gate over the sized order. `SizerConfig` mirrors the paper cost defaults (1% risk, 2% stop, 0.03% commission); the `PaperSettings.paper_*` env fields are still scaffolded-only (no consumer).
+- V1 risk-based position sizing (`risk/sizer.py` `RiskBasedPositionSizer`): a pure, deterministic, `Decimal`-only sizer over explicit decision-time inputs (`equity`, `available_cash`, `entry_price`, `instrument`, `current_quantity`). It implements the full §6 contract — `risk_amount = equity * 1%`, `stop_distance = entry_price * 2%`, `stop_price = entry_price * (1 − 2%)`, raw quantity rounded **down** to whole instrument lots, single-position (`current_quantity != 0` skips), BUY-only (a SELL never passes through sizing), and a cash/no-leverage bound (`qty * entry * mult * (1 + commission_rate) + commission_fixed <= available_cash`). Every rejection returns an `approved=False` `SizingResult` with a `skip_reason`. `StrategyService` uses it for BUY entries when one is injected, `PaperSession` uses it as the session sizer (WS 6.4b), and `RiskManager` remains the final authoritative gate over the sized order. `SizerConfig` mirrors the paper cost defaults (1% risk, 2% stop, 0.03% commission); `PaperSettings.paper_risk_per_trade_pct` / `paper_stop_loss_pct` feed the session defaults.
 
-**What is specified but NOT implemented (V1).**
+**Paper-session runtime (V1, delivered by WS 6.4b/6.5/6.7).**
 
-- A fixed **2% stop-loss distance** from entry (`paper_stop_loss_pct`), with the "worse of market and stop" exit rule — no code evaluates stops or triggers a stop exit.
-- The current-data session loop that would consume the sizer (completed-candle scheduler), persistence and monitoring.
+- `services/paper_session.py` (`PaperSession`): completed-candle cadence, `_consumed`
+  duplicate guard, NSE phase/holiday gating, 22-bar warm-up gate, long-only
+  BUY/SELL/HOLD routing, daily-loss policy, signal-first/stop-second ordering,
+  `run_once`/`run_loop`, injected `clock`/provider, `Environment.PAPER` guard.
+- 2% stop-loss execution (`risk/stop_loss.py`, WS 6.4): `StopLossPolicy` +
+  `enforce_stop` via `TradingService.protective_exit`; wired into the session with
+  the "worse of candle open and stop price" rule.
+- Persistence (`persistence/session_store.py`, WS 6.5): JSON snapshots (payload +
+  meta sidecar, SHA-256 `state_hash`) under git-ignored `paper_state/`;
+  `PaperSession.snapshot()`/`restore()`.
+- Offline acceptance replay (WS 6.7): `tests/test_acceptance_replay.py` — 30 tests,
+  one per V1 acceptance criterion (§13 of `PAPER_TRADING_V1.md`).
 
-**Boundary statement (documented gap).** The static `RiskManager` caps are **absolute caps**; the 1%-of-equity sizing rule is enforced only when a `RiskBasedPositionSizer` is injected into `StrategyService`, and the 2% stop-loss behavior does not exist. A strategy requesting a fixed quantity within the static caps passes the gate as before.
+**Boundary statement.** The static `RiskManager` caps are **absolute caps**; the
+1%-of-equity sizing rule is enforced by `RiskBasedPositionSizer` (injected into
+`StrategyService` and `PaperSession`), and the 2% stop-loss is enforced by the
+session's stop policy. A strategy requesting a fixed quantity within the static
+caps passes the gate as before.
 
 ---
 
@@ -425,7 +442,7 @@ State notes:
 
 - **Money is `Decimal` end-to-end** for cash, prices, P&L, notional, commissions, drawdowns.
 - **Orders/fills carry explicit identity** (`new_id` in `utils/functions.py` → `ORD_<uuid-hex>`, `TRD_...`), enabling traceability.
-- **No persistent state file** is written by the demo/tests/research; `paper_state_dir` is declared configuration only.
+- **Paper-session persistence** is written by `persistence/session_store.py` under `paper_state/` (git-ignored) only when `save_session` is called (WS 6.5); the demo/tests/research write no persistent state by default.
 - **Backtest determinism** comes from bar-timestamp fills + explicit `Decimal` math; the paper broker uses wall-clock timestamps by contrast.
 
 ---
@@ -438,7 +455,7 @@ Legend: **IMPLEMENTED** = exists and exercised by tests/demos; **CONFIGURED-SCAF
 |---|---|---|
 | Domain models (Instrument, MarketPrice, Order, Fill, Position, Trade, enums, PaperAccount) | IMPLEMENTED | `models/*`, `portfolio/account.py`, `tests/test_models.py`, `tests/test_account.py`, `tests/test_order_state.py` |
 | Config: env-driven `PaperSettings` / `KiteSettings` / `UpstoxSettings` | IMPLEMENTED | `config/settings.py` |
-| V1 paper-session fields (`paper_interval`, `paper_lookback_days`, `paper_risk_per_trade_pct`, `paper_stop_loss_pct`, `paper_state_dir`) | CONFIGURED-SCAFFOLDED | fields exist in `PaperSettings`; not consumed by `load_settings()` or any runtime |
+| V1 paper-session fields (`paper_interval`, `paper_lookback_days`, `paper_risk_per_trade_pct`, `paper_stop_loss_pct`, `paper_state_dir`) | PARTIAL | fields exist in `PaperSettings`; `paper_interval`/`paper_risk_per_trade_pct`/`paper_stop_loss_pct` consumed as `PaperSession` defaults (WS 6.4b); none env-wired |
 | In-memory deterministic provider | IMPLEMENTED | `data/mock_provider.py` |
 | Read-only Kite Connect v3 adapter | IMPLEMENTED | `data/kite_provider.py`, mocked-HTTP tests |
 | Read-only Upstox historical adapter | IMPLEMENTED | `data/upstox_provider.py`, mocked-HTTP tests |
@@ -454,21 +471,22 @@ Legend: **IMPLEMENTED** = exists and exercised by tests/demos; **CONFIGURED-SCAF
 | RiskManager static caps (75 / 250000 / 10000) | IMPLEMENTED | `risk/manager.py`, `tests/test_risk.py` |
 | V1 account-policy guards (`long_only` via `Portfolio`/`PaperAccount`) | IMPLEMENTED | `portfolio/portfolio.py`, `portfolio/account.py`, `tests/test_account.py` |
 | Risk-based sizing (1% equity, lot-rounded, cash-bounded) | IMPLEMENTED | `risk/sizer.py`, `risk/manager.py` unchanged (final gate) |
-| V1 2% stop-loss execution | PLANNED | `docs/trading/PAPER_TRADING_V1.md` §7; `paper_stop_loss_pct` scaffolded only |
+| V1 2% stop-loss execution | IMPLEMENTED | `risk/stop_loss.py` (`StopLossPolicy`/`enforce_stop`), `tests/test_stop_loss.py`; wired into `PaperSession` (WS 6.4/6.4b) |
 | PaperBroker simulated execution (slippage, commission) | IMPLEMENTED | `broker/paper_broker.py`, `tests/test_broker.py` |
 | Portfolio cash/positions/P&L + long-only account guard | IMPLEMENTED | `portfolio/portfolio.py`, `tests/test_portfolio.py`; optional `long_only` policy tested in `tests/test_account.py` |
 | Broker ABC (`is_live=False` guard) | IMPLEMENTED | `broker/base.py` |
 | Backtest engine (no look-ahead, deterministic) | IMPLEMENTED | `backtest/*`, `tests/test_backtest.py` |
 | Research framework (costs, execution, regimes, split, walk-forward, sensitivity, benchmark, metrics, experiments) | IMPLEMENTED | `research/*`, `tests/test_research.py` |
 | Real NIFTY 50 daily study + HTML report | IMPLEMENTED | `research/real_data.py`, `scripts/research_real_data.py` |
-| Live paper-session loop (bar scheduler, session runner) | PLANNED | V1 spec §4–§9; no code |
-| Linearization / performance engine for paper loop | PLANNED | V1 spec §10; no code |
-| Paper-session persistence (`paper_state/`) | PLANNED | `paper_state_dir` scaffolded; ignored in git |
+| Live paper-session loop (bar scheduler, session runner) | IMPLEMENTED | `services/paper_session.py` — `run_once`/`run_loop`, 38 session tests (WS 6.4b) |
+| Paper-session deterministic seams + polling | IMPLEMENTED | injected `clock` + provider + `PaperBroker(now_fn=...)`; `_consumed` duplicate guard |
+| Paper-session persistence (`paper_state/`) | IMPLEMENTED | `persistence/session_store.py` (WS 6.5), git-ignored `paper_state/`; 34 persistence tests |
+| Acceptance replay (V1 criteria 1–30) | IMPLEMENTED | `tests/test_acceptance_replay.py` (WS 6.7) — 30 offline tests |
 | AI analysis / explainability | PLANNED | README Future phases; not started |
 | Real broker adapter | PLANNED | `PROJECT_PLAN.md` Phase 4; `Broker` ABC defined |
 | HTTP transport (curl.exe on Windows + urllib fallback) | IMPLEMENTED | `utils/http.py` |
 | Retry/backoff + structured logging | IMPLEMENTED | `utils/retry.py`, `utils/logging.py` |
-| Test suite | IMPLEMENTED | 403 tests pass offline (as of this task's verification) |
+| Test suite | IMPLEMENTED | 546 tests pass offline (as of WS 6.7 verification) |
 
 ---
 
@@ -476,16 +494,16 @@ Legend: **IMPLEMENTED** = exists and exercised by tests/demos; **CONFIGURED-SCAF
 
 Documented, intentional, or accepted gaps. Each is a deliberate boundary, not an omission to "fix" silently.
 
-1. **No live paper-session execution loop.** The V1 spec defines the full session pipeline (5-minute cadence, long-only NIFTY 50 index, completed-bar evaluation, stop-loss/rules on the worse of market and stop, equity/round-down sizing, ₹1,00,000 capital, no persistence), but the runtime does not yet implement it. `python src/main.py` runs demos; there is no scheduler that polls bars and manages a live paper position.
-2. **Scaffolded session config is inert.** The five `paper_*` fields in `PaperSettings` have no consumer; constructing settings ignores them. Any code that appears to use them does not exist.
-3. **Static risk caps ≠ full V1 risk model.** The current `RiskManager` limits are absolute caps. The 1%-of-equity sizing, lot-rounding and cash bound are enforced **only when a `RiskBasedPositionSizer` is injected**; the 2% stop-loss distance is still not enforced by any code path.
+1. **Session runtime is poll-driven, not OS-scheduled.** `services/paper_session.py` (WS 6.4b) implements `run_once`/`run_loop` against the Upstox completed-candle data; an OS-level scheduler (Task Scheduler / cron) wrapper is out of scope for V1.
+2. **Session config is partially consumed, not env-wired.** `paper_interval`, `paper_risk_per_trade_pct` and `paper_stop_loss_pct` feed `PaperSession` defaults (WS 6.4b); `paper_lookback_days` and `paper_state_dir` have no runtime consumer, and none of the five are read from environment variables (`FNO_PAPER_*`).
+3. **Static risk caps ≠ full V1 risk model.** The `RiskManager` limits are absolute caps. The 1%-of-equity sizing, lot-rounding and cash bound are enforced by `RiskBasedPositionSizer` when it is injected (`StrategyService` or `PaperSession`); the fixed-quantity path relies on the static caps alone. The 2% stop-loss is enforced by `risk/stop_loss.py` when the session's stop policy is active.
 4. **`StrategyService` sizing is optional.** Without a sizer, orders are submitted at a fixed quantity and notional caps are enforced by `RiskManager` only at the static limit; with a `RiskBasedPositionSizer`, BUY entries are sized (1% equity, 2% stop, lot-rounding, cash bound) before the risk gate.
 5. **Portfolio admits overdraw in default mode.** The generic `Portfolio` does not itself guard negative cash; the protection relies on the `RiskManager` static caps and, when injected, on the sizer's cash bound. The V1 cash/no-leverage guard is enforced at sizing time by `RiskBasedPositionSizer` (largest whole-lot quantity fitting available cash), not by the generic `Portfolio`.
-6. **Paper broker fills at wall-clock time.** Deterministic testing/backtests are deterministic anyway (bar timestamps), but session-level reproducibility of the paper broker depends on the session implementation.
+6. **Paper broker fills use an injectable clock.** By default fills are stamped with wall-clock time; `PaperBroker(now_fn=...)` (WS 6.4b) lets the session replay deterministically, mirroring the backtest engine's bar-timestamp determinism.
 7. **NSE calendar is static (HOLIDAYS_2026).** New dates are not auto-sourced; V1 must confirm the calendar applies to the Nifty 50 index.
 8. **Research results are historical/synthetic evidence.** Costs are illustrative (`IndiaCostSchedule.nse_fo_illustrative`); the MA(5,21) full-period real-data result is negative net of costs. Nothing here is investment advice or a claim of future profitability.
 9. **Instrument universe is indices only.** The registry contains NIFTY 50 / BANKNIFTY / FINNIFTY index keys with lot size 1 and tick 0.05; no futures/options instrument master augmentation is automated (Kite master CSV support exists but is not scheduled).
-10. **No persistence / recovery.** There is no ledger, snapshot, or crash-recovery for a paper session — restarts invalidate in-memory state.
+10. **Snapshot-based persistence only.** Recovery is via `save_session`/`load_session` (WS 6.5) for a single named session under `paper_state/`; snapshot schema migration and a searchable multi-session store are not supported.
 11. **AI is not integrated.** Phase 3 AI will be decision support only and must never bypass `RiskManager` or place orders.
 12. **Single HTTP transport caveat.** Windows uses a `curl.exe` subprocess (needed to defeat Cloudflare WAF blocking stdlib `urllib`); this is a platform-specific dependency that should be revisited when the environment changes.
 
@@ -495,11 +513,11 @@ Documented, intentional, or accepted gaps. Each is a deliberate boundary, not an
 
 Derived from `README.md` "Future phases", `PROJECT_PLAN.md` §27/§28/§21, and the V1 specification.
 
-1. **V1 paper-session engine (next).** Implement the scheduled session loop per `docs/trading/PAPER_TRADING_V1.md`: completed-bar evaluation on 5-minute bars of the NIFTY 50 index, consuming the now-implemented `RiskBasedPositionSizer` (1% equity, round-down to lot), adding the 2% stop-loss with the worse-of-market rule, and the `Environment.PAPER` entry point. This is where the scaffolded `paper_*` fields become live.
+1. **Session operations / monitoring (WS 6.6, next).** Logging, health checks, scheduled-run wiring and per-day reporting for the running session (e.g. HTML output consistent with `research/report.py`). The core session engine, sizing, stop-loss and persistence introduced by WS 6.4b/6.4/6.3/6.5 are already implemented.
 2. **AI analysis / explainability.** Decision-support layer behind an interface; structured signals, logged safely; never executes orders, never bypasses `RiskManager` (`PROJECT_PLAN.md` §9).
 3. **Historical-data CLI pipeline.** Breadth and convenience around `scripts/acquire_dataset.py`: multi-instrument schedules, incremental updates, cache validation, health reports.
 4. **Real broker adapter (Phase 4).** A separate `RealBroker` implementation satisfying the `Broker` ABC, explicitly configured and activated, enforced through `RiskManager`, independently tested, with audit logs — never silently enabled.
-5. **Persistence.** A ledger/snapshot for the paper session (`paper_state/`) so sessions survive restarts; data formats defined by the V1 spec once the session engine exists.
+5. **Snapshot schema migration / multi-session store.** `save_session`/`load_session` (WS 6.5) supports a single named snapshot layout under `paper_state/`; versioned schema migration and a searchable multi-session store would extend it.
 6. **Extended instrument universe & calendar.** Futures/options contracts with real lot sizes/expiries; sourced, maintainable trading calendar.
 7. **Analytics upgrades.** Dashboard/UI (future consideration) and richer attribution on top of the existing `PerformanceMetrics` and HTML notebook.
 
@@ -519,4 +537,4 @@ The system's design makes safety structural rather than behavioral. Reproduced a
 
 ---
 
-*End of architecture document. Facts verified against the repository at commit `59d831d`; test suite: 334 passing (offline). This document describes existing behavior only and does not claim planned features as implemented.*
+*End of architecture document. Facts verified against the repository at commit `3166aee` (WS 6.1 alignment); test suite: 546 passing (offline). This document describes existing behavior only and does not claim planned features as implemented.*

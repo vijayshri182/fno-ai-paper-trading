@@ -1,11 +1,12 @@
 # Paper Trading V1 — Contract Specification
 
-> Status: **SPECIFICATION** (planned Phase 6 feature).
-> This document defines the contract for the upcoming live/current-data paper-trading
-> session. It is written against the actual repository code at commit `4518dda`
-> (`chore: add paper trading config scaffolding`). Anything this document describes
-> as *implemented* already exists and is tested; anything marked *planned* or *not
-> implemented* must be built in the future phase and holds **no code today**.
+> Status: **CONTRACT — Phase 6 implemented** (work streams 6.2–6.7 delivered;
+> WS 6.1 keeps this document in step with the repository).
+> This document defines the agreed V1 contract. It was first written against commit
+> `4518dda` (`chore: add paper trading config scaffolding`); the Phase 6 items marked
+> *planned* then have since been implemented (see §2.4, §4–§14). Anything this
+> document describes as *implemented* exists in code and is covered by the automated
+> suite; anything still marked *planned* / *not implemented* holds **no code today**.
 
 ---
 
@@ -30,7 +31,7 @@ execution loop; it never places a real order and never uses real money.
 | Risk per trade | 1% of current virtual equity |
 | Capital | Virtual ₹1,00,000 (default) |
 | Execution | `PaperBroker` simulation only; no broker order placement |
-| Persistence | In-memory session; state persistence explicitly out of scope |
+| Persistence | Session state persists across restarts via JSON snapshots under git-ignored `paper_state/` (WS 6.5) |
 
 The historical backtest harness (`fno_ai_paper_trading.backtest`) and the research
 framework (`fno_ai_paper_trading.research`) remain **separate** offline tools. V1's
@@ -74,10 +75,13 @@ Statuses used throughout this document:
 
 ### 2.3 Paper-session configuration (CONFIGURED/SCAFFOLDED)
 
-The five additive `PaperSettings` fields below are committed scaffolding at
-`src/fno_ai_paper_trading/config/settings.py:57-62`. They have defaults only; they
-are **not** read by any code, **not** wired to environment variables by
-`load_settings()`, and therefore change no runtime behavior.
+The five additive `PaperSettings` fields below are declared at
+`src/fno_ai_paper_trading/config/settings.py:57-62`. Three are consumed as
+`PaperSession` defaults (`paper_interval`, `paper_risk_per_trade_pct`,
+`paper_stop_loss_pct`); two are not yet consumed by any runtime
+(`paper_lookback_days`, `paper_state_dir` — the persistence store uses the matching
+constant `DEFAULT_STATE_DIR = "paper_state"`). None of the five are wired to
+environment variables by `load_settings()` — no `FNO_PAPER_INTERVAL` etc. exist yet.
 
 | Field | Default | Meaning |
 |---|---|---|
@@ -93,22 +97,21 @@ are **not** read by any code, **not** wired to environment variables by
 `FNO_PAPER_SLIPPAGE_RATE` (`0.001`) are already wired in `load_settings()` and used
 by `RiskManager`, the backtest harness and the demos.
 
-### 2.4 Planned / not implemented
+### 2.4 Paper-session capabilities (Phase 6 delivery status)
 
 | Capability | Status | Notes |
 |---|---|---|
-| Live 5-minute paper-session loop | **NOT IMPLEMENTED** | The central V1 feature; no `services/paper_session.py` exists today |
+| Live 5-minute paper-session loop | **IMPLEMENTED** | `services/paper_session.py` (WS 6.4b): `--once`/`--loop` polling, environment guard, deterministic clock/fill-price seams; 38 session tests |
 | Risk-based position sizing | **IMPLEMENTED** | `risk/sizer.py` `RiskBasedPositionSizer`; optional in `StrategyService` (BUY entries sized; fixed-quantity path intact) |
-| Stop-loss | **NOT IMPLEMENTED** | No code evaluates stops or triggers stop exits |
-| Long-only gating | **IMPLEMENTED** at the domain/accounting layer; session wiring **PLANNED** | `Portfolio.long_only` / `PaperAccount` reject `SELL`-to-open and oversell fills at `apply_fill`; the live session loop that routes signals through it is **PLANNED** |
-| Cash/leverage guard | **IMPLEMENTED** in the sizer | Enforced by the `RiskBasedPositionSizer` capital bound (Section 6, rule 6): sized quantity never exceeds available cash; generic `Portfolio` accounting unchanged |
-| Session state persistence | **NOT IMPLEMENTED** | `paper_state/` is neither created, written, nor git-ignored yet |
+| Stop-loss | **IMPLEMENTED** | `risk/stop_loss.py` (`StopLossPolicy`/`enforce_stop`) via `TradingService.protective_exit` (WS 6.4); wired into the session (WS 6.4b); 41 stop tests |
+| Long-only gating | **IMPLEMENTED** | `Portfolio.long_only`/`PaperAccount` reject `SELL`-to-open/oversell at `apply_fill`; session-level routing implemented (WS 6.4b): BUY ignored when already long, SELL when flat |
+| Cash/leverage guard | **IMPLEMENTED** | Enforced by the `RiskBasedPositionSizer` capital bound (§6 rule 6): sized quantity never exceeds available cash; generic `Portfolio` accounting unchanged |
+| Session state persistence | **IMPLEMENTED** | `persistence/session_store.py` (WS 6.5): JSON snapshots + SHA-256 `state_hash` under git-ignored `paper_state/`; 34 persistence tests |
 | Env wiring for the five new fields | **NOT IMPLEMENTED** | `load_settings()` does not yet read `FNO_PAPER_*` for the five scaffolding fields |
 | Live/streaming quotes | **NOT IMPLEMENTED** | The Upstox adapter derives quotes from the historical endpoint; there is no tick/websocket path |
 
-> **Phase numbering note:** `PROJECT_PLAN.md` and `ACTIVITY_LOG.md` do not yet
-> enumerate a "Phase 6". "Phase 6" in this document refers to the future phase
-> implementing Paper Trading V1; the plans should be updated to assign that number.
+> **Phase numbering note:** `PROJECT_PLAN.md` §17d and `ACTIVITY_LOG.md` now
+> both assign **Phase 6** to Paper Trading V1; WS 6.1 aligns all three documents.
 
 ---
 
@@ -138,8 +141,8 @@ intended to be changeable later, but V1 freezes them at the values above.
 
 ## 4. Market-data flow
 
-Intended flow (first box is implemented today; the arrows into strategy → paper
-engine → capital/P&L for the live loop are **planned**):
+Intended flow (all boxes implemented; the Upstox adapter is polled by the session
+at `paper_interval` cadence):
 
 ```text
 Upstox V3 historical-candle API (read-only)
@@ -152,13 +155,12 @@ MarketDataProvider abstraction (data/provider.py)        [IMPLEMENTED]
         v
 MovingAverageCrossStrategy (strategies/)                 [IMPLEMENTED]
         v
-Paper-session loop (services/paper_session.py)           [PLANNED]
+Paper-session loop (services/paper_session.py)           [IMPLEMENTED (WS 6.4b)]
         |  BUY/EXIT decisions, 1% risk sizing, 2% stop
         v
-RiskManager -> PaperBroker -> Portfolio                  [IMPLEMENTED building blocks]
+RiskManager -> PaperBroker -> Portfolio                  [IMPLEMENTED]
         v
-Virtual capital / P&L (in-memory totals)                 [IMPLEMENTED accounting;
-                                                           session wiring PLANNED]
+Virtual capital / P&L (in-memory totals + snapshots)     [IMPLEMENTED]
 ```
 
 Key facts about the Upstox adapter, from `data/upstox_provider.py`:
@@ -183,10 +185,10 @@ The live session will therefore fetch **completed 5m bars** for the window
 completed bar's close. There is **no running tick feed** in V1 (and none exists in
 code today).
 
-> The **live/current-data paper session is NOT implemented yet.** Today the only code
-> that drives signals into paper orders is `StrategyService` (explicit bar lists)
-> and the backtest/research harnesses (stored or synthetic bars). Nothing consumes
-> the Upstox adapter as a continuous loop.
+> The **live/current-data paper session is implemented** (`services/paper_session.py`,
+> WS 6.4b) and driven by the Upstox adapter via polling (`run_once`/`run_loop`).
+> `StrategyService` (explicit bar lists) and the backtest/research harnesses remain
+> separate offline paths.
 
 ---
 
@@ -196,16 +198,16 @@ Per-candle lifecycle for V1. Each step is labeled with its current status.
 
 | # | Step | Behavior | Status |
 |---|---|---|---|
-| 1 | Completed candle | Wait for the current 5m bar to finish; use its close. Never act on a forming (partial) bar. Skip trading when not in the NSE OPEN phase | Session loop: **PLANNED**; session clock helper `market_session`/`is_market_open`: **IMPLEMENTED** |
+| 1 | Completed candle | Wait for the current 5m bar to finish; use its close. Never act on a forming (partial) bar. Skip trading when not in the NSE OPEN phase | Session loop: **IMPLEMENTED** (WS 6.4b); clock helper `market_session`/`is_market_open`: **IMPLEMENTED** |
 | 2 | Strategy evaluation | `MovingAverageCrossStrategy.analyze(bars)` over the completed-candle history; `SignalResult` with `BUY`/`SELL`/`HOLD` | **IMPLEMENTED** (`strategies/moving_average_cross.py`) |
-| 3 | BUY/EXIT decision | Long-only mapping: `BUY` when flat or when the signal is BUY; `SELL` signal maps to **EXIT** of the long position only (never short-to-open). `HOLD` → no order | Mapping logic: **PLANNED** (architecture supports it in `StrategyService`; long-only gate does not exist) |
+| 3 | BUY/EXIT decision | Long-only mapping: `BUY` when flat or when the signal is BUY; `SELL` signal maps to **EXIT** of the long position only (never short-to-open). `HOLD` → no order | Mapping logic: **IMPLEMENTED** in `PaperSession` (WS 6.4b) — BUY ignored when already long, SELL ignored when flat |
 | 4 | Order creation | `Order(instrument, side, quantity)` — quantity from the risk sizer (Section 6) | **IMPLEMENTED** (`models/order.py`; quantity supplied by `RiskBasedPositionSizer`, `risk/sizer.py` — optional in `StrategyService`) |
 | 5 | Risk evaluation | `RiskManager.evaluate(order, portfolio, fill_price)` — enforces `max_position_quantity`, `max_order_notional`, `max_daily_loss` | **IMPLEMENTED** (`risk/manager.py`); rejection recorded as `RejectionReason` |
 | 6 | Simulated fill | `PaperBroker.place_order(order, market_price)` — applies slippage to the reference close and computes commission; rejects with `REJECTED` if no price | **IMPLEMENTED** (`broker/paper_broker.py`) |
 | 7 | Position update | `Portfolio.apply_fill(fill)` — updates cash, position quantity/average entry, records a `Trade`, updates realized P&L | **IMPLEMENTED** (`portfolio/portfolio.py`) |
 | 8 | P&L/equity update | `Portfolio.total_value(prices)`, `unrealized_pnl`, `realized_pnl_today` at the candle close | **IMPLEMENTED** |
-| 9 | Stop-loss handling | While a long position is open, evaluate the 2% stop after every completed candle; if triggered, submit an automatic EXIT (Section 7) | **PLANNED** |
-| 10 | Duplicate guard | A candle may drive at most one decision; repeated fetches must not double-apply a signal | **PLANNED** (deduplication by bar timestamp) |
+| 9 | Stop-loss handling | While a long position is open, evaluate the 2% stop after every completed candle; if triggered, submit an automatic EXIT (Section 7) | **IMPLEMENTED** — session evaluates the stop after each completed candle while long; automatic paper exit on breach (`risk/stop_loss.py` + `TradingService.protective_exit`, WS 6.4/6.4b) |
+| 10 | Duplicate guard | A candle may drive at most one decision; repeated fetches must not double-apply a signal | **IMPLEMENTED** — `_consumed` guard deduplicates by bar timestamp (WS 6.4b/6.5); re-fetching the same bars yields identical decisions |
 
 Execution-path guarantees that exist today and must be preserved:
 
@@ -263,7 +265,10 @@ sizing path.
 
 ## 7. Stop-loss rules
 
-**PLANNED** — no stop-loss code exists today.
+**IMPLEMENTED** (WS 6.4/6.4b) — enforced automatically by `risk/stop_loss.py`
+(`StopLossPolicy` decision rule + `enforce_stop` executor) through
+`TradingService.protective_exit`; the session evaluates the stop after every
+completed 5m candle while a position is open.
 
 - Every long entry records `stop_price = P_entry * (1 - stop_loss_pct)`.
 - The stop is evaluated after each **completed 5m candle** while a position is open.
@@ -292,7 +297,7 @@ these rather than reimplementing them.
 
 | Quantity | Definition | Status |
 |---|---|---|
-| Starting virtual capital | ₹1,00,000 (`PaperSettings.initial_capital`, default from `FNO_PAPER_INITIAL_CAPITAL`) | **IMPLEMENTED** config/accounting; V1 session start uses it: **PLANNED** |
+| Starting virtual capital | ₹1,00,000 (`PaperSettings.initial_capital`, default from `FNO_PAPER_INITIAL_CAPITAL`) | **IMPLEMENTED** — the V1 session constructs `Portfolio` with `initial_capital` (WS 6.4b); `PaperAccount` records it as `initial_cash` |
 | Cash | `portfolio.cash`, debited on `BUY` (notional + commission), credited on `SELL` (notional − commission) | **IMPLEMENTED** |
 | Open position | `Position` (signed quantity, `average_entry_price`) keyed by symbol | **IMPLEMENTED** |
 | Unrealized P&L | `Portfolio.unrealized_pnl(prices)` at current close | **IMPLEMENTED** |
@@ -305,9 +310,10 @@ reference close adjusted by `slippage_rate` adversarially (buy: ×(1+s), sell:
 ×(1−s)); commission = `notional × commission_rate + commission_fixed`, mirrored by
 `PaperBrokerConfig` and `BacktestConfig`.
 
-> **Correctional caveat:** a negative-cash fill is not currently prevented by
-> `Portfolio`/`RiskManager`. The V1 cash guard (Section 6 rule 6) is the mechanism
-> that keeps virtual equity non-negative, and is **PLANNED**.
+> **Correctional caveat:** the generic `Portfolio` does not itself guard a
+> negative-cash fill; the V1 cash guard (Section 6 rule 6) lives in the
+> `RiskBasedPositionSizer` capital bound and is **IMPLEMENTED**, and the session
+> routes every BUY entry through the sizer.
 
 > **Research-baseline caveat:** the Phase 3 historical study evaluated MA(5,21) on
 > real NIFTY 50 data under realistic Indian costs. It is a **research baseline, not
@@ -353,24 +359,31 @@ V1 conventions:
 
 ## 10. Session/state requirements
 
-**Current system state (IMPLEMENTED until noted otherwise):**
+**Current system state (IMPLEMENTED):**
 
-- Accounting and trading objects are **in-memory**: `Portfolio`, `PaperBroker`, and
-  the risk manager hold state only for the process lifetime.
-- Nothing persists on shutdown; a restarted session starts from `initial_capital`.
-- The scaffolded `paper_state_dir = "paper_state"` is **configuration only**. No code
-  creates, reads or writes this directory; it is not (yet) present in `.gitignore`.
+- `PaperSession` (WS 6.4b) owns the session lifecycle: completed-bar selection
+  (`bar.timestamp + interval <= now`), a `_consumed` duplicate-candle guard, NSE
+  phase/holiday gating, 22-bar warm-up gate, long-only signal mapping, daily-loss
+  policy, and signal-first/stop-second ordering.
+- State persistence (WS 6.5): `persistence/session_store.py` writes JSON snapshots
+  (payload + meta sidecar, SHA-256 `state_hash`) under `paper_state/`, which is
+  git-ignored; `save_session`/`load_session` validate schema and hash.
+  `PaperSession.snapshot()`/`restore()` rebuild a session (accounting, broker
+  orders/fills, consumed/entry-candle timestamps, counters) after a restart.
+- The scaffolded `paper_state_dir = "paper_state"` default matches the store's
+  `DEFAULT_STATE_DIR`. `FNO_PAPER_*` env wiring for the five scaffolded fields is
+  still not implemented.
 
-**V1 session requirements (PLANNED):**
+**V1 session requirements (DELIVERED by WS 6.2–6.7):**
 
-| Requirement | Contract |
-|---|---|
-| In-memory run | A `--once` mode evaluates the latest completed candle and exits; a `--loop` mode iterates until stopped |
-| Determinism inputs | Inject the "now" clock and the data source so the session is testable without network |
-| Duplicate-candle guard | Track the last consumed bar timestamp; never evaluate a bar twice |
-| Stop-loss + sizing | Sizing per §6 (`RiskBasedPositionSizer`): **IMPLEMENTED**; stop-loss per §7: **PLANNED** |
-| State persistence | Explicitly **out of scope** for V1 unless separately approved. If/when added, it must write under `paper_state/`, that directory must be added to `.gitignore`, and it must be the session's only on-disk state |
-| Environment guard | The session must not start unless running in the `Environment.PAPER` context (or an explicitly overridden development/test sandbox), and must confirm a paper-only broker |
+| Requirement | Contract | Status |
+|---|---|---|
+| In-memory run | A `--once` mode evaluates the latest completed candle and exits; a `--loop` mode iterates until stopped | **IMPLEMENTED** (`run_once`/`run_loop`) |
+| Determinism inputs | Inject the "now" clock and the data source so the session is testable without network | **IMPLEMENTED** (`clock` + provider injection; `PaperBroker(now_fn=...)`) |
+| Duplicate-candle guard | Track the last consumed bar timestamp; never evaluate a bar twice | **IMPLEMENTED** (`_consumed`) |
+| Stop-loss + sizing | Sizing per §6; stop-loss per §7 | **IMPLEMENTED** (`RiskBasedPositionSizer`; `risk/stop_loss.py` wired through the session) |
+| State persistence | Ledger + snapshots under git-ignored `paper_state/`, the session's only on-disk state | **IMPLEMENTED** (WS 6.5) |
+| Environment guard | The session must not start outside `Environment.PAPER` (or an explicit sandbox override), and must use a paper-only broker | **IMPLEMENTED** |
 
 ---
 
@@ -385,10 +398,13 @@ Non-negotiable, enforced by design (boundaries are **IMPLEMENTED** except where 
 | No broker order placement in V1 | There is no order-capable broker surface; Upstox/Kite adapters are read-only market data only | `data/upstox_provider.py` (no order API), `data/kite_provider.py` |
 | Analytics/read-only market data vs. order-capable auth | The Upstox access token authenticates **historical-candle reads only**; `UpstoxSettings` documents client id/secret as SSO-token placeholders, not order credentials | `config/settings.py:108-141`, `upstox_provider.py` |
 
-The V1 session must add the following guards to this list (each **PLANNED**):
+The V1 session adds the following guards to this list (each **IMPLEMENTED** by
+WS 6.2–6.4b):
 
-- Reject startup if any configured component is not the paper broker.
-- Reject `SELL`-to-open orders (long-only rule).
+- Reject startup if any configured component is not the paper broker (`Environment.PAPER`
+  guard + `PaperBroker.is_live = False`; sandbox override only via `allow_sandbox`).
+- Reject `SELL`-to-open orders (long-only rule) at both the accounting layer
+  (`Portfolio.long_only`/`PaperAccount`) and the session routing layer.
 - Never read, log, or expose the access token value; all secrets stay in `.env`.
 
 ---
@@ -402,23 +418,23 @@ The V1 session must add the following guards to this list (each **PLANNED**):
 | Short selling | Long-only V1 |
 | Leverage | Position notional bounded by available cash |
 | AI-driven signals | AI analysis is a later phase and must sit behind an interface with non-autonomous execution |
-| Persistent database / durable state | `paper_state/` directory only, and only if later approved |
+| Persistent database / durable state | JSON snapshots under `paper_state/` are implemented (WS 6.5); a database / full multi-session ledger remains out of scope |
 | Broker order placement / order APIs | No order-capable vendor surface exists or is planned for V1 |
 | Tick-by-tick / intra-bar execution | Completed 5m bars only |
 | Take-profit / trailing stops / partial exits | Deferred; V1 exits are full-close on signal or stop |
 
 ---
 
-## 13. Acceptance criteria for the future Phase 6 implementation
+## 13. Acceptance criteria for the Phase 6 implementation
 
-Concrete and testable. Each criterion must pass in the automated test suite
-(following the project's offline, deterministic test convention).
+Concrete and testable. Each criterion is replayed offline in the automated suite
+(`tests/test_acceptance_replay.py`, WS 6.7 — one test per criterion, criteria
+1–30) following the project's offline, deterministic test convention.
 
 ### Risk sizing
 
 All six risk-sizing criteria are **IMPLEMENTED** by `RiskBasedPositionSizer`
-(`risk/sizer.py`, `tests/test_sizer.py`); the session that consumes the sizer
-remains PLANNED.
+(`risk/sizer.py`, `tests/test_sizer.py`); the session consumes the sizer (WS 6.4b).
 
 1. `qty = floor(risk_amount / (stop_distance × instrument.multiplier) / lot) × lot`; `Decimal` only.
 2. `risk_amount = 0.01 × current_equity`, with current equity = cash + open-position
@@ -496,10 +512,10 @@ remains PLANNED.
 29. Existing `RiskManager` limits — `max_position_quantity`, `max_order_notional`
     and `max_daily_loss` — must gate paper-session orders exactly as in the
     implemented risk rules (a rejected order is never filled). This is an
-    acceptance criterion for the future session; no live session enforces these
-    today.
-30. When state persistence is added later, session artifacts are confined to
-    `paper_state/`, which is git-ignored; none are written elsewhere.
+    acceptance criterion for the session; `tests/test_acceptance_replay.py`
+    (`test_ac_29`) replays it end-to-end.
+30. Session artifacts are confined to `paper_state/`, which is git-ignored; none are
+    written elsewhere. Delivered by WS 6.5 and replayed by `test_ac_30`.
 
 ---
 
@@ -515,8 +531,9 @@ remains PLANNED.
   only.
 - **Holiday calendar is advisory:** `market_hours.HOLIDAYS_2026` is best-effort; verify
   against the official NSE calendar annually.
-- **In-memory state:** a restart resets to initial capital; no persistence until
-  explicitly added.
+- **Restart recovery is snapshot-based (WS 6.5):** `save_session`/`load_session`
+  restore a session from JSON under `paper_state/`; snapshot schema migration and a
+  searchable multi-session store are not supported.
 - **Fixed-cost caveats:** the paper cost model is illustrative (0.03% commission,
   0.1% slippage); it is not a claim of any broker's real fees. Backtests and the V1
   session share this model.
@@ -531,11 +548,13 @@ remains PLANNED.
 - `SELL`-to-open / shorting, futures and options once an explicit, reviewed decision
   authorizes them.
 - Take-profit, trailing stops, and intra-day exit rules beyond the fixed stop.
-- Session state persistence under `paper_state/` (git-ignored, JSON/CSV ledger +
-  snapshots, per-day P&L).
+- Session state persistence under `paper_state/` — **delivered in WS 6.5** (JSON
+  payload + meta sidecar, SHA-256 `state_hash`, git-ignored; per-day P&L ledger
+  still future).
 - Env-variable wiring for the five scaffolded fields (`FNO_PAPER_INTERVAL`,
   `FNO_PAPER_LOOKBACK_DAYS`, `FNO_PAPER_RISK_PER_TRADE_PCT`, `FNO_PAPER_STOP_LOSS_PCT`,
-  `FNO_PAPER_STATE_DIR`) once the session lands, plus `.env.example` rows.
+  `FNO_PAPER_STATE_DIR`) plus `.env.example` rows — still open (the session now
+  consumes the typed defaults for three of the five).
 - Live/streaming quotes behind an interface, if a vendor and token shape are approved.
 - AI-driven signal support behind the `Strategy` interface, never autonomous execution.
 - A real broker adapter remains a separate, explicitly controlled capability, disabled
@@ -543,4 +562,4 @@ remains PLANNED.
 
 ---
 
-*Specification against repository HEAD `4518dda`. Paper-trading only. No live orders, no real money.*
+*Contract maintained against repository HEAD `3166aee` (WS 6.1 alignment). Paper-trading only. No live orders, no real money.*
