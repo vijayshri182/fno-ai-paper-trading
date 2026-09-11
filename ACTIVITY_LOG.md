@@ -25,7 +25,7 @@
 | 3 | Strategy research & robustness evaluation (costs, regimes, in/out-of-sample, walk-forward, sensitivity, benchmark, metrics, experiments, HTML notebook) | **DONE** — commits `fb3f1c5`, `3a60a41` |
 | 4 | Historical-data CLI + real-data research (NIFTY 50 1d 2015–2024) | **DONE** — commits `da1b59a`, `e1a2b38`; real dataset acquired 2026-09-08 |
 | 5 | AI analysis / decision support; backtesting engine + analytics | **Backtest engine:** folded into Phase 2 (implemented); analytics extended by the research framework (Phase 3). **AI analysis / decision support:** planned (not started) |
-| 6 | Paper Trading V1 — current-data paper session | **IN PROGRESS** — WS 6.2 **DONE** (`e853667`, pushed); WS 6.3 **DONE** (`b4f8129`, pushed); WS 6.4 (2% stop-loss) **DONE** (`75d3a44`, pushed); WS 6.4b (session runtime) **DONE** (`b05a17c`, pushed); WS 6.5 (persistence) **DONE** (`118e976`, pushed); **WS 6.7 (acceptance replay) DONE** (`0e5ce1c`, pushed, 546 suite passing); monitoring/ops (WS 6.6) NOT IMPLEMENTED |
+| 6 | Paper Trading V1 — current-data paper session | **IN PROGRESS** — WS 6.2 **DONE** (`e853667`, pushed); WS 6.3 **DONE** (`b4f8129`, pushed); WS 6.4 (2% stop-loss) **DONE** (`75d3a44`, pushed); WS 6.4b (session runtime) **DONE** (`b05a17c`, pushed); WS 6.5 (persistence) **DONE** (`118e976`, pushed); **WS 6.7 (acceptance replay) DONE** (`0e5ce1c`, pushed, 546 suite passing); **WS 6.1 (doc alignment) DONE** (`248c895`, pushed); monitoring/ops (WS 6.6) NOT IMPLEMENTED |
 
 *Phase numbers in this table follow the activity log's own scheme; for plan-level numbering see PROJECT_PLAN §17d (Paper Trading V1 = Phase 6).*
 
@@ -850,6 +850,42 @@ repo; pytest is the gate.
 
 **Status.** Committed as `0e5ce1c` (`feat: Phase 6 WS 6.7 acceptance replay tests`)
 and pushed to `origin/master`.
+
+## 4n. 2026-09-11 — Phase 6 WS 6.1: Documentation / plan alignment
+
+**Scope.** Refresh the V1 contract, project plan and architecture docs so they
+match the Phase 6 implementation delivered by WS 6.2–6.7, and keep
+cross-references valid. No production or test code changed.
+
+**Changes.**
+- `docs/trading/PAPER_TRADING_V1.md`: header → **CONTRACT** (Phase 6 implemented);
+  §1 persistence row; §2.3 config-consumption wording; §2.4 capabilities table
+  (session loop / stop-loss / long-only gating / persistence → **IMPLEMENTED**;
+  env wiring + streaming quotes remain NOT IMPLEMENTED); §4 flow + notice; §5
+  step statuses; §7 stop-loss; §8 capital row + correctional caveat; §10
+  session/state requirements; §11 safety guards; §12 persistence out-of-scope
+  row; §13 header + criteria 29/30; §14 limitations/future extensions; footer
+  commit reference.
+- `PROJECT_PLAN.md`: §17c (persistence contract row, DECLARED CONFIG section +
+  reduced PLANNED list, static-caps vs sizer boundary, V1-capital clarification),
+  §17d roadmap annotated with per-work-stream status + commit SHAs (6.2–6.7
+  **DONE**, 6.1 **IN PROGRESS**, 6.6 **PLANNED**), Current Phase section, and a
+  new 2026-09-11 Change Log entry.
+- `docs/architecture/ARCHITECTURE.md`: header/footer commit refs (`→ 3166aee`,
+  546 tests), §1 out-of-scope persistence, §10 risk-gate note, §11 config wiring
+  note, §12 market-hours purpose, §13 session-runtime block, §16 persistence
+  state note, §17 status-table rows (config PARTIAL; stop-loss / session loop /
+  persistence / acceptance replay → **IMPLEMENTED**), §18 limitations 1/2/3/6/10,
+  §19 future 1/5.
+- `README.md`: architecture tree gains `risk/sizer.py`, `risk/stop_loss.py`,
+  `services/paper_session.py`, `persistence/`; safety-limitations bullet mentions
+  `PaperSession`; Future-phases table gains a Phase 6 row.
+- `PROGRESS.md`: stale HEAD SHA `aedd0bc` → `3166aee`; WS 6.1 row status.
+
+**Verification.** Full suite: **546 passed** (unchanged; docs-only change).
+
+**Status.** Committed as `248c895` (`docs: WS 6.1 align Phase 6 documentation
+(spec + plan + architecture)`) and pushed to `origin/master`.
 
 ---
 
