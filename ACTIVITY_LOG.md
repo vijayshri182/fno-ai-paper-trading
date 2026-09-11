@@ -1151,6 +1151,39 @@ and pushed to `origin/master`.
 
 ---
 
+## 4t. 2026-09-11 — WS 7.1 AI decision-support foundation
+
+**Objective.** Land the advisory AI decision-support contract layer (offline glue found uncommitted
+in the repo, reconciled and committed).
+
+**Decisions.**
+1. `ai/` package = `DecisionSupport` ABC + `HoldDecisionSupport` deterministic baseline + frozen
+   `AIDecision`/`DecisionContext` contracts; Decimal-only features, no floats, immutable mappings.
+2. Advisory only, zero coupling to broker/risk/portfolio/session (AST-verified by test).
+
+**Files.** `src/fno_ai_paper_trading/ai/{__init__,base,decision}.py`, `tests/test_ai_decision_support.py`.
+
+**Status.** Committed `cfba9b6`, pushed.
+
+## 4u. 2026-09-11 — WS 7.2 Feature engineering
+
+**Objective.** Deterministic decision-time feature engineering consumable by the AI boundary.
+
+**Decisions.**
+1. `features/` package: `FeatureEngineer` (stateless; fast=5/slow=21 matching MA(5,21) warm-up).
+2. Indicators in `features/indicators.py`: `sma`, `rsi`, `close_return`, `mean_squared_return`,
+   `volatility_ratio` — all Decimal, all `None` on insufficient data.
+3. No-look-ahead contract: `compute_prefix(bars, i)` feeds only `bars[:i+1]`; tests assert prefix
+   features equal full-prefix features.
+
+**Files.** `src/fno_ai_paper_trading/features/{__init__,base,indicators}.py`, `tests/test_features.py`.
+
+**Verification.** Full suite **584 passed** (567 + 17 new).
+
+**Status.** Committed as `feat: WS 7.2 deterministic feature engineering`, pushed.
+
+---
+
 ## 5. Open Topics / Risks
 
 - **10-Sep-2026 real-data paper replay loss (~₹194.68).** An evaluation

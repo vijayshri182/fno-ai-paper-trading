@@ -473,6 +473,30 @@ What changed (all `PLANNED`, nothing implemented):
 - **No live trading:** paper-only boundary absolute; a separate, disabled-by-default
   capability would be needed for any future real execution.
 
+## 16. WS 7.1 — AI decision-support foundation (2026-09-11)
+
+> Committed `cfba9b6` (`feat: WS 7.1 AI decision-support foundation contracts (advisory only)`).
+
+- New `src/fno_ai_paper_trading/ai/` package: `DecisionSupport` (ABC), `HoldDecisionSupport`
+  (deterministic offline baseline), and the frozen, immutable data contracts
+  `AIDecision` + `DecisionContext` (Decimal-only features, `MappingProxyType`,
+  no floats). The package has zero execution/risk/portfolio/broker dependencies
+  (enforced by an AST test). Advisory only — no path to place orders.
+- 4 focused tests in `tests/test_ai_decision_support.py`.
+
+## 17. WS 7.2 — Feature engineering (2026-09-11)
+
+> Feature engineering is decision-time, deterministic and Decimal-only — a
+> feature at bar *i* never uses bars after *i* (enforced by contract tests).
+
+- New `src/fno_ai_paper_trading/features/` package: `FeatureEngineer` (stateless,
+  fast=5/slow=21 defaults matching MA(5,21) warm-up of 22 bars),
+  `BarsFeatures` (frozen), and `features/indicators.py` with `sma`, `rsi`,
+  `close_return`, `mean_squared_return`, `volatility_ratio`.
+- Feature set is directly consumable by the AI decision-support boundary
+  (`ai.DecisionContext.features`).
+- 17 focused tests in `tests/test_features.py`.
+
 ---
 
 *Sources: `PROJECT_PLAN.md` (§17b–17d, DoD §25–28), `docs/trading/PAPER_TRADING_V1.md`, `ACTIVITY_LOG.md`, `git log`, repository tree, and `pytest` results.*
