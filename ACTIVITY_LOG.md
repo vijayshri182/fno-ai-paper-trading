@@ -25,7 +25,7 @@
 | 3 | Strategy research & robustness evaluation (costs, regimes, in/out-of-sample, walk-forward, sensitivity, benchmark, metrics, experiments, HTML notebook) | **DONE** — commits `fb3f1c5`, `3a60a41` |
 | 4 | Historical-data CLI + real-data research (NIFTY 50 1d 2015–2024) | **DONE** — commits `da1b59a`, `e1a2b38`; real dataset acquired 2026-09-08 |
 | 5 | AI analysis / decision support; backtesting engine + analytics | **Backtest engine:** folded into Phase 2 (implemented); analytics extended by the research framework (Phase 3). **AI analysis / decision support:** planned (not started) |
-| 6 | Paper Trading V1 — current-data paper session | **IN PROGRESS** — WS 6.2 (domain/model completion) **DONE** (`e853667`, pushed); WS 6.3 (V1 risk-based position sizing) **IMPLEMENTED** (uncommitted); 2% stop-loss, session loop, persistence, monitoring NOT IMPLEMENTED |
+| 6 | Paper Trading V1 — current-data paper session | **IN PROGRESS** — WS 6.2 **DONE** (`e853667`, pushed); WS 6.3 **DONE** (`b4f8129`, pushed); WS 6.4 (2% stop-loss) **DONE** (`75d3a44`, pushed); WS 6.4b (session runtime) **DONE** (`b05a17c`, pushed); WS 6.5 (persistence) **DONE** (`118e976`, pushed); **WS 6.7 (acceptance replay) DONE** (`4b3dba4`, pushed, 546 suite passing); monitoring/ops (WS 6.6) NOT IMPLEMENTED |
 
 *Phase numbers in this table follow the activity log's own scheme; for plan-level numbering see PROJECT_PLAN §17d (Paper Trading V1 = Phase 6).*
 
@@ -737,6 +737,119 @@ suite: 403 passed (up from 378). `git diff --check` clean. Only intended
 source/test/doc files changed; no `.env`/credentials/datasets/reports touched.
 
 **Status.** Uncommitted; awaiting review before Git checkpoint.
+
+---
+
+## 4l. 2026-09-11 — Phase 6 WS 6.5: State persistence / recovery
+
+**Scope.** Fifth Phase 6 work stream: deterministic snapshot/checkpoint + restore
+so a running paper session survives a restart. Mirrors the established
+`AbstractDatasetStore`-style patterns from `data/dataset_store.py`. Respects all
+WS 6.5 invariants: `Portfolio.apply_fill` remains the sole accounting path,
+Decimal money math, no `backtest.*` coupling, `paper_state/` git-ignored, no
+`FNO_PAPER_*` env wiring.
+
+**Decisions (locked).**
+
+- Persistence owns all serialization in
+  `src/fno_ai_paper_trading/persistence/session_store.py`; the session layer
+  stays thin (assembles/validates a `SessionSnapshot`, no disk I/O, no math).
+- File layout: payload `<safe_name>.json` + sidecar `<safe_name>.meta.json`
+  (schema, save time, `state_hash`) under `paper_state/`;
+  `state_hash` = SHA-256 over canonical JSON
+  (`json.dumps(indent=2, sort_keys=True) + "\n"`); `SCHEMA_VERSION = "1"`.
+  Load refuses unsupported schema, missing sidecar, hash/corruption mismatch.
+- Restore contract: session not running, snapshot instrument `symbol` +
+  `exchange_token` + `interval_token` + `warmup_bars` match, empty broker;
+  rebuilds `TradingService`, restores accounting state +
+  `_consumed`/`_entry_candle`/counters, forces `_running=False`. No re-execution.
+- `Portfolio.initial_cash` assigned after construction (`__post_init__` sets it to
+  `cash`); live `Position.realized_pnl` may be negative so it is assigned after
+  construction in the serializers. Only non-flat positions are persisted.
+- Money is `Decimal` (serialized via `str()`); datetimes are naive ISO (IST);
+  `_money`/`_int` coercion helpers raise `ValueError` instead of silently coercing.
+
+**Implemented (committed `118e976`).**
+
+- `persistence/session_store.py` (new): `SessionSnapshot` (frozen),
+  `StoredSession`, `save_session`/`load_session`, model serializers.
+- `persistence/__init__.py` (new): public exports.
+- `broker/paper_broker.py`: `snapshot()` / `restore()` (restore requires an
+  empty broker → `RuntimeError`); `replace` import added.
+- `services/paper_session.py`: `snapshot()` / `restore()` +
+  `_validate_restore_target`, `_portfolio_from_live`, `_portfolio_from_snapshot`;
+  docstring updated to "WS 6.4b / WS 6.5".
+- `.gitignore`: `paper_state/`.
+- `tests/test_session_persistence.py` (new, 34 tests): file-layer save/load,
+  hash-tamper/corruption/schema guards, broker snapshot/restore, session round
+  trips (Decimal exactness, `initial_cash` preserved, consumed-timestamps block
+  reprocessing), restart equivalence (mid-run snapshot → restore → resume ==
+  uninterrupted run), stop-fires-after-restore, no-`backtest.*`-import guard.
+
+**Verification.** Full suite: **516 passed in 2.99s** (482 committed baseline +
+34 new). No lint/typecheck tooling in the repo; pytest is the gate.
+
+**Status.** Committed as `118e976` (`feat: Phase 6 WS 6.5 persistent paper session
+state`) and pushed to `origin/master`.
+
+---
+
+## 4m. 2026-09-11 — Phase 6 WS 6.7: Offline acceptance replay tests
+
+**Scope.** Seventh Phase 6 work stream: deterministic, session-level replay of all
+30 V1 acceptance criteria (`docs/trading/PAPER_TRADING_V1.md` §13, criteria 1–30)
+through the real `PaperSession` runtime, offline, with no network, no credentials
+and no sleep. Every criterion gets exactly one pytest method named `test_ac_XX_*`.
+
+**Decisions (locked).**
+
+- Single new file (`tests/test_acceptance_replay.py`), no production code changed.
+  File is fully self-contained: duplicates the small helpers pattern from
+  `test_paper_session.py` (no cross-test-module imports).
+- 7 test classes mirror §13's own section headings: risk sizing (1–6), stop-loss
+  (7–12), long-only (13–14), cadence (15–18), capital/accounting (19–21),
+  determinism (22–23), safety (24–30).
+- Default clock seam: `lambda: FILL_CLOCK` (= `datetime(2026,9,2,10,0)`), injected
+  into both session and broker so `filled_at` is deterministic.
+- Warm-up default 1 for scripted strategy (no `slow` attribute → fallback to 1 per
+  `paper_session.py` line 193). AC-17 tests the 22-bar boundary explicitly.
+- AC-08 (protective stop via `RiskManager`) asserts the criterion's *intent*
+  (exit still produces a paper fill/trade through `PaperBroker` →
+  `Portfolio.apply_fill`) rather than the literal pre-WS-6.4 wording; documented
+  deviation (§6 / test docstring).
+- AC-24 `_DummyBroker` satisfies the `Broker` ABC (3 abstract methods: `place_order`,
+  `cancel_order`, `get_order`) — identical to the existing `_DummyBroker` in
+  `test_paper_session.py`.
+
+**Implemented (uncommitted, pending commit approval).**
+
+- `tests/test_acceptance_replay.py` (new, ~775 lines, 30 tests):
+  - Helpers: `_ts`, `_index`, `_bar`, `_bars`, `_provider`, `_settings`,
+    `_ScriptedStrategy`, `_strategy`, `_make_session`, `_buying_steps`,
+    `_all_recorded_money`.
+  - 30 named methods (`test_ac_01_*` … `test_ac_30_*`) grouped into 7 classes.
+  - Notable precision: AC-02 equity-basis sizing verified across a round-trip;
+    AC-04 cash-cap sizer reduction; AC-09 slippage/commission math to 9 decimal
+    places (entry `24024`, exit `23519.97648`, commission `14.111985888`);
+    AC-12 intrabar vs gap fill paths; AC-20 cash `100171.14` and realized `200`;
+    AC-22 determinism tuple with `(4,4,4,0,0)` counters; AC-29 max-quantity +
+    seeded daily-loss gate; AC-30 save/load/restore into `tmp_path` with
+    `.gitignore` check.
+
+**Bugs fixed during the run (before first green):**
+
+1. `_buying_steps` filter captured SELL fills → fixed to `Signal.BUY` only (AC-02).
+2. `realized_pnl` assertion `-7800` was wrong → corrected to `-8000` (AC-02).
+3. Dead unreachable assertion line removed (AC-16).
+4. `run("a") == run("b")` always failed due to differing tag strings → fixed to
+   compare `[1:]` slices (AC-22).
+
+**Verification.** Acceptance suite: **30 passed in 0.33s**. Full suite: **546 passed
+in 2.50s** (516 committed baseline + 30 new). No lint/typecheck tooling in the
+repo; pytest is the gate.
+
+**Status.** Committed as `4b3dba4` (`feat: Phase 6 WS 6.7 acceptance replay tests`)
+and pushed to `origin/master`.
 
 ---
 
