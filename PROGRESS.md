@@ -510,6 +510,24 @@ What changed (all `PLANNED`, nothing implemented):
   (`detect_prefix` contract-tested).
 - 13 focused tests in `tests/test_regime.py`.
 
+## 19. WS 7.4 — Historical strategy evaluation (2026-09-11)
+
+> Deterministic, multi-session evaluation over validated datasets with the
+> standardized metric set (§17e / §18). Research/evidence only.
+
+- New `src/fno_ai_paper_trading/evaluation/` package: `HistoricalEvaluator`
+  (reuses WS 6.x backtest + research experiment machinery), `EvaluationConfig`,
+  `SessionEvaluation`, `EvaluationAggregate`, `EvaluationRun` records, and
+  `evaluation_run_to_dict` / `evaluation_run_to_html` serializers (reuse
+  `research.report` CSS).
+- Standardized metrics: P&L, return %, win rate, round trips, average trade,
+  transaction costs, max drawdown (+ %), exposure, losing streak, profit factor.
+- `scripts/evaluate_historical.py` CLI (offline): loads validated datasets,
+  replays the frozen MA(5,21) baseline, writes JSON + HTML.
+- Smoke run: 3 local datasets, 370 bars, 4 round trips, net P&L −₹125.46
+  (evidence only).
+- 18 focused tests in `tests/test_evaluation.py`.
+
 ---
 
 *Sources: `PROJECT_PLAN.md` (§17b–17d, DoD §25–28), `docs/trading/PAPER_TRADING_V1.md`, `ACTIVITY_LOG.md`, `git log`, repository tree, and `pytest` results.*

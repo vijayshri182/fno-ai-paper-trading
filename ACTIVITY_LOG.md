@@ -1203,6 +1203,32 @@ in the repo, reconciled and committed).
 
 ---
 
+## 4w. 2026-09-11 — WS 7.4 Historical strategy evaluation
+
+**Objective.** Deterministic multi-session evaluation of the frozen baseline (or any strategy)
+over validated datasets, with the standardized metric set.
+
+**Decisions.**
+1. New `evaluation/` package on top of the existing backtest + research experiment machinery
+   (`run_dataset_experiment`, `compute_metrics`) — no re-implementation of replay.
+2. Records: `EvaluationConfig`, `SessionEvaluation`, `EvaluationAggregate`, `EvaluationRun`;
+   aggregate chains per-session equity curves into one composite (per-session increments onto
+   a running total with shared `initial_capital`).
+3. Standardized metrics derived from `BacktestResult`: P&L, return %, win rate, round trips,
+   avg trade, transaction costs, max drawdown (+%), exposure, losing streak, profit factor.
+4. `scripts/evaluate_historical.py` CLI (offline, read-only) writes JSON + HTML reports.
+5. Reuses `research.report` CSS/helpers for a labelled "FROZEN BASELINE" report page.
+
+**Files.** `src/fno_ai_paper_trading/evaluation/{__init__,records,historical,report}.py`,
+`tests/test_evaluation.py`, `scripts/evaluate_historical.py`.
+
+**Verification.** Full suite **606 passed** (597 + 9 new); CLI smoke run over 3 datasets,
+370 bars, 4 round trips, net P&L −₹125.46 (evidence only).
+
+**Status.** Committed as `feat: WS 7.4 standardized historical strategy evaluation`, pushed.
+
+---
+
 ## 5. Open Topics / Risks
 
 - **10-Sep-2026 real-data paper replay loss (~₹194.68).** An evaluation
