@@ -9,7 +9,7 @@ constructed with a live flag. This is the only broker shipped in Phase 1.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from decimal import Decimal
 from typing import Callable
@@ -101,6 +101,30 @@ class PaperBroker(Broker):
     @property
     def fills(self) -> list[Fill]:
         return list(self._fills)
+
+    def snapshot(self) -> tuple[list[Order], list[Fill]]:
+        """A stable, detached copy of the broker's order/fill ledger.
+
+        Orders are re-created (copies), so later mutations of the live orders
+        cannot affect a captured snapshot; fills are frozen and shared.
+        """
+        orders = [replace(order) for order in self._orders.values()]
+        return orders, list(self._fills)
+
+    def restore(self, orders: list[Order], fills: list[Fill]) -> None:
+        """Replace this broker's entire ledger with previously captured state.
+
+        Requires an empty broker: restoring into a broker that already executed
+        orders would silently corrupt the paper ledger. The restored orders and
+        fills are deserialized results, never executed again.
+        """
+        if self._orders or self._fills:
+            raise RuntimeError(
+                "cannot restore a ledger into a non-empty paper broker; "
+                "use a fresh broker for the restored session"
+            )
+        self._orders = {order.order_id: order for order in orders}
+        self._fills = list(fills)
 
     def _apply_slippage(self, price: Decimal, side: OrderSide) -> Decimal:
         base = positive_decimal(price, "price")

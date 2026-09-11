@@ -1,4 +1,4 @@
-"""Deterministic current-data paper session runtime (WS 6.4b).
+"""Deterministic current-data paper session runtime (WS 6.4b / WS 6.5).
 
 This is the orchestration layer of the V1 paper-trading session. It owns exactly
 the session lifecycle concerns and nothing else:
@@ -12,17 +12,21 @@ the session lifecycle concerns and nothing else:
 * protective-stop ordering (signal first, stop second, entry candle excluded)
   routed through the single authoritative ``TradingService.protective_exit`` /
   :func:`~fno_ai_paper_trading.risk.stop_loss.enforce_stop` executor,
-* equity snapshots, counters and the ``--once``/``--loop`` lifecycle.
+* equity snapshots, counters and the ``--once``/``--loop`` lifecycle,
+* session-state snapshot and restore for crash-recovery across restarts (WS 6.5).
 
 It deliberately contains **no** sizing math, **no** risk arithmetic, **no**
-stop arithmetic, **no** persistence and **no** environment parsing: sizing lives
+stop arithmetic, **no** environment parsing, and **no** disk I/O: sizing lives
 in :class:`RiskBasedPositionSizer`, static caps in :class:`RiskManager`, the
-stop rule/executor in ``risk.stop_loss``, state is in-memory only, and settings
-come from :class:`PaperSettings`. It never imports ``backtest.*``.
+stop rule/executor in ``risk.stop_loss``, snapshots are created by
+:meth:`snapshot` and restored by :meth:`restore`, and settings come from
+:class:`PaperSettings`. Disk persistence belongs exclusively to
+:mod:`fno_ai_paper_trading.persistence.session_store`; this module never writes
+files. It never imports ``backtest.*``.
 
-Zero persistence in this work stream: restarting a session constructs a fresh
-in-memory runtime. ``Portfolio.apply_fill`` remains the sole accounting path;
-the session never mutates cash, positions, P&L or trades itself.
+``Portfolio.apply_fill`` remains the sole accounting path; the session never
+mutates cash, positions, P&L or trades itself. Restore only deserializes prior
+results — it never re-executes fills.
 """
 from __future__ import annotations
 
@@ -43,6 +47,7 @@ from fno_ai_paper_trading.models.instruments import Instrument
 from fno_ai_paper_trading.models.market import MarketPrice
 from fno_ai_paper_trading.models.order import Order
 from fno_ai_paper_trading.models.position import Position
+from fno_ai_paper_trading.persistence.session_store import SessionSnapshot
 from fno_ai_paper_trading.portfolio.portfolio import Portfolio
 from fno_ai_paper_trading.risk.manager import RiskDecision, RiskManager
 from fno_ai_paper_trading.risk.sizer import RiskBasedPositionSizer, SizerConfig, SizingResult
@@ -545,6 +550,66 @@ class PaperSession:
             reference_price=bar.close,
         )
 
+    # ------------------------------------------------------------ snapshot/restore
+    def snapshot(self) -> SessionSnapshot:
+        """A stable, detached capture of the session's entire evolving state.
+
+        The snapshot is safe to hold while the session continues: portfolio
+        positions are copied, orders are copied via ``dataclasses.replace``,
+        and frozen fills are shared. The snapshot object itself is immutable.
+        """
+        broker_orders, broker_fills = self.broker.snapshot()
+        portfolio = _portfolio_from_live(self.portfolio)
+        return SessionSnapshot(
+            instrument=self.instrument,
+            interval_token=self.interval_token,
+            interval_minutes=self.interval_minutes,
+            warmup_bars=self.warmup_bars,
+            quantity=self.quantity,
+            portfolio=portfolio,
+            orders=tuple(broker_orders),
+            fills=tuple(broker_fills),
+            consumed_timestamps=tuple(sorted(self._consumed)),
+            entry_candles=tuple(sorted(self._entry_candle.items())),
+            orders_submitted=self._orders,
+            fills_count=self._fills,
+            trades_count=self._trades,
+            rejections=self._rejections,
+            skips=self._skips,
+        )
+
+    def restore(self, snapshot: SessionSnapshot) -> None:
+        """Overwrite this session's entire evolving state from ``snapshot``.
+
+        The session must be stopped and must have been built for the same
+        instrument, interval and warm-up gate as the snapshot. Restore is a pure
+        deserialization of recorded results: it never re-runs accounting, fills or
+        ``Portfolio.apply_fill``.
+        """
+        if self._running:
+            raise RuntimeError(
+                "cannot restore into a running session; call stop() first"
+            )
+        _validate_restore_target(snapshot, self.instrument, self.interval_token, self.warmup_bars)
+
+        self.portfolio = _portfolio_from_snapshot(snapshot.portfolio)
+        self.broker.restore(list(snapshot.orders), list(snapshot.fills))
+        self._trading = TradingService(
+            self.settings,
+            self.provider,
+            self.risk_manager,
+            self.broker,
+            self.portfolio,
+        )
+        self._consumed = set(snapshot.consumed_timestamps)
+        self._entry_candle = dict(snapshot.entry_candles)
+        self._orders = snapshot.orders_submitted
+        self._fills = snapshot.fills_count
+        self._trades = snapshot.trades_count
+        self._rejections = snapshot.rejections
+        self._skips = snapshot.skips
+        self._running = False
+
     # ------------------------------------------------------------ step builder
     @staticmethod
     def _step(bar: MarketPrice, *, signal: Signal = Signal.HOLD, **kwargs) -> SessionStep:
@@ -574,6 +639,101 @@ class PaperSession:
     @property
     def consumed_candles(self) -> int:
         return len(self._consumed)
+
+
+# ------------------------------------------------------------------ #
+# Snapshot helpers (module-level to avoid aliasing concerns)
+# ------------------------------------------------------------------ #
+
+
+def _validate_restore_target(
+    snapshot: SessionSnapshot,
+    session_instrument: Instrument,
+    session_interval_token: str,
+    session_warmup_bars: int,
+) -> None:
+    if snapshot.instrument.symbol != session_instrument.symbol:
+        raise ValueError(
+            f"snapshot instrument symbol {snapshot.instrument.symbol!r} "
+            f"does not match session {session_instrument.symbol!r}"
+        )
+    if snapshot.instrument.exchange_token != session_instrument.exchange_token:
+        raise ValueError(
+            f"snapshot instrument token {snapshot.instrument.exchange_token!r} "
+            f"does not match session {session_instrument.exchange_token!r}"
+        )
+    if snapshot.interval_token != session_interval_token:
+        raise ValueError(
+            f"snapshot interval {snapshot.interval_token!r} "
+            f"does not match session interval {session_interval_token!r}"
+        )
+    if snapshot.warmup_bars != session_warmup_bars:
+        raise ValueError(
+            f"snapshot warmup_bars {snapshot.warmup_bars} "
+            f"does not match session warmup_bars {session_warmup_bars}"
+        )
+
+
+def _portfolio_from_live(portfolio: Portfolio) -> Portfolio:
+    """Copy a live portfolio into a new, snapshot-safe instance.
+
+    Position objects are copied so later session activity on the original
+    portfolio cannot mutate the snapshot. ``realized_pnl`` may be negative on a
+    live position (partial-close at a loss) and must be set after construction
+    because ``Position.__post_init__`` enforces non-negative validation.
+    """
+    positions: dict[str, Position] = {}
+    for symbol, position in portfolio.positions.items():
+        if position.is_flat:
+            continue
+        copied = Position(
+            instrument=position.instrument,
+            quantity=position.quantity,
+            average_entry_price=position.average_entry_price,
+            opened_at=position.opened_at,
+        )
+        copied.realized_pnl = position.realized_pnl
+        positions[symbol] = copied
+    snapshot_portfolio = Portfolio(
+        portfolio.cash,
+        positions=positions,
+        trade_history=list(portfolio.trade_history),
+        realized_pnl=portfolio.realized_pnl,
+        long_only=portfolio.long_only,
+    )
+    snapshot_portfolio.initial_cash = portfolio.initial_cash
+    return snapshot_portfolio
+
+
+def _portfolio_from_snapshot(portfolio: Portfolio) -> Portfolio:
+    """Build a fresh Portfolio from a deserialized snapshot portfolio.
+
+    The snapshot portfolio already contains freshly deserialized Position objects
+    (from ``session_store._position_from_dict``), so these are safe to pass
+    directly. ``realized_pnl`` is applied after construction for the same reason
+    as :func:`_portfolio_from_live`.
+    """
+    positions: dict[str, Position] = {}
+    for symbol, position in portfolio.positions.items():
+        if position.is_flat:
+            continue
+        reconstructed = Position(
+            instrument=position.instrument,
+            quantity=position.quantity,
+            average_entry_price=position.average_entry_price,
+            opened_at=position.opened_at,
+        )
+        reconstructed.realized_pnl = position.realized_pnl
+        positions[symbol] = reconstructed
+    reconstructed_portfolio = Portfolio(
+        portfolio.cash,
+        positions=positions,
+        trade_history=list(portfolio.trade_history),
+        realized_pnl=portfolio.realized_pnl,
+        long_only=portfolio.long_only,
+    )
+    reconstructed_portfolio.initial_cash = portfolio.initial_cash
+    return reconstructed_portfolio
 
 
 def _accounting_failed(order_result: OrderResult | None) -> bool:
