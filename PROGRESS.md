@@ -5,7 +5,7 @@
 > the **actual repository state** (files, tests, commits). No progress is
 > reported from intent — only from code, tests and git.
 >
-> **State as of:** 2026-09-11 · HEAD `4b3dba4` (`feat: Phase 6 WS 6.7 acceptance replay tests`).
+> **State as of:** 2026-09-11 · HEAD `aedd0bc` (`docs: update progress tracker and activity log after WS 6.7`).
 > Working tree clean. Full suite: **546 passed** (offline, deterministic).
 
 ---
@@ -28,12 +28,12 @@ trading, AI and real-broker integration remain explicitly out of scope.
 | Item | Value |
 |---|---|
 | Branch | `master` |
-| HEAD SHA | `4b3dba4` |
-| origin/master | `4b3dba4` |
+| HEAD SHA | `aedd0bc` |
+| origin/master | `aedd0bc` |
 | HEAD == origin/master | ✅ yes (after push) |
 | Working tree | clean |
 
-Committed: `4b3dba4` (WS 6.7) → `118e976` (WS 6.5) → `b05a17c` (WS 6.4b) → `75d3a44` (WS 6.4) → `b4f8129` (WS 6.3) → `e853667` (WS 6.2). All pushed.
+Committed: `aedd0bc` (docs) → `0e5ce1c` (WS 6.7) → `118e976` (WS 6.5) → `b05a17c` (WS 6.4b) → `75d3a44` (WS 6.4) → `b4f8129` (WS 6.3) → `e853667` (WS 6.2). All pushed.
 
 ## 2. Current phase
 
@@ -47,7 +47,7 @@ Committed: `4b3dba4` (WS 6.7) → `118e976` (WS 6.5) → `b05a17c` (WS 6.4b) →
 | 6.4(+b) | Current-data paper-session engine + stop-loss | **DONE** — commit `75d3a44` (stop-loss) + commit `b05a17c` (session runtime) |
 | 6.5 | State persistence / recovery | **DONE** — commit `118e976` (pushed) |
 | 6.6 | Session operations / monitoring | PENDING |
-| 6.7 | Session testing + acceptance replay | **DONE** — commit `4b3dba4` (30 offline acceptance-replay tests; full criteria 1–30 verified) |
+| 6.7 | Session testing + acceptance replay | **DONE** — commit `0e5ce1c` (30 offline acceptance-replay tests; full criteria 1–30 verified) |
 
 ## 3. MVP progress percentage
 
@@ -119,7 +119,7 @@ Status legend: ✅ COMPLETE · 🟡 IN PROGRESS · ⬜ NOT STARTED · ⛔ BLOCKE
 | 13. V1 risk-based sizing | ✅ | `RiskBasedPositionSizer`/`SizerConfig` (1% risk, 2% stop, lot-down, cash bound, skip-when-open) | ✅ `tests/test_sizer.py` | `risk/sizer.py` |
 | 14. Long-only gating + cash guard | ✅ | `Portfolio.long_only`/`PaperAccount` reject SELL-to-open at `apply_fill`; sizer cash bound; **session-level routing done** (BUY when already long/short ignored, SELL when flat ignored) | ✅ `test_account.py`, `test_sizer.py`, `tests/test_paper_session.py` | `portfolio/portfolio.py`, `portfolio/account.py`, `risk/sizer.py`, `services/paper_session.py` |
 | 15. Automatic 2% stop-loss enforcement | ✅ | `StopDecision`/`StopExitResult`/`StopLossPolicy`/`enforce_stop`; `OrderType.STOP`; `TradingService.protective_exit`; **session wiring done** (signal-first, stop-second, entry candle excluded) — commits `75d3a44` + `b05a17c` | ✅ `tests/test_stop_loss.py` (41 tests); `tests/test_paper_session.py` stop integration; 2 legacy `test_backtest.py` tests scoped with `enable_stop_loss=False` | `risk/stop_loss.py`, `models/enums.py`, `risk/__init__.py`, `backtest/config.py`, `backtest/engine.py`, `services/trading_service.py`, `portfolio/portfolio.py`, `services/paper_session.py` |
-| 16. Live paper-session engine + acceptance replay | ✅ | `services/paper_session.py` exists: completed-candle cadence, duplicate guard, NSE phase/holiday gating, 22-bar warm-up, long-only BUY/SELL/HOLD mapping, daily-loss policy (entries gated, exits executable), signal-before-stop ordering, injected clock/fill-price determinism, `--once`/`--loop` polling; **30 offline acceptance-replay tests (WS 6.7)** covering all §13 criteria 1–30 end-to-end | ✅ `tests/test_paper_session.py` (38 tests), `tests/test_session_persistence.py` (34 tests), **`tests/test_acceptance_replay.py` (30 tests, commit `4b3dba4`)** | `services/paper_session.py`, `broker/paper_broker.py`, `services/trading_service.py`, `services/__init__.py`, `tests/test_acceptance_replay.py` |
+| 16. Live paper-session engine + acceptance replay | ✅ | `services/paper_session.py` exists: completed-candle cadence, duplicate guard, NSE phase/holiday gating, 22-bar warm-up, long-only BUY/SELL/HOLD mapping, daily-loss policy (entries gated, exits executable), signal-before-stop ordering, injected clock/fill-price determinism, `--once`/`--loop` polling; **30 offline acceptance-replay tests (WS 6.7)** covering all §13 criteria 1–30 end-to-end | ✅ `tests/test_paper_session.py` (38 tests), `tests/test_session_persistence.py` (34 tests), **`tests/test_acceptance_replay.py` (30 tests, commit `0e5ce1c`)** | `services/paper_session.py`, `broker/paper_broker.py`, `services/trading_service.py`, `services/__init__.py`, `tests/test_acceptance_replay.py` |
 
 ## 6. Security / compliance status
 
@@ -137,8 +137,9 @@ Status legend: ✅ COMPLETE · 🟡 IN PROGRESS · ⬜ NOT STARTED · ⛔ BLOCKE
 
 ## 7. Current blockers
 
-- **None code-level.** WS 6.7 is committed (`4b3dba4`) and pushed; WS 6.1 (doc alignment) and
-  WS 6.6 (ops/monitoring) are the next candidate workstreams. No code blockers.
+- **None code-level.** WS 6.7 is committed (`0e5ce1c`) and pushed; docs updated
+  (`cb170a5`). Next candidate workstreams: WS 6.1 (doc alignment) and
+  WS 6.6 (ops/monitoring). No code blockers.
 - (Deferred, non-blocking) Real-data research/session runs need a valid
   `UPSTOX_ACCESS_TOKEN`; offline smoke tests exist.
 - (Pre-existing, non-blocking) `services/__init__.py` has no trailing newline —
@@ -163,7 +164,7 @@ Status legend: ✅ COMPLETE · 🟡 IN PROGRESS · ⬜ NOT STARTED · ⛔ BLOCKE
 2. **Committed `75d3a44` — WS 6.4 automatic 2% stop-loss enforcement** (reviewed, approved, pushed): `risk/stop_loss.py` (`StopLossPolicy` decision rule + `enforce_stop` single authoritative executor), `OrderType.STOP`, `BacktestConfig.enable_stop_loss`/`stop_loss_pct`, `BacktestEngine` integration (signal-first, stop-second, before equity snapshot), `TradingService.protective_exit`, `risk/__init__.py` exports, deterministic `Position.opened_at`, `tests/test_stop_loss.py` (41 tests), 2 legacy backtest tests scoped via `enable_stop_loss=False`. 9 files, +775/−4.
 3. **Committed `b4f8129` — WS 6.3 V1 risk-based sizing**: `RiskBasedPositionSizer` (1% equity risk over 2% stop, lot-rounded down, cash-bound, single-position skip), `SizerConfig`, `tests/test_sizer.py`.
 4. **Committed `e853667` — WS 6.2 domain/model completion**: long-only + `PaperAccount` accounting-layer gating.
-5. **Committed `4b3dba4` — WS 6.7 acceptance replay tests** (reviewed, approved, pushed to origin/master): `tests/test_acceptance_replay.py` (30 deterministic, offline tests) replaying every V1 acceptance criterion (§13, criteria 1–30) end-to-end through `PaperSession`. Full suite: **546 passed** (516 committed baseline + 30 new). Single new file; no production code changed.
+5. **Committed `0e5ce1c` — WS 6.7 acceptance replay tests** (reviewed, approved, pushed to origin/master): `tests/test_acceptance_replay.py` (30 deterministic, offline tests) replaying every V1 acceptance criterion (§13, criteria 1–30) end-to-end through `PaperSession`. Full suite: **546 passed** (516 committed baseline + 30 new). Single new file; no production code changed.
 
 ## 9. Intentionally out of scope (current phase)
 
@@ -178,10 +179,10 @@ Status legend: ✅ COMPLETE · 🟡 IN PROGRESS · ⬜ NOT STARTED · ⛔ BLOCKE
 
 ## 10. Next recommended task
 
-> **WS 6.7 is DONE** (commit `4b3dba4`, pushed). Next approved workstreams: **WS 6.1** (doc alignment) and **WS 6.6** (ops/monitoring) — requires user approval before starting.
+> **WS 6.7 is DONE** (commit `0e5ce1c`, pushed). Next approved workstreams: **WS 6.1** (doc alignment) and **WS 6.6** (ops/monitoring) — requires user approval before starting.
 
 1. ~~**WS 6.5 — State persistence / recovery**~~ DONE — commit `118e976`, pushed.
-2. ~~**WS 6.7 — Acceptance replay tests**~~ DONE — commit `4b3dba4`, pushed; 30 tests, 546 suite passing.
+2. ~~**WS 6.7 — Acceptance replay tests**~~ DONE — commit `0e5ce1c`, pushed; 30 tests, 546 suite passing.
 3. **WS 6.1 — Documentation / plan alignment** (pending user approval): refresh specs post-WS 6.4b/6.5/6.7.
 4. **WS 6.6 — Session operations / monitoring** (pending user approval): logging/dashboards for the running session.
 
