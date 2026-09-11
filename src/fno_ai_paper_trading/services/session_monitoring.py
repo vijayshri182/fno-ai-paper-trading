@@ -587,14 +587,14 @@ def report_to_html(report: SessionReport) -> str:
 <div class="wrap">
   <header>
     <h1>{title}</h1>
-    <p>Generated {escape(generated)} &middot; paper-session operations</p>
+    <p>Generated {escape(generated)} &middot; {escape(report.data_source)} &middot; {escape(report.replay_mode)} &middot; No live orders</p>
   </header>
   <div class="cards">{cards_html}</div>
   <section><h2>Portfolio</h2>{portfolio_rows}</section>
   <section><h2>Session counters</h2>{counter_rows}</section>
   <section><h2>Ledger ({len(report.ledger)} rows)</h2>{table(["Time", "Signal", "Action", "Price", "Qty", "Notional", "Commission", "Equity"], ledger_rows)}</section>
   <section><h2>Equity curve ({len(report.equity_curve)} points)</h2>{table(["Time", "Equity"], curve_rows)}</section>
-  <div class="footer">Deterministic paper-session report &middot; no real orders &middot; no secret data</div>
+  <div class="footer">Deterministic paper-session report &middot; no live orders &middot; no secret data</div>
 </div>
 </body>
 </html>"""
