@@ -81,7 +81,8 @@ The five additive `PaperSettings` fields below are declared at
 `paper_stop_loss_pct`); two are not yet consumed by any runtime
 (`paper_lookback_days`, `paper_state_dir` — the persistence store uses the matching
 constant `DEFAULT_STATE_DIR = "paper_state"`). None of the five are wired to
-environment variables by `load_settings()` — no `FNO_PAPER_INTERVAL` etc. exist yet.
+  environment variables by `load_settings()` — no `FNO_PAPER_INTERVAL` etc. exist
+  yet; that env wiring is **deferred to Phase 7** and is out of V1 scope.
 
 | Field | Default | Meaning |
 |---|---|---|
@@ -107,7 +108,7 @@ by `RiskManager`, the backtest harness and the demos.
 | Long-only gating | **IMPLEMENTED** | `Portfolio.long_only`/`PaperAccount` reject `SELL`-to-open/oversell at `apply_fill`; session-level routing implemented (WS 6.4b): BUY ignored when already long, SELL when flat |
 | Cash/leverage guard | **IMPLEMENTED** | Enforced by the `RiskBasedPositionSizer` capital bound (§6 rule 6): sized quantity never exceeds available cash; generic `Portfolio` accounting unchanged |
 | Session state persistence | **IMPLEMENTED** | `persistence/session_store.py` (WS 6.5): JSON snapshots + SHA-256 `state_hash` under git-ignored `paper_state/`; 34 persistence tests |
-| Env wiring for the five new fields | **NOT IMPLEMENTED** | `load_settings()` does not yet read `FNO_PAPER_*` for the five scaffolding fields |
+| Env wiring for the five new fields | **DEFERRED TO PHASE 7 (out of V1 scope)** | V1 consumes the typed `PaperSettings` defaults (`paper_interval`, `paper_risk_per_trade_pct`, `paper_stop_loss_pct`); `load_settings()` env wiring for the five `FNO_PAPER_*` fields is a Phase 7 configuration enhancement, not part of V1 |
 | Live/streaming quotes | **NOT IMPLEMENTED** | The Upstox adapter derives quotes from the historical endpoint; there is no tick/websocket path |
 
 > **Phase numbering note:** `PROJECT_PLAN.md` §17d and `ACTIVITY_LOG.md` now
@@ -276,10 +277,20 @@ completed 5m candle while a position is open.
   breaches the stop. The paper exit fill price is fixed as the **worse of the candle
   open and the stop price** for the long position (a deterministic V1 rule, asserted
   by acceptance criterion 12), recorded with its timestamp.
-- The stop exit is **enforced automatically**: it is a real paper `Order`/`Fill`/`Trade`
-  routed through `RiskManager` → `PaperBroker` → `Portfolio`, not a manual override.
-  Realized P&L, commission and slippage for the stop exit are accounted precisely as
-  for any other fill.
+- The stop exit is **enforced automatically**: it is a real paper `Order`/`Fill`/`Trade`,
+  executed through the protective-exit path
+  **Stop-loss enforcement → `TradingService.protective_exit` → `PaperBroker` →
+  `Portfolio.apply_fill`**, not a manual override. Realized P&L, commission and
+  slippage for the stop exit are accounted precisely as for any other fill
+  (`Portfolio.apply_fill` is the sole accounting path).
+- Protective stop exits **deliberately BYPASS `RiskManager`**: the daily-loss cap
+  (`max_daily_loss`) gates **new entries** only, and must never prevent a
+  protective exit from closing an already-open position (a cap-blocked exit would
+  leave the position exposed and is therefore never attempted). Normal **entries**
+  remain fully subject to `RiskManager` gates (quantity / notional / daily-loss),
+  and protective exits remain executable regardless of the daily-loss entry gate.
+  This safety decision is asserted by acceptance criterion 8 and documented in the
+  tests (`tests/test_acceptance_replay.py`, `test_ac_08_*`).
 - A stop exit sets the position flat; later `BUY` crossovers may open a new position.
 - Because V1 is long-only, the 2% stop is **below** the entry. A symmetric take-profit
   is out of scope for V1.
@@ -372,7 +383,8 @@ V1 conventions:
   orders/fills, consumed/entry-candle timestamps, counters) after a restart.
 - The scaffolded `paper_state_dir = "paper_state"` default matches the store's
   `DEFAULT_STATE_DIR`. `FNO_PAPER_*` env wiring for the five scaffolded fields is
-  still not implemented.
+  **deferred to Phase 7** and out of V1 scope (V1 consumes the typed
+  `PaperSettings` defaults).
 
 **V1 session requirements (DELIVERED by WS 6.2–6.7):**
 
@@ -451,7 +463,13 @@ All six risk-sizing criteria are **IMPLEMENTED** by `RiskBasedPositionSizer`
 
 7. A long entered at `P` carries `stop = P × (1 − 0.02)`.
 8. The stop is checked after every completed candle; a breach produces a **paper**
-   exit `Fill`/`Trade` routed through `RiskManager` → `PaperBroker` → `Portfolio`.
+   exit `Fill`/`Trade` through the protective-exit path
+   **Stop-loss enforcement → `TradingService.protective_exit` → `PaperBroker` →
+   `Portfolio`**. Protective exits **bypass `RiskManager` by design**: the
+   daily-loss cap gates new entries only and must never prevent a protective exit
+   from closing an existing position (see §7). The exit is therefore executable
+   regardless of the daily-loss entry gate; this tested behavior is asserted by
+   `test_ac_08_*` in `tests/test_acceptance_replay.py`.
 9. The stop exit records its timestamp and, on the resulting `Trade`, the
    slippage-adjusted exit price, commission, realized P&L and per-trade P&L — all
    `Decimal`. Slippage needs no separate field: `Trade` has no slippage attribute,
@@ -560,8 +578,8 @@ All six risk-sizing criteria are **IMPLEMENTED** by `RiskBasedPositionSizer`
   operator deployment concern.
 - Env-variable wiring for the five scaffolded fields (`FNO_PAPER_INTERVAL`,
   `FNO_PAPER_LOOKBACK_DAYS`, `FNO_PAPER_RISK_PER_TRADE_PCT`, `FNO_PAPER_STOP_LOSS_PCT`,
-  `FNO_PAPER_STATE_DIR`) plus `.env.example` rows — still open (the session now
-  consumes the typed defaults for three of the five).
+  `FNO_PAPER_STATE_DIR`) plus `.env.example` rows — **deferred to Phase 7** (out of
+  V1 scope; the session consumes the typed defaults for three of the five).
 - Live/streaming quotes behind an interface, if a vendor and token shape are approved.
 - AI-driven signal support behind the `Strategy` interface, never autonomous execution.
 - A real broker adapter remains a separate, explicitly controlled capability, disabled

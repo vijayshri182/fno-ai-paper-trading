@@ -5,35 +5,46 @@
 > the **actual repository state** (files, tests, commits). No progress is
 > reported from intent — only from code, tests and git.
 >
-> **State as of:** 2026-09-11 · HEAD `c4570ba` (`docs: WS 6.6 session monitoring + architecture SVG (561 tests)`) — WS 6.6 implementation `00ed8ed` + docs.
-> Working tree clean. Full suite: **561 passed** (offline, deterministic).
+> **State as of:** 2026-09-11 · Phase 6 **COMPLETE** · F&O Paper Trading V1
+> **IMPLEMENTATION COMPLETE** · V1 STATUS: **READY**. Documented at base HEAD
+> `302bf35`; the operative docs-finalization checkpoint is committed on top
+> (`docs: finalize Phase 6 and F&O Paper Trading V1`). Working tree clean.
+> Full suite: **561 passed** (offline, deterministic, 0 skipped / 0 xfailed);
+> **30/30 acceptance criteria replay-green**; paper-only boundary verified.
 
 ---
 
 ## 1. Overall project status
 
-The analysis/backtest/historical-data stack (Phases 1–4) is **complete** and the
-repo is deep in **Phase 6 (Paper Trading V1)**. WS 6.2 (domain/model completion),
-WS 6.3 (V1 risk-based sizing), WS 6.4 (automatic 2% stop-loss) and **WS 6.4b**
-(the deterministic current-data paper-session runtime) are done and
-**committed** (`b05a17c`). **WS 6.5 (state persistence / recovery)** is now
-**committed and pushed as `118e976`** (516 passed). The live/current-data
-session engine now exists (`services/paper_session.py`) and is fully wired to
-the sizer, risk manager, stop-loss and broker through two deterministic seams;
-`PaperSession.snapshot()`/`restore()` now let a session survive a restart. Live
-trading, AI and real-broker integration remain explicitly out of scope.
+**Phase 6 (Paper Trading V1) is COMPLETE and F&O Paper Trading V1 is declared
+IMPLEMENTATION COMPLETE — V1 STATUS: READY.** All Phase 6 work streams are done
+and pushed: WS 6.1 (doc/plan alignment), WS 6.2 (domain/model completion),
+WS 6.3 (V1 risk-based sizing), WS 6.4 (automatic 2% stop-loss), WS 6.4b
+(deterministic current-data paper-session runtime), WS 6.5 (state
+persistence / recovery), WS 6.6 (session operations / monitoring) and WS 6.7
+(offline acceptance replay). The live/current-data session engine
+(`services/paper_session.py`) is fully wired to the sizer, risk manager,
+stop-loss and broker through two deterministic seams;
+`PaperSession.snapshot()`/`restore()` let a session survive a restart; operator
+monitoring and reporting exist (`session_monitoring.py` + `paper_session_report.py`).
+**561/561 tests pass (0 skipped, 0 xfailed); 30/30 V1 acceptance criteria pass;
+execution boundary is paper-only (`is_live=False` everywhere, no real-broker
+code, no live order placement); the session runtime is deterministic; no AI and
+no live trading.** The only remaining configuration item — `FNO_PAPER_*` env
+wiring for the five scaffolded fields — is explicitly deferred to Phase 7 and out
+of V1 scope (see §9, §10).
 
 ### Git checkpoint
 
 | Item | Value |
 |---|---|
 | Branch | `master` |
-| HEAD SHA | `c4570ba` |
-| origin/master | `c4570ba` |
-| HEAD == origin/master | ✅ yes (pushed) |
+| Base HEAD (this finalization) | `302bf35` |
+| origin/master | `302bf35` (pushed) |
+| HEAD == origin/master | ✅ yes |
 | Working tree | clean |
 
-Committed: `c4570ba` (docs) → `00ed8ed` (WS 6.6) → `87cb906` (docs) → `248c895` (WS 6.1) → `3166aee` (docs) → `0e5ce1c` (WS 6.7) → `118e976` (WS 6.5) → `b05a17c` (WS 6.4b) → `75d3a44` (WS 6.4) → `b4f8129` (WS 6.3) → `e853667` (WS 6.2). All pushed.
+Committed: `302bf35` (docs) → `c4570ba` (docs) → `00ed8ed` (WS 6.6) → `87cb906` (docs) → `248c895` (WS 6.1) → `3166aee` (docs) → `0e5ce1c` (WS 6.7) → `118e976` (WS 6.5) → `b05a17c` (WS 6.4b) → `75d3a44` (WS 6.4) → `b4f8129` (WS 6.3) → `e853667` (WS 6.2). All pushed.
 
 ## 2. Current phase
 
@@ -56,7 +67,7 @@ Committed: `c4570ba` (docs) → `00ed8ed` (WS 6.6) → `87cb906` (docs) → `248
 > Phases 1, 2, 3, 4 **plus** Phase 6 (V1). AI (Phase 5) and live-broker (Phase 7)
 > are **not** MVP capabilities (see §9).
 
-**Current estimate: 97%**
+**Current estimate: 100%** — Phase 6 COMPLETE · V1 READY · `FNO_PAPER_*` env wiring explicitly out of V1 (Phase 7).
 
 ### Calculation
 
@@ -78,13 +89,14 @@ no code.
 | 9 | Order orchestration (StrategyService / TradingService) | 1.0 | Signal → risk → broker → portfolio; tested |
 | 10 | Deterministic backtest harness | 1.0 | Engine, costs, metrics, datasets; tested |
 | 11 | Research / robustness framework + real-data baseline | 1.0 | Tested; NIFTY 50 1d baseline produced |
-| 12 | Paper-session configuration (+ env wiring) | 0.5 | Five `paper_*` fields consumed by the session defaults; `FNO_PAPER_*` env wiring NOT STARTED |
+| 12 | Paper-session configuration | 1.0 | Five `paper_*` fields scaffolded and consumed by the session defaults; `FNO_PAPER_*` env wiring re-scoped to **Phase 7 (out of V1 scope)** |
 | 13 | V1 risk-based position sizing | 1.0 | `RiskBasedPositionSizer` (1% / 2%, lot-down, cash bound); tested |
 | 14 | Long-only gating + cash/no-leverage guard (session level) | 1.0 | `Portfolio.long_only` + session-level mapping (BUY-when-long/short ignored, SELL-when-flat ignored); tested |
 | 15 | Automatic 2% stop-loss enforcement | 1.0 | `StopLossPolicy`/`enforce_stop` + `TradingService.protective_exit` wired into the session (signal-first, stop-second, entry candle excluded); tested |
 | 16 | Live/current-data paper-session engine + acceptance replay | 1.0 | `services/paper_session.py` **exists**; 38 WS 6.4b + 34 WS 6.5 + **30 WS 6.7 acceptance-replay** + **15 WS 6.6 monitoring tests** (all 561 passing) |
 
-Sum = 15×1.0 + 0.5 = **15.5 / 16 = 96.9% → 97%**
+Sum = 16×1.0 = **16 / 16 = 100%** — Phase 6 COMPLETE; V1 READY.
+(`FNO_PAPER_*` env wiring is re-scoped to Phase 7 / out of V1 scope — see §9, §10.)
 
 ## 4. Phase-by-phase status
 
@@ -95,7 +107,7 @@ Sum = 15×1.0 + 0.5 = **15.5 / 16 = 96.9% → 97%**
 | 3 | Strategy research & robustness framework | **COMPLETE** | commits `fb3f1c5`, `3a60a41` |
 | 4 | Historical-data CLI + real-data research | **COMPLETE** | commits `da1b59a`, `e1a2b38` |
 | 5 | AI analysis / decision support | **NOT STARTED** | no AI code; **out of MVP scope** |
-| 6 | Paper Trading V1 | **IN PROGRESS** | WS 6.1–6.6 **done** (all committed + pushed, incl. WS 6.6 monitoring `00ed8ed`); WS 6.7 (acceptance replay) done; only `FNO_PAPER_*` env wiring remains |
+| 6 | Paper Trading V1 | **COMPLETE** | WS 6.1–6.7 **DONE** (all committed + pushed); V1 **READY**; `FNO_PAPER_*` env wiring re-scoped to Phase 7 (out of V1 scope) |
 | 7 | Real broker / live boundary | **NOT STARTED** | explicitly out of scope |
 
 ## 5. MVP capabilities detail
@@ -115,7 +127,7 @@ Status legend: ✅ COMPLETE · 🟡 IN PROGRESS · ⬜ NOT STARTED · ⛔ BLOCKE
 | 9. Order orchestration | ✅ | `StrategyService` (signal→order), `TradingService` (risk→broker→portfolio; rejects non-paper broker; **`fill_bar` fill-price seam**, WS 6.4b) | ✅ `tests/test_strategy_service.py` | `services/strategy_service.py`, `services/trading_service.py` |
 | 10. Deterministic backtest harness | ✅ | `BacktestEngine`, `BacktestBroker` (bar-stamped fills), costs, metrics, hand-verified datasets | ✅ `tests/test_backtest.py` | `backtest/config.py`, `backtest/engine.py`, `backtest/result.py`, `backtest/datasets.py` |
 | 11. Research framework + real-data baseline | ✅ | costs/execution/regimes/split/walk-forward/sensitivity/benchmark/metrics/experiment/report; NIFTY 50 1d baseline | ✅ `tests/test_research.py`, `test_real_data_research.py` | `research/*`, `scripts/research_real_data.py` |
-| 12. Paper-session configuration | 🟡 | Five `paper_*` fields scaffolded and **consumed by the session** (scaffolding ✅); `FNO_PAPER_*` env wiring ⬜ | ✅ defaults validated | `config/settings.py` |
+| 12. Paper-session configuration | ✅ | Five `paper_*` fields scaffolded and **consumed by the session defaults**; `FNO_PAPER_*` env wiring **deferred to Phase 7 (out of V1 scope)** | ✅ defaults validated | `config/settings.py` |
 | 13. V1 risk-based sizing | ✅ | `RiskBasedPositionSizer`/`SizerConfig` (1% risk, 2% stop, lot-down, cash bound, skip-when-open) | ✅ `tests/test_sizer.py` | `risk/sizer.py` |
 | 14. Long-only gating + cash guard | ✅ | `Portfolio.long_only`/`PaperAccount` reject SELL-to-open at `apply_fill`; sizer cash bound; **session-level routing done** (BUY when already long/short ignored, SELL when flat ignored) | ✅ `test_account.py`, `test_sizer.py`, `tests/test_paper_session.py` | `portfolio/portfolio.py`, `portfolio/account.py`, `risk/sizer.py`, `services/paper_session.py` |
 | 15. Automatic 2% stop-loss enforcement | ✅ | `StopDecision`/`StopExitResult`/`StopLossPolicy`/`enforce_stop`; `OrderType.STOP`; `TradingService.protective_exit`; **session wiring done** (signal-first, stop-second, entry candle excluded) — commits `75d3a44` + `b05a17c` | ✅ `tests/test_stop_loss.py` (41 tests); `tests/test_paper_session.py` stop integration; 2 legacy `test_backtest.py` tests scoped with `enable_stop_loss=False` | `risk/stop_loss.py`, `models/enums.py`, `risk/__init__.py`, `backtest/config.py`, `backtest/engine.py`, `services/trading_service.py`, `portfolio/portfolio.py`, `services/paper_session.py` |
@@ -131,15 +143,16 @@ Status legend: ✅ COMPLETE · 🟡 IN PROGRESS · ⬜ NOT STARTED · ⛔ BLOCKE
 | Risk gatekeeper | ✅ Every strategy/order path routes through `RiskManager`; session BUY entries go through `RiskManager` via `TradingService.submit_order` |
 | Protective stop exit | ⚠️ Deliberate, documented: protective exits leave open positions executable after the daily-loss cap (`TradingService.protective_exit` and the session's signal-exit-at-cap `_force_close` skip new-entry gating) — a designed risk-control rule, not an AI/strategy bypass |
 | AI constraints (Phase 5) | ✅ N/A — no AI code exists; plan requires AI to never bypass `RiskManager` |
-| Offline/ deterministic tests | ✅ 546 tests pass with no network, no credentials |
-| Uncommitted work | ✅ None — WS 6.7 committed `78623a5` and pushed; only `PROGRESS.md`/`ACTIVITY_LOG.md` docs remain uncommitted |
+| Offline/ deterministic tests | ✅ 561 tests pass with no network, no credentials |
+| Uncommitted work | ✅ None — WS 6.1–6.7 committed and pushed; working tree clean |
 | `.gitignore` | ✅ excludes `.env`, `datasets/`, `reports/`, `paper_state/` target |
 
 ## 7. Current blockers
 
-- **None code-level.** WS 6.6 monitoring is committed (`00ed8ed`) and pushed;
-  its docs commit follows. Remaining planned areas: `FNO_PAPER_*` env wiring and
-  live/streaming quotes. No code blockers.
+- **None code-level.** Phase 6 is COMPLETE and V1 is READY. The only remaining
+  planned configuration item — `FNO_PAPER_*` env wiring for the five scaffolded
+  fields — is deferred to Phase 7 (out of V1 scope), as are live/streaming
+  quotes (out of V1 scope). No code blockers.
 - (Deferred, non-blocking) Real-data research/session runs need a valid
   `UPSTOX_ACCESS_TOKEN`; offline smoke tests exist.
 - (Pre-existing, non-blocking) `services/__init__.py` has no trailing newline —
@@ -171,6 +184,7 @@ Status legend: ✅ COMPLETE · 🟡 IN PROGRESS · ⬜ NOT STARTED · ⛔ BLOCKE
 3. **Committed `b4f8129` — WS 6.3 V1 risk-based sizing**: `RiskBasedPositionSizer` (1% equity risk over 2% stop, lot-rounded down, cash-bound, single-position skip), `SizerConfig`, `tests/test_sizer.py`.
 4. **Committed `e853667` — WS 6.2 domain/model completion**: long-only + `PaperAccount` accounting-layer gating.
 5. **Committed `0e5ce1c` — WS 6.7 acceptance replay tests** (reviewed, approved, pushed to origin/master): `tests/test_acceptance_replay.py` (30 deterministic, offline tests) replaying every V1 acceptance criterion (§13, criteria 1–30) end-to-end through `PaperSession`. Full suite: **546 passed** (516 committed baseline + 30 new). Single new file; no production code changed.
+6. **Documentation finalization — Phase 6 COMPLETE · V1 READY** (this checkpoint, per the approved read-only review): PROGRESS.md / PROJECT_PLAN.md / ACTIVITY_LOG.md / PAPER_TRADING_V1.md reconciled — stale counts (516/546 → **561**), stale WS 6.7 SHA (`78623a5` → `0e5ce1c`), missing WS 6.4/6.4b activity entries (`75d3a44`, `b05a17c`), AC-08 protective-exit path (§7/§13) and the deliberate `RiskManager` bypass documented, `FNO_PAPER_*` env wiring re-scoped to **Phase 7 (out of V1 scope)**. Full suite: **561 passed** (0 skipped, 0 xfailed); **30/30 acceptance replay-green**; paper-only boundary verified. Documentation-only; no source/test behavior changed.
 
 ## 9. Intentionally out of scope (current phase)
 
@@ -181,19 +195,21 @@ Status legend: ✅ COMPLETE · 🟡 IN PROGRESS · ⬜ NOT STARTED · ⛔ BLOCKE
 - **Short selling, leverage, futures/options** — V1 is long-only NIFTY 50 index, cash-bounded.
 - **Take-profit / trailing stops / partial exits / intra-bar execution** — completed 5m candles only; full-close exits.
 - **State persistence / recovery (WS 6.5)** — **DONE** (commit `118e976`, pushed). No `FNO_PAPER_*` env wiring was added in this stream; `paper_state/` stays git-ignored.
-- **Env wiring / `.env.example` rows for the five scaffolded `paper_*` fields** — only after the session lands.
+- **Env wiring / `.env.example` rows for the five scaffolded `paper_*` fields** — **DEFERRED TO PHASE 7** (out of V1 scope); V1 consumes the typed `PaperSettings` defaults.
 
 ## 10. Next recommended task
 
-> **WS 6.1 and WS 6.6 are DONE** (commits `248c895`, `00ed8ed`, pushed). Phase 6
-> remaining: `FNO_PAPER_*` env wiring (deferred by design) and live/streaming
-> quotes (out of V1 scope).
+> **Phase 6 is COMPLETE — F&O Paper Trading V1 IMPLEMENTATION COMPLETE — V1 STATUS:
+> READY** (561/561 passing, 30/30 acceptance, paper-only boundary, deterministic
+> session runtime, persistence/recovery, session monitoring, acceptance replay,
+> no live broker execution). No remaining V1 work. Next areas are Phase 7/future:
+> `FNO_PAPER_*` env wiring and live/streaming quotes (out of V1 scope).
 
 1. ~~**WS 6.5 — State persistence / recovery**~~ DONE — commit `118e976`, pushed.
-2. ~~**WS 6.7 — Acceptance replay tests**~~ DONE — commit `0e5ce1c`, pushed; 30 tests, 546 suite passing.
+2. ~~**WS 6.7 — Acceptance replay tests**~~ DONE — commit `0e5ce1c`, pushed; 30 tests, 546 suite passing at commit time.
 3. ~~**WS 6.1 — Documentation / plan alignment**~~ DONE — commit `248c895`, pushed.
 4. ~~**WS 6.6 — Session operations / monitoring**~~ DONE — commit `00ed8ed`, pushed; `services/session_monitoring.py` + `scripts/paper_session_report.py` + `architecture.svg`.
-5. **Optional next** — `FNO_PAPER_*` env wiring for the five scaffolded fields (deferred; session already consumes typed defaults for three of the five).
+5. **Phase 7 / future (not V1)** — `FNO_PAPER_*` env wiring for the five scaffolded fields (deferred out of V1; the session already consumes typed defaults for three of the five).
 
 ## 11. WS 6.4b handoff — new-session instructions
 

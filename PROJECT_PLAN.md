@@ -939,8 +939,10 @@ The already-wired runtime settings are `FNO_PAPER_INITIAL_CAPITAL` (100000),
 ### PLANNED / NOT IMPLEMENTED
 
 * Env wiring for the five scaffolded `paper_*` fields (`FNO_PAPER_INTERVAL`, etc.)
-  plus `.env.example` rows.
-* Live/streaming quotes (V1 derives prices from completed historical candles).
+  plus `.env.example` rows — **DEFERRED TO PHASE 7** (out of V1 scope; V1 consumes
+  the typed `PaperSettings` defaults).
+* Live/streaming quotes (V1 derives prices from completed historical candles) —
+  out of V1 scope.
 
 ## Important boundary: static caps ≠ V1 sizing
 
@@ -1240,8 +1242,10 @@ Add backtesting
 * `master` branch tracks `origin/master`
 * `.gitignore` covers `.env`
 * `src/main.py` verified as executable
-* Latest checkpoint: `baeab013d57f91b0bbe527cd5d24c3aed5994000` (`docs: add system architecture`); HEAD == origin/master, working tree clean
-* Full test suite: **334 passed** (offline, deterministic)
+* Latest checkpoint: Phase 6 documentation finalization (`docs: finalize Phase 6 and F&O Paper Trading V1`) committed on top of base `302bf35`; HEAD == origin/master, working tree clean
+* Full test suite: **561 passed** (offline, deterministic, 0 skipped / 0 xfailed)
+* Acceptance replay: **30/30** V1 acceptance criteria passing (WS 6.7)
+* Execution boundary: **paper-only** — `is_live=False` everywhere; no real-broker code; no live order placement
 
 ## Current Entry Point
 
@@ -1257,24 +1261,30 @@ F&O AI Paper Trading System
 
 ## Current Phase
 
-**IN PROGRESS — Phase 6 (Paper Trading V1).** Strategy/backtest/research work is
-done; WS 6.1–6.7 are implemented, committed and pushed (see §17d and the
-Change Log). WS 6.6 (session operations / monitoring): logging, health checks,
-reports (`build_report`/`report_from_snapshot`, HTML output) and the operator
-CLI (`scripts/paper_session_report.py`) are implemented with 15 monitoring
-tests. Real-data execution is gated on `UPSTOX_ACCESS_TOKEN`; offline smoke
-tests are provided.
+**COMPLETE — Phase 6 (Paper Trading V1) · F&O Paper Trading V1 IMPLEMENTATION
+COMPLETE · V1 STATUS: READY.** Strategy/backtest/research work is done; WS 6.1–6.7
+are implemented, committed and pushed (see §17d and the Change Log). WS 6.6
+(session operations / monitoring): logging, health checks, reports
+(`build_report`/`report_from_snapshot`, HTML output) and the operator CLI
+(`scripts/paper_session_report.py`) are implemented with 15 monitoring tests.
+Real-data execution is gated on `UPSTOX_ACCESS_TOKEN`; offline smoke tests are
+provided.
 
-Status: **RESEARCH FRAMEWORK + REAL-DATA PIPELINE + PHASE 6 PAPER TRADING V1
-IMPLEMENTED** — see §17b, §17c–17d, the data-layer notes above, the Change Log,
+Status: **PHASE 6 COMPLETE — F&O PAPER TRADING V1 IMPLEMENTATION COMPLETE — V1
+STATUS: READY** — see §17b, §17c–17d, the data-layer notes above, the Change Log,
 `ACTIVITY_LOG.md`, and `scripts/research_real_data.py`. Real historical research
 runs when the user supplies `UPSTOX_ACCESS_TOKEN` (read-only historical data
 only). The live/current-data paper-session loop is implemented
 (`services/paper_session.py`, WS 6.4b) with stop-loss (WS 6.4), persistence
 (WS 6.5), monitoring/ops (WS 6.6), 30 offline acceptance-replay tests (WS 6.7)
-and an architecture diagram (`docs/architecture/architecture.svg`). Only
-`FNO_PAPER_*` env wiring for the five scaffolded fields remains. Live trading
-remains explicitly out of scope.
+and an architecture diagram (`docs/architecture/architecture.svg`). State of
+record at V1 READY: **561/561 tests passing (0 skipped, 0 xfailed), 30/30 V1
+acceptance criteria passing, paper-only execution boundary (`is_live=False`
+everywhere, no real-broker code, no live order placement), deterministic session
+runtime, persistence/recovery, session monitoring, acceptance replay, no live
+broker execution.** `FNO_PAPER_*` env wiring for the five scaffolded fields is
+deferred to **Phase 7** (out of V1 scope). Live trading remains explicitly out of
+scope.
 
 ---
 

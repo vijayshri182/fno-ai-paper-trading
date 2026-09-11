@@ -25,7 +25,7 @@
 | 3 | Strategy research & robustness evaluation (costs, regimes, in/out-of-sample, walk-forward, sensitivity, benchmark, metrics, experiments, HTML notebook) | **DONE** — commits `fb3f1c5`, `3a60a41` |
 | 4 | Historical-data CLI + real-data research (NIFTY 50 1d 2015–2024) | **DONE** — commits `da1b59a`, `e1a2b38`; real dataset acquired 2026-09-08 |
 | 5 | AI analysis / decision support; backtesting engine + analytics | **Backtest engine:** folded into Phase 2 (implemented); analytics extended by the research framework (Phase 3). **AI analysis / decision support:** planned (not started) |
-| 6 | Paper Trading V1 — current-data paper session | **IN PROGRESS** — WS 6.2 **DONE** (`e853667`, pushed); WS 6.3 **DONE** (`b4f8129`, pushed); WS 6.4 (2% stop-loss) **DONE** (`75d3a44`, pushed); WS 6.4b (session runtime) **DONE** (`b05a17c`, pushed); WS 6.5 (persistence) **DONE** (`118e976`, pushed); **WS 6.7 (acceptance replay) DONE** (`0e5ce1c`, pushed, 546 suite passing); **WS 6.1 (doc alignment) DONE** (`248c895`, pushed); **WS 6.6 (session operations / monitoring) DONE** (`00ed8ed` + docs `c4570ba`, pushed, 561 suite passing) |
+| 6 | Paper Trading V1 — current-data paper session | **DONE — Phase 6 COMPLETE · V1 READY** — WS 6.2 (`e853667`), WS 6.3 (`b4f8129`), WS 6.4 stop-loss (`75d3a44`), WS 6.4b session runtime (`b05a17c`), WS 6.5 persistence (`118e976`), WS 6.7 acceptance replay (`0e5ce1c`, 30 tests), WS 6.1 doc alignment (`248c895`), WS 6.6 session ops / monitoring (`00ed8ed` + docs `c4570ba`; 561 suite at close), all pushed. 2026-09-11 documentation finalization → **Phase 6 COMPLETE · V1 IMPLEMENTATION COMPLETE · V1 STATUS: READY** (561/561 tests, 30/30 acceptance, paper-only boundary, deterministic runtime, persistence/recovery, monitoring, no live broker execution) |
 
 *Phase numbers in this table follow the activity log's own scheme; for plan-level numbering see PROJECT_PLAN §17d (Paper Trading V1 = Phase 6).*
 
@@ -740,7 +740,107 @@ source/test/doc files changed; no `.env`/credentials/datasets/reports touched.
 
 ---
 
-## 4l. 2026-09-11 — Phase 6 WS 6.5: State persistence / recovery
+## 4l. 2026-09-09 — Phase 6 WS 6.4: Automatic 2% stop-loss enforcement
+
+**Scope.** Fourth Phase 6 work stream: the deterministic 2% protective stop-loss
+for paper-trading V1 — decision rule plus a single authoritative executor.
+
+**Decisions (locked).**
+
+- The decision rule (`StopLossPolicy`) and the executor (`enforce_stop`) live in
+  `risk/stop_loss.py`. The stop is fixed at entry: `stop_price = P_entry ×
+  (1 − stop_loss_pct)`; it is evaluated after every completed candle while a
+  position is open, signal-first stop-second, and the entry candle is never a
+  stop candle.
+- `OrderType.STOP` added (`models/enums.py`); the backtest harness carries
+  `BacktestConfig.enable_stop_loss` / `stop_loss_pct` — legacy backtests keep
+  `enable_stop_loss=False`.
+- The stop exit is a real paper `Order`/`Fill`/`Trade`: `enforce_stop` →
+  `TradingService.protective_exit` → `PaperBroker` → `Portfolio.apply_fill` (the
+  **sole accounting path** — realized P&L, commission and slippage accounted
+  exactly as any other fill). Protective stops **deliberately bypass
+  `RiskManager`**: the daily-loss cap gates new *entries* only and must never
+  prevent a protective exit from closing an open position (documented in
+  `docs/trading/PAPER_TRADING_V1.md` §§6–7 and §13 AC-08).
+- Deterministic fill pricing: the worse of the candle open and the stop price
+  (later asserted by §13 AC-12). `Position.opened_at` is set deterministically at
+  the entry timestamp so the entry candle stays excluded.
+
+**Implemented.**
+
+- `risk/stop_loss.py` (new): `StopDecision`, `StopExitResult`, `StopLossPolicy`,
+  `enforce_stop`. All money math is `Decimal`.
+- `services/trading_service.py`: `protective_exit` — submits the protective
+  stop-market exit through the broker and applies the fill to the portfolio,
+  bypassing entry-only risk gates.
+- `models/enums.py` (`OrderType.STOP`), `backtest/config.py`
+  (`enable_stop_loss`/`stop_loss_pct`), `backtest/engine.py` (signal-first,
+  stop-second, before the equity snapshot), `portfolio/portfolio.py`
+  (deterministic `Position.opened_at`), `risk/__init__.py` exports.
+- Tests: `tests/test_stop_loss.py` (new; 41 tests); 2 legacy `test_backtest.py`
+  tests scoped via `enable_stop_loss=False`.
+
+**Explicitly NOT implemented (unchanged).** Take-profit / trailing stops /
+partial exits / intra-bar execution — V1 is full-close, completed-5m-candle
+exits only.
+
+**Files changed.** 9 files, **+775/−4**.
+
+**Verification.** Full suite: **444 passed** (403 committed baseline + 41 new;
+2 legacy tests re-scoped, hence net 41). `git diff --check` clean.
+
+**Status.** Committed `75d3a44` (`feat: Phase 6 WS 6.4 automatic 2% stop-loss
+enforcement`) and pushed to origin/master.
+
+---
+
+## 4m. 2026-09-09 — Phase 6 WS 6.4b: Deterministic paper session runtime
+
+**Scope.** Companion to WS 6.4: the deterministic current-data paper-session
+engine — the runtime that trades completed 5m candles with the sizer, risk
+manager, stop-loss and broker through two injection seams.
+
+**Decisions (locked).**
+
+- Single-file orchestrator `services/paper_session.py` owns session lifecycle
+  concerns **only**: no sizing/risk/stop arithmetic, never mutates
+  cash/positions/P&L itself, never imports `backtest.*`.
+- Determinism by injection: the `clock` drives decision time; `PaperBroker(now_fn=…)`
+  drives `submitted_at`/`filled_at`; `TradingService.submit_order(…, fill_bar=…)`
+  pins the fill price to a completed bar's close. Both seams default to the
+  original behavior (verified against the unchanged 444-test baseline).
+- Completed-candle policy (`bar.timestamp + interval <= now`), duplicate-candle
+  guard (`_consumed`), NSE phase/holiday gating, warm-up gate (default
+  `strategy.slow + 1`, 22 for MA(5,21)), long-only BUY/SELL/HOLD mapping,
+  daily-loss policy (entries gated, exits executable via `_force_close`),
+  signal-first stop-second ordering, entry candle never a stop candle
+  (`_entry_candle`), deterministic equity snapshots, `--once`/`--loop`.
+- `Environment.PAPER` guard with opt-in sandbox override. No persistence, no env
+  parsing, no websocket/streaming.
+
+**Implemented.**
+
+- `services/paper_session.py` (new, 584 lines): `PaperSession`, `SessionStep`,
+  `SessionResult`.
+- `broker/paper_broker.py`: injectable `now_fn` clock seam (+8/−3).
+- `services/trading_service.py`: `fill_bar` fill-price seam (+8/−1).
+- `services/__init__.py`: exports `PaperSession`, `SessionResult`, `SessionStep`.
+- Tests: `tests/test_paper_session.py` (new; 38 tests).
+
+**Explicitly NOT implemented (unchanged).** Persistence/recovery (next stream,
+WS 6.5), session monitoring, live trading, `FNO_PAPER_*` env wiring.
+
+**Files changed.** 5 files, **+1386/−4**.
+
+**Verification.** Full suite: **482 passed** (444 committed baseline + 38 new).
+`git diff --check` clean.
+
+**Status.** Committed `b05a17c` (`feat: Phase 6 WS 6.4b deterministic paper
+session runtime`) and pushed to origin/master.
+
+---
+
+## 4n. 2026-09-11 — Phase 6 WS 6.5: State persistence / recovery
 
 **Scope.** Fifth Phase 6 work stream: deterministic snapshot/checkpoint + restore
 so a running paper session survives a restart. Mirrors the established
@@ -794,7 +894,7 @@ state`) and pushed to `origin/master`.
 
 ---
 
-## 4m. 2026-09-11 — Phase 6 WS 6.7: Offline acceptance replay tests
+## 4o. 2026-09-11 — Phase 6 WS 6.7: Offline acceptance replay tests
 
 **Scope.** Seventh Phase 6 work stream: deterministic, session-level replay of all
 30 V1 acceptance criteria (`docs/trading/PAPER_TRADING_V1.md` §13, criteria 1–30)
@@ -851,7 +951,7 @@ repo; pytest is the gate.
 **Status.** Committed as `0e5ce1c` (`feat: Phase 6 WS 6.7 acceptance replay tests`)
 and pushed to `origin/master`.
 
-## 4n. 2026-09-11 — Phase 6 WS 6.1: Documentation / plan alignment
+## 4p. 2026-09-11 — Phase 6 WS 6.1: Documentation / plan alignment
 
 **Scope.** Refresh the V1 contract, project plan and architecture docs so they
 match the Phase 6 implementation delivered by WS 6.2–6.7, and keep
@@ -889,7 +989,7 @@ cross-references valid. No production or test code changed.
 
 ---
 
-## 4o. 2026-09-11 — Phase 6 WS 6.6: Session operations / monitoring
+## 4q. 2026-09-11 — Phase 6 WS 6.6: Session operations / monitoring
 
 **Scope.** Operator-facing observability for the running `PaperSession`:
 logging, health checks, offline/online reporting and an operator CLI. No change
