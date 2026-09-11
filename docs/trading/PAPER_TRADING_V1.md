@@ -551,6 +551,13 @@ All six risk-sizing criteria are **IMPLEMENTED** by `RiskBasedPositionSizer`
 - Session state persistence under `paper_state/` — **delivered in WS 6.5** (JSON
   payload + meta sidecar, SHA-256 `state_hash`, git-ignored; per-day P&L ledger
   still future).
+- Session operations / monitoring — **delivered in WS 6.6**:
+  `services/session_monitoring.py` (`SessionHealth`/`health()`, `SessionReport`/
+  `build_report`/`report_from_snapshot`, `log_results`/`log_health`,
+  `report_to_html`/`write_html_report`, HTML consistent with `research/report.py`)
+  and the offline operator CLI `scripts/paper_session_report.py`. OS-level
+  scheduled runs (Task Scheduler / cron wrapping `run_loop` + the CLI) remain an
+  operator deployment concern.
 - Env-variable wiring for the five scaffolded fields (`FNO_PAPER_INTERVAL`,
   `FNO_PAPER_LOOKBACK_DAYS`, `FNO_PAPER_RISK_PER_TRADE_PCT`, `FNO_PAPER_STOP_LOSS_PCT`,
   `FNO_PAPER_STATE_DIR`) plus `.env.example` rows — still open (the session now
@@ -562,4 +569,4 @@ All six risk-sizing criteria are **IMPLEMENTED** by `RiskBasedPositionSizer`
 
 ---
 
-*Contract maintained against repository HEAD `3166aee` (WS 6.1 alignment). Paper-trading only. No live orders, no real money.*
+*Contract maintained against repository HEAD `00ed8ed` (WS 6.6). Paper-trading only. No live orders, no real money.*

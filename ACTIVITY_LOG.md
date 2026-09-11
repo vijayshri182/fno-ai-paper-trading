@@ -25,7 +25,7 @@
 | 3 | Strategy research & robustness evaluation (costs, regimes, in/out-of-sample, walk-forward, sensitivity, benchmark, metrics, experiments, HTML notebook) | **DONE** — commits `fb3f1c5`, `3a60a41` |
 | 4 | Historical-data CLI + real-data research (NIFTY 50 1d 2015–2024) | **DONE** — commits `da1b59a`, `e1a2b38`; real dataset acquired 2026-09-08 |
 | 5 | AI analysis / decision support; backtesting engine + analytics | **Backtest engine:** folded into Phase 2 (implemented); analytics extended by the research framework (Phase 3). **AI analysis / decision support:** planned (not started) |
-| 6 | Paper Trading V1 — current-data paper session | **IN PROGRESS** — WS 6.2 **DONE** (`e853667`, pushed); WS 6.3 **DONE** (`b4f8129`, pushed); WS 6.4 (2% stop-loss) **DONE** (`75d3a44`, pushed); WS 6.4b (session runtime) **DONE** (`b05a17c`, pushed); WS 6.5 (persistence) **DONE** (`118e976`, pushed); **WS 6.7 (acceptance replay) DONE** (`0e5ce1c`, pushed, 546 suite passing); **WS 6.1 (doc alignment) DONE** (`248c895`, pushed); monitoring/ops (WS 6.6) NOT IMPLEMENTED |
+| 6 | Paper Trading V1 — current-data paper session | **IN PROGRESS** — WS 6.2 **DONE** (`e853667`, pushed); WS 6.3 **DONE** (`b4f8129`, pushed); WS 6.4 (2% stop-loss) **DONE** (`75d3a44`, pushed); WS 6.4b (session runtime) **DONE** (`b05a17c`, pushed); WS 6.5 (persistence) **DONE** (`118e976`, pushed); **WS 6.7 (acceptance replay) DONE** (`0e5ce1c`, pushed, 546 suite passing); **WS 6.1 (doc alignment) DONE** (`248c895`, pushed); **WS 6.6 (session operations / monitoring) DONE** (`00ed8ed` + docs `7db73a7`, pushed, 561 suite passing) |
 
 *Phase numbers in this table follow the activity log's own scheme; for plan-level numbering see PROJECT_PLAN §17d (Paper Trading V1 = Phase 6).*
 
@@ -886,6 +886,55 @@ cross-references valid. No production or test code changed.
 
 **Status.** Committed as `248c895` (`docs: WS 6.1 align Phase 6 documentation
 (spec + plan + architecture)`) and pushed to `origin/master`.
+
+---
+
+## 4o. 2026-09-11 — Phase 6 WS 6.6: Session operations / monitoring
+
+**Scope.** Operator-facing observability for the running `PaperSession`:
+logging, health checks, offline/online reporting and an operator CLI. No change
+to session runtime behavior, accounting, risk or persistence. Scheduled runs
+stayed operator-level (Task Scheduler / cron wrapping `run_loop` + CLI).
+
+**Changes.**
+- `services/session_monitoring.py` (new):
+  - `SessionHealth` + `health(session, when=None)` — live counters, environment,
+    warm-up flag, cash, mark-to-market equity (provider last price; entry-price
+    fallback), realized/realized-today, open-quantity posture.
+  - `SessionReport` + `build_report(session, results=None, when, mark_prices)` +
+    `report_from_snapshot(snapshot, mark_prices, when)` — summary, session
+    counters, win/loss + Decimal win-rate, ledger (`SessionLedgerRow`: per
+    consumed step with skip/order/stop/error actions, or per recorded fill),
+    equity curve (`EquityPoint`); snapshot path marks open positions at entry
+    (cost basis) unless mark prices are supplied.
+  - `log_results` / `log_health` — deterministic operator logging on the
+    `session.operations` logger; never logs secrets or environment values.
+  - `report_to_dict` (plain/JSON-serialisable), `report_to_html` (self-contained
+    labelled page reusing `research/report.py` CSS / card / table / kv_rows),
+    `write_html_report(path)` — the module's only disk-touching helper.
+- `scripts/paper_session_report.py` (new): `load_session` on a `paper_state/`
+  payload → text summary on stdout → optional `--html` / `--json` report files.
+- `tests/test_session_monitoring.py` (new, 15 tests): health (fresh/open/
+  realized@stopped), live report with results (ledger + equity curve lengths,
+  win-rate), fill-based ledger, loss trade, dict/HTML rendering, UTF-8 HTML
+  write, snapshot-vs-live equivalence, offline entry-mark fallback, explicit
+  `mark_prices`, caplog logging assertions, offline/purity guard.
+- `docs/architecture/architecture.svg` (new): hand-authored layered SVG diagram
+  (data → strategy → risk → broker → portfolio → `PaperSession` → persistence +
+  monitoring → CLI → tests), WS 6.6 highlighted.
+
+**Docs refreshed.** `ARCHITECTURE.md` (§1 out-of-scope dashboard note, §4 diagram
+reference + services/persistence bullets, §5 repository tree incl. `architecture.svg`,
+§16 session-monitoring flow + state notes, §17 status rows + 561-test count, §18.1
+scheduled-run wording, §19.1 → delivered), `PROJECT_PLAN.md` (§17b/§17c/§17d WS 6.6 →
+DONE, Current Phase, new Change Log entry), `docs/trading/PAPER_TRADING_V1.md` (§14
+future-extension bullet), this log and `PROGRESS.md`.
+
+**Verification.** Full suite: **561 passed in 2.82s** (546 baseline + 15 new).
+
+**Status.** Committed as `00ed8ed` (`feat: WS 6.6 session monitoring - health
+checks, reports, operator logging, HTML output`) and `7db73a7` (`docs: WS 6.6
+session monitoring + architecture SVG (561 tests)`), pushed to `origin/master`.
 
 ---
 

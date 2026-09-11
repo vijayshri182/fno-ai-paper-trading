@@ -5,8 +5,8 @@
 > the **actual repository state** (files, tests, commits). No progress is
 > reported from intent — only from code, tests and git.
 >
-> **State as of:** 2026-09-11 · HEAD `686fcae` (`docs: update progress tracker and activity log after WS 6.1`).
-> Working tree clean. Full suite: **546 passed** (offline, deterministic).
+> **State as of:** 2026-09-11 · HEAD `7db73a7` (`docs: WS 6.6 session monitoring + architecture SVG (561 tests)`) — WS 6.6 implementation `00ed8ed` + docs.
+> Working tree clean. Full suite: **561 passed** (offline, deterministic).
 
 ---
 
@@ -28,12 +28,12 @@ trading, AI and real-broker integration remain explicitly out of scope.
 | Item | Value |
 |---|---|
 | Branch | `master` |
-| HEAD SHA | `686fcae` |
-| origin/master | `686fcae` |
-| HEAD == origin/master | ✅ yes (after push) |
+| HEAD SHA | `7db73a7` |
+| origin/master | `7db73a7` |
+| HEAD == origin/master | ✅ yes (pushed) |
 | Working tree | clean |
 
-Committed: `686fcae` (docs) → `248c895` (WS 6.1) → `3166aee` (docs) → `0e5ce1c` (WS 6.7) → `118e976` (WS 6.5) → `b05a17c` (WS 6.4b) → `75d3a44` (WS 6.4) → `b4f8129` (WS 6.3) → `e853667` (WS 6.2). All pushed.
+Committed: `7db73a7` (docs) → `00ed8ed` (WS 6.6) → `87cb906` (docs) → `248c895` (WS 6.1) → `3166aee` (docs) → `0e5ce1c` (WS 6.7) → `118e976` (WS 6.5) → `b05a17c` (WS 6.4b) → `75d3a44` (WS 6.4) → `b4f8129` (WS 6.3) → `e853667` (WS 6.2). All pushed.
 
 ## 2. Current phase
 
@@ -46,7 +46,7 @@ Committed: `686fcae` (docs) → `248c895` (WS 6.1) → `3166aee` (docs) → `0e5
 | 6.3 | V1 position sizing and risk enforcement | **DONE** — commit `b4f8129` |
 | 6.4(+b) | Current-data paper-session engine + stop-loss | **DONE** — commit `75d3a44` (stop-loss) + commit `b05a17c` (session runtime) |
 | 6.5 | State persistence / recovery | **DONE** — commit `118e976` (pushed) |
-| 6.6 | Session operations / monitoring | PENDING |
+| 6.6 | Session operations / monitoring | **DONE** — commit `00ed8ed` (monitoring/ops layer, pushed) |
 | 6.7 | Session testing + acceptance replay | **DONE** — commit `0e5ce1c` (30 offline acceptance-replay tests; full criteria 1–30 verified) |
 
 ## 3. MVP progress percentage
@@ -56,7 +56,7 @@ Committed: `686fcae` (docs) → `248c895` (WS 6.1) → `3166aee` (docs) → `0e5
 > Phases 1, 2, 3, 4 **plus** Phase 6 (V1). AI (Phase 5) and live-broker (Phase 7)
 > are **not** MVP capabilities (see §9).
 
-**Current estimate: 94%**
+**Current estimate: 97%**
 
 ### Calculation
 
@@ -82,7 +82,7 @@ no code.
 | 13 | V1 risk-based position sizing | 1.0 | `RiskBasedPositionSizer` (1% / 2%, lot-down, cash bound); tested |
 | 14 | Long-only gating + cash/no-leverage guard (session level) | 1.0 | `Portfolio.long_only` + session-level mapping (BUY-when-long/short ignored, SELL-when-flat ignored); tested |
 | 15 | Automatic 2% stop-loss enforcement | 1.0 | `StopLossPolicy`/`enforce_stop` + `TradingService.protective_exit` wired into the session (signal-first, stop-second, entry candle excluded); tested |
-| 16 | Live/current-data paper-session engine + acceptance replay | 1.0 | `services/paper_session.py` **exists**; 38 WS 6.4b + 34 WS 6.5 + **30 WS 6.7 acceptance-replay tests** (all 546 passing) |
+| 16 | Live/current-data paper-session engine + acceptance replay | 1.0 | `services/paper_session.py` **exists**; 38 WS 6.4b + 34 WS 6.5 + **30 WS 6.7 acceptance-replay** + **15 WS 6.6 monitoring tests** (all 561 passing) |
 
 Sum = 15×1.0 + 0.5 = **15.5 / 16 = 96.9% → 97%**
 
@@ -95,7 +95,7 @@ Sum = 15×1.0 + 0.5 = **15.5 / 16 = 96.9% → 97%**
 | 3 | Strategy research & robustness framework | **COMPLETE** | commits `fb3f1c5`, `3a60a41` |
 | 4 | Historical-data CLI + real-data research | **COMPLETE** | commits `da1b59a`, `e1a2b38` |
 | 5 | AI analysis / decision support | **NOT STARTED** | no AI code; **out of MVP scope** |
-| 6 | Paper Trading V1 | **IN PROGRESS** | WS 6.2–6.5 + **6.7** done (all committed + pushed); WS 6.6 (ops) and WS 6.1 (doc alignment) pending |
+| 6 | Paper Trading V1 | **IN PROGRESS** | WS 6.1–6.6 **done** (all committed + pushed, incl. WS 6.6 monitoring `00ed8ed`); WS 6.7 (acceptance replay) done; only `FNO_PAPER_*` env wiring remains |
 | 7 | Real broker / live boundary | **NOT STARTED** | explicitly out of scope |
 
 ## 5. MVP capabilities detail
@@ -137,9 +137,9 @@ Status legend: ✅ COMPLETE · 🟡 IN PROGRESS · ⬜ NOT STARTED · ⛔ BLOCKE
 
 ## 7. Current blockers
 
-- **None code-level.** WS 6.7 is committed (`0e5ce1c`) and pushed; docs updated
-  (`cb170a5`). Next candidate workstreams: WS 6.1 (doc alignment) and
-  WS 6.6 (ops/monitoring). No code blockers.
+- **None code-level.** WS 6.6 monitoring is committed (`00ed8ed`) and pushed;
+  its docs commit follows. Remaining planned areas: `FNO_PAPER_*` env wiring and
+  live/streaming quotes. No code blockers.
 - (Deferred, non-blocking) Real-data research/session runs need a valid
   `UPSTOX_ACCESS_TOKEN`; offline smoke tests exist.
 - (Pre-existing, non-blocking) `services/__init__.py` has no trailing newline —
@@ -147,7 +147,13 @@ Status legend: ✅ COMPLETE · 🟡 IN PROGRESS · ⬜ NOT STARTED · ⛔ BLOCKE
 
 ## 8. Recently completed work
 
-1. **Committed `118e976` — WS 6.5 state persistence / recovery** (reviewed, approved, pushed to origin/master):
+1. **Committed `00ed8ed` — WS 6.6 session operations / monitoring** (reviewed, verified 561 passed, pushed to origin/master):
+   - `services/session_monitoring.py` (new, ~410 lines): `SessionHealth`/`health()` — live counters, cash, mark-to-market equity (provider last price with entry-price fallback), open-quantity posture; `SessionReport`/`build_report`/`report_from_snapshot` — summary (initial/cash/equity/realized/realized-today/unrealized/open), session counters, win/loss + win-rate (Decimal), ledger (`SessionLedgerRow` per consumed step or per fill), equity curve (`EquityPoint`); `log_results`/`log_health` deterministic operator logging (`session.operations` logger, no secrets/env values); `report_to_dict` (plain/JSON-serialisable), `report_to_html` (self-contained page reusing `research/report.py` CSS/card/table/kv_rows), `write_html_report`. No disk I/O except the explicit write helper.
+   - `scripts/paper_session_report.py` (new): offline CLI — `load_session` on a `paper_state/` payload → text summary → optional `--html`/`--json` output; operator-level scheduled-run seam.
+   - `tests/test_session_monitoring.py` (new, 15 tests): health (fresh/open/closed/stopped), live report w/ results (ledger+equity curve), fill-based report, loss trade, dict/HTML rendering + UTF-8 write, snapshot-vs-live equivalence, offline entry-mark fallback, mark_prices override, operator logging (caplog), purity guard.
+   - `docs/architecture/architecture.svg` (new, hand-authored layered SVG): data → strategy → risk → broker → portfolio → `PaperSession` → persistence + monitoring → CLI → tests; WS 6.6 highlighted.
+   - Full suite: **561 passed in 2.82s** (546 baseline + 15 new). No lint/typecheck tooling exists in this repo.
+2. **Committed `118e976` — WS 6.5 state persistence / recovery** (reviewed, approved, pushed to origin/master):
    - `src/fno_ai_paper_trading/persistence/session_store.py` (new, ~435 lines): `SessionSnapshot` (frozen), `StoredSession`, `save_session`/`load_session`. File layout: payload `<name>.json` + sidecar `<name>.meta.json` under `paper_state/` (git-ignored); `state_hash` = SHA-256 over canonical JSON (`json.dumps(indent=2, sort_keys=True) + "\n"`); `SCHEMA_VERSION = "1"`; `_safe_name()` filename sanitization. Serializes instrument, portfolio (cash, non-flat positions, `initial_cash`, `realized_pnl`), broker orders/fills, session `_consumed`/`_entry_candle`/counters. Money via `Decimal(str())`; datetimes naive ISO strings. Load validates schema + hash (`ValueError` on mismatch/corruption, `FileNotFoundError` for a missing sidecar).
    - `src/fno_ai_paper_trading/persistence/__init__.py` (new): exports the public API.
    - `broker/paper_broker.py`: `snapshot() -> tuple[list[Order], list[Fill]]` (copies via `replace`); `restore(orders, fills)` (requires an empty broker, else `RuntimeError`).
@@ -171,7 +177,7 @@ Status legend: ✅ COMPLETE · 🟡 IN PROGRESS · ⬜ NOT STARTED · ⛔ BLOCKE
 - **AI analysis / decision support (Phase 5)** — no code; must sit behind an interface, never autonomous execution.
 - **Real broker / live trading (Phase 7)** — separate, explicitly controlled capability; disabled forever by default.
 - **Streaming / tick quotes** — V1 uses the read-only historical endpoint (quotes derived from last bar); no websocket/streaming code.
-- **Session operations / monitoring (WS 6.6)** — logging/dashboards for the running session.
+- **Session operations / monitoring (WS 6.6)** — **DONE** (commit `00ed8ed`, pushed); operator scheduled runs (Task Scheduler / cron) remain an environment deployment concern.
 - **Short selling, leverage, futures/options** — V1 is long-only NIFTY 50 index, cash-bounded.
 - **Take-profit / trailing stops / partial exits / intra-bar execution** — completed 5m candles only; full-close exits.
 - **State persistence / recovery (WS 6.5)** — **DONE** (commit `118e976`, pushed). No `FNO_PAPER_*` env wiring was added in this stream; `paper_state/` stays git-ignored.
@@ -179,12 +185,15 @@ Status legend: ✅ COMPLETE · 🟡 IN PROGRESS · ⬜ NOT STARTED · ⛔ BLOCKE
 
 ## 10. Next recommended task
 
-> **WS 6.7 is DONE** (commit `0e5ce1c`, pushed). Next approved workstreams: **WS 6.1** (doc alignment) and **WS 6.6** (ops/monitoring) — requires user approval before starting.
+> **WS 6.1 and WS 6.6 are DONE** (commits `248c895`, `00ed8ed`, pushed). Phase 6
+> remaining: `FNO_PAPER_*` env wiring (deferred by design) and live/streaming
+> quotes (out of V1 scope).
 
 1. ~~**WS 6.5 — State persistence / recovery**~~ DONE — commit `118e976`, pushed.
 2. ~~**WS 6.7 — Acceptance replay tests**~~ DONE — commit `0e5ce1c`, pushed; 30 tests, 546 suite passing.
-3. **WS 6.1 — Documentation / plan alignment** (pending user approval): refresh specs post-WS 6.4b/6.5/6.7.
-4. **WS 6.6 — Session operations / monitoring** (pending user approval): logging/dashboards for the running session.
+3. ~~**WS 6.1 — Documentation / plan alignment**~~ DONE — commit `248c895`, pushed.
+4. ~~**WS 6.6 — Session operations / monitoring**~~ DONE — commit `00ed8ed`, pushed; `services/session_monitoring.py` + `scripts/paper_session_report.py` + `architecture.svg`.
+5. **Optional next** — `FNO_PAPER_*` env wiring for the five scaffolded fields (deferred; session already consumes typed defaults for three of the five).
 
 ## 11. WS 6.4b handoff — new-session instructions
 
@@ -370,8 +379,8 @@ Status legend: ✅ COMPLETE · 🟡 IN PROGRESS · ⬜ NOT STARTED · ⛔ BLOCKE
   `len(prefix) < self.warmup_bars` (strict less-than). With warm-up 22, bar index
   21 has prefix length 22 and is therefore the first eligible bar. This matches the
   existing WS 6.4b `TestWarmup.test_signal_allowed_at_warmup_boundary` test.
-- No known code-level blockers. Next workstreams: WS 6.1 (doc alignment) and
-  WS 6.6 (ops/monitoring).
+- No known code-level blockers. Phase 6 remaining: `FNO_PAPER_*` env wiring
+  (deferred by design) and live/streaming quotes (out of scope).
 
 ---
 

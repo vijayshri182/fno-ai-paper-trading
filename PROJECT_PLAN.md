@@ -912,7 +912,7 @@ listed under PLANNED / NOT IMPLEMENTED hold no code today.
 * HTTP transport: Windows `curl.exe` path with `urllib` fallback (see Change Log 2026-09-08).
 * Strategy baseline: `MovingAverageCrossStrategy(fast=5, slow=21)` with warm-up.
 * Foundation components already present and tested: domain models, `MarketDataProvider` ABC, `PaperBroker`, `Portfolio`, `RiskManager`, `TradingService`, `StrategyService`, market-hours clock, typed error hierarchy.
-* Phase 6 session layer (WS 6.2–6.7): `PaperSession` runtime, `RiskBasedPositionSizer`, `risk/stop_loss.py`, `persistence/session_store.py`, and `tests/test_acceptance_replay.py` — see §17d for per-work-stream status.
+* Phase 6 session layer (WS 6.1–6.7): `PaperSession` runtime, `RiskBasedPositionSizer`, `risk/stop_loss.py`, `persistence/session_store.py`, `services/session_monitoring.py`, `scripts/paper_session_report.py`, `docs/architecture/architecture.svg`, and `tests/test_acceptance_replay.py` + `tests/test_session_monitoring.py` — see §17d for per-work-stream status.
 
 ### DECLARED CONFIG (partial consumers; no env wiring yet)
 
@@ -940,7 +940,6 @@ The already-wired runtime settings are `FNO_PAPER_INITIAL_CAPITAL` (100000),
 
 * Env wiring for the five scaffolded `paper_*` fields (`FNO_PAPER_INTERVAL`, etc.)
   plus `.env.example` rows.
-* Operational monitoring / reporting for the running session (WS 6.6).
 * Live/streaming quotes (V1 derives prices from completed historical candles).
 
 ## Important boundary: static caps ≠ V1 sizing
@@ -977,7 +976,7 @@ Trading V1. Phase 6 is broken into ordered work streams, each annotated with its
 delivery state.
 
 **Phase 6 — Paper Trading V1 (live/current-data paper session)**
-*Work stream 6.1 — Documentation / plan alignment* — **IN PROGRESS (this revision)**
+*Work stream 6.1 — Documentation / plan alignment* — **DONE** (`248c895`)
 * Keep `PAPER_TRADING_V1.md`, `ARCHITECTURE.md` and this plan consistent with the
   repository as implementation proceeds; validate cross-references.
 
@@ -999,9 +998,13 @@ stop-loss; `b05a17c` session runtime)
 *Work stream 6.5 — State persistence and recovery* — **DONE** (`118e976`)
 * Session ledger + snapshots under git-ignored `paper_state/` (per V1 spec §10).
 
-*Work stream 6.6 — Session operations / monitoring* — **PLANNED** (next)
-* Logging, health checks, scheduled runs, and reporting for the running session
-  (e.g. dashboard/HTML output consistent with `research/report.py`).
+*Work stream 6.6 — Session operations / monitoring* — **DONE** (`00ed8ed`)
+* `services/session_monitoring.py`: `SessionHealth`/`health()`, `SessionReport`/
+  `build_report`/`report_from_snapshot`, `log_results`/`log_health`,
+  `report_to_html`/`write_html_report` (HTML consistent with `research/report.py`
+  CSS); operator CLI `scripts/paper_session_report.py` renders an offline report
+  from a stored session payload. Scheduled runs remain operator-level (Task
+  Scheduler / cron wrapping `run_loop` + CLI), per ARCHITECTURE §18.1.
 
 *Work stream 6.7 — Paper-session testing and acceptance* — **DONE** (`0e5ce1c`)
 * Deterministic replay tests for the session; execute the V1 acceptance criteria
@@ -1255,10 +1258,12 @@ F&O AI Paper Trading System
 ## Current Phase
 
 **IN PROGRESS — Phase 6 (Paper Trading V1).** Strategy/backtest/research work is
-done; WS 6.2–6.5 + 6.7 are implemented, committed and pushed (see §17d and the
-Change Log); WS 6.1 (documentation alignment) is being completed, and WS 6.6
-(session operations / monitoring) is next. Real-data execution is gated on
-`UPSTOX_ACCESS_TOKEN`; offline smoke tests are provided.
+done; WS 6.1–6.7 are implemented, committed and pushed (see §17d and the
+Change Log). WS 6.6 (session operations / monitoring): logging, health checks,
+reports (`build_report`/`report_from_snapshot`, HTML output) and the operator
+CLI (`scripts/paper_session_report.py`) are implemented with 15 monitoring
+tests. Real-data execution is gated on `UPSTOX_ACCESS_TOKEN`; offline smoke
+tests are provided.
 
 Status: **RESEARCH FRAMEWORK + REAL-DATA PIPELINE + PHASE 6 PAPER TRADING V1
 IMPLEMENTED** — see §17b, §17c–17d, the data-layer notes above, the Change Log,
@@ -1266,8 +1271,9 @@ IMPLEMENTED** — see §17b, §17c–17d, the data-layer notes above, the Change
 runs when the user supplies `UPSTOX_ACCESS_TOKEN` (read-only historical data
 only). The live/current-data paper-session loop is implemented
 (`services/paper_session.py`, WS 6.4b) with stop-loss (WS 6.4), persistence
-(WS 6.5) and 30 offline acceptance-replay tests (WS 6.7). Only WS 6.6 monitoring
-and `FNO_PAPER_*` env wiring for the five scaffolded fields remain. Live trading
+(WS 6.5), monitoring/ops (WS 6.6), 30 offline acceptance-replay tests (WS 6.7)
+and an architecture diagram (`docs/architecture/architecture.svg`). Only
+`FNO_PAPER_*` env wiring for the five scaffolded fields remains. Live trading
 remains explicitly out of scope.
 
 ---
@@ -1437,6 +1443,29 @@ The system should be capable of using **real market information while remaining 
 
 # 31. Change Log
 
+## 2026-09-11 — Phase 6 WS 6.6: Session operations / monitoring
+
+* `services/session_monitoring.py` (commit `00ed8ed`): operator-facing
+  observability for `PaperSession` — `SessionHealth`/`health()` (live counters,
+  cash, mark-to-market equity, open-quantity posture), `SessionReport`/
+  `build_report`/`report_from_snapshot` (fees, ledger, equity curve, win/loss
+  stats; built live or offline from a stored snapshot), deterministic operator
+  logging (`log_results`/`log_health`), and `report_to_dict` / `report_to_html` /
+  `write_html_report` reusing `research/report.py` CSS so session pages look
+  consistent with research reports.
+* `scripts/paper_session_report.py` (commit `00ed8ed`): offline CLI that loads a
+  `paper_state/` payload via `load_session`, prints a text summary, and writes
+  `--html` / `--json` reports; the operator-level "scheduled run" seam.
+* `docs/architecture/architecture.svg` (commit `00ed8ed`): hand-authored layered
+  SVG diagram covering data → strategy → risk → broker → portfolio →
+  session → persistence + monitoring → operator CLI → tests.
+* 15 new monitoring tests (`tests/test_session_monitoring.py`); full suite
+  **561 passing offline**.
+* Docs refreshed: `ARCHITECTURE.md` (§1/§4/§5/§16/§17/§18/§19 + diagram
+  reference), this plan (§17b/§17c/§17d/Current Phase), `PAPER_TRADING_V1.md`,
+  `PROGRESS.md`, `ACTIVITY_LOG.md`. Remaining PLANNED items are `FNO_PAPER_*`
+  env wiring and live/streaming quotes.
+
 ## 2026-09-11 — Phase 6 delivery (WS 6.2–6.7) + WS 6.1 documentation alignment
 
 * Paper-trading domain completion (WS 6.2, `e853667`): `PaperAccount`, long-only
@@ -1450,8 +1479,9 @@ The system should be capable of using **real market information while remaining 
   criteria; full suite **546 passing**.
 * WS 6.1 doc alignment (this change): `PROJECT_PLAN.md` §17c/§17d/Current Phase,
   `docs/trading/PAPER_TRADING_V1.md` and `docs/architecture/ARCHITECTURE.md`
-  refreshed to the implemented state; remaining PLANNED items are WS 6.6
-  monitoring, `FNO_PAPER_*` env wiring, and live/streaming quotes.
+  refreshed to the implemented state; remaining PLANNED items were WS 6.6
+  monitoring (delivered later the same day — see the WS 6.6 Change Log entry),
+  `FNO_PAPER_*` env wiring, and live/streaming quotes.
 
 ## 2026-09-08 — Paper V1 scaffolding + Cloudflare-safe Upstox transport + architecture docs
 

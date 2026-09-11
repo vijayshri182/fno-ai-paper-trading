@@ -1,7 +1,7 @@
 # F&O AI Paper Trading System — Architecture
 
 > Scope: source-of-truth architecture document for `fno-ai-paper-trading`.
-> Status: reflects the repository as of the WS 6.1 alignment (2026-09-11).
+> Status: reflects the repository as of the WS 6.6 delivery (2026-09-11).
 > This document is generated from and verified against the actual source code — it describes what exists, marks what is configured-but-not-wired, and labels everything else as planned.
 
 ---
@@ -24,7 +24,7 @@
 
 - **No live order execution.** No code path places real-money orders or contacts a broker order API. `PaperBroker.is_live` is hard-coded to `False` and raising live construction is rejected (`broker/paper_broker.py`).
 - **No AI analysis yet.** AI is planned (Phase 3) and will sit behind an interface; it must never bypass the `RiskManager` and never place orders directly.
-- **No dashboard/UI.** Analytics/reporting produce flat HTML files; a web dashboard is a future consideration.
+- **No dashboard/UI.** Analytics/reporting produce flat HTML files (research reports and paper-session reports via `research/report.py` CSS); a live web dashboard is a future consideration.
 - **No database / multi-session ledger.** Paper-session state persists as JSON snapshots under git-ignored `paper_state/` (WS 6.5); a durable database is out of scope.
 
 **Audience.** Engineers extending the codebase, reviewers validating claims, and operators running research. Every section references the concrete module that implements the described behavior.
@@ -96,6 +96,8 @@ Key context facts:
 
 The system implements a layered pipeline: **data normalization → strategy → risk → execution → portfolio → analytics**, sharing one set of domain models.
 
+![Architecture diagram](architecture.svg)
+
 ```text
   config/settings.py (FNO_*, .env)
         |
@@ -106,7 +108,7 @@ The system implements a layered pipeline: **data normalization → strategy → 
   strategies/  (Strategy ABC -> StrategyEngine -> SignalResult)
         |
         v
-  risk/  (RiskManager.evaluate -> RiskDecision)
+  risk/  (RiskManager.evaluate -> RiskDecision) + sizer/ + stop_loss/
         |
         v
   broker/  (Broker ABC -> PaperBroker -> Fill)
@@ -122,7 +124,8 @@ Cross-cutting packages:
 
 - `models/` — the shared domain vocabulary (`Instrument`, `MarketPrice`, `MarketQuote`, `MarketSession`, `Order`, `Fill`, `Position`, `Trade`, enums).
 - `utils/` — dependency-free helpers: `functions.py` (Decimal validators, notional, id generation), `http.py` (Windows `curl.exe` transport with `urllib` fallback), `retry.py` (exponential backoff), `logging.py` (structured logging that never emits secrets).
-- `services/` — orchestration: `TradingService` (data → risk → broker → portfolio) and `StrategyService` (signals → risk → paper broker).
+- `services/` — orchestration: `TradingService` (data → risk → broker → portfolio), `StrategyService` (signals → risk → paper broker), `PaperSession` (deterministic session loop with injectable seams), and `session_monitoring` (live health, offline/online reports, operator logging — WS 6.6).
+- `persistence/` — `session_store.py`: snapshot persistence for `PaperSession` state under `paper_state/` (git-ignored).
 
 **Same-risk-path guarantee.** Live-paper path, strategy path, and backtest path all route orders through the same `RiskManager` first; a rejected order produces no execution in every path (confirmed by `tests/test_strategy_service.py` and `tests/test_backtest.py`).
 
@@ -133,13 +136,14 @@ Cross-cutting packages:
 ```text
 fno-ai-paper-trading/
 |-- .env.example              # Safe template; real values go in git-ignored .env
-|-- .gitignore                # Excludes .env, .venv, reports/, datasets/
+|-- .gitignore                # Excludes .env, .venv, reports/, datasets/, paper_state/
 |-- PROJECT_PLAN.md           # Master plan, safety rules, change log
 |-- README.md                 # Build/run/test instructions + safety guarantees
 |-- requirements.txt          # python-dotenv, pytest
 |-- docs/
 |   |-- trading/PAPER_TRADING_V1.md   # V1 paper-session specification (contract)
 |   `-- architecture/ARCHITECTURE.md  # this document
+|       `-- architecture.svg          # layered architecture diagram (hand-authored SVG)
 |-- src/
 |   |-- main.py                          # Entry point (Phase 1 + strategy + backtest demos)
 |   `-- fno_ai_paper_trading/
@@ -149,10 +153,12 @@ fno-ai-paper-trading/
 |       |   |                            #   intervals, instrument_registry, errors,
 |       |   |                            #   dataset_store, validation
 |       |-- strategies/                  # base, engine, moving_average_cross
-|       |-- risk/                        # manager.py
+|       |-- risk/                        # manager.py, sizer.py, stop_loss.py
 |       |-- broker/                      # base.py, paper_broker.py
 |       |-- portfolio/                   # portfolio.py
-|       |-- services/                    # trading_service.py, strategy_service.py
+|       |-- services/                    # trading_service.py, strategy_service.py,
+|       |   |                            #   paper_session.py, session_monitoring.py
+|       |-- persistence/                 # session_store.py (snapshot save/load)
 |       |-- backtest/                    # config, engine, result, datasets, __main__
 |       |-- research/                    # costs, execution, regimes, split, walkforward,
 |       |   |                           #   sensitivity, benchmark, metrics, experiment,
@@ -160,8 +166,8 @@ fno-ai-paper-trading/
 |       `-- utils/                       # functions, http, retry, logging
 |-- scripts/                 # acquire_dataset.py, research_real_data.py,
 |                            #   upstox_smoke_test.py, generate_research_report.py,
-|                            #   generate_test_report.py
-`-- tests/                  # 334 unit tests, no network, no external deps
+|                            #   generate_test_report.py, paper_session_report.py
+`-- tests/                  # 561 unit tests, no network, no external deps
 ```
 
 Build/run facts: Python 3.13+; virtualenv `.venv`; `pip install -r requirements.txt`; `python src/main.py` for demos; `pytest` for the suite; both `python -m fno_ai_paper_trading.backtest` and `python -m fno_ai_paper_trading.research` run offline demos.
@@ -425,13 +431,20 @@ data/provider.py  ──►  mock_provider (no network)
 strategies (bar prefix bars[:i+1], no look-ahead)
         |
         v SignalResult (BUY/SELL/HOLD)
-services/strategy_service.py  ──► risk/manager.py
-                                     | approve        | reject
-                                     v                v
-                              broker/paper_broker.py  no execution (logged)
-                                     | Fill
-                                     v
-                              portfolio/portfolio.py  (cash, positions, P&L)
+services/paper_session.py ───► services/trading_service.py ──► risk/manager.py
+        |                                                     | approve        | reject
+        |                                                     v                v
+        |                                              broker/paper_broker.py  no execution
+        |                                                     | Fill
+        |                                                     v
+        |                                              portfolio/portfolio.py  (cash, positions, P&L)
+        |
+        +-- persistence/session_store.py ──► paper_state/*.json (snapshot save/load, WS 6.5)
+        +-- services/session_monitoring.py ──► SessionHealth | SessionReport | log_results
+                                                 |
+                                                 v
+                                            report_to_html ──► reports/*.html (operator reports)
+                                            paper_session_report.py CLI (offline rendering)
         |
         +-- backtest/ engine ─► BacktestResult (bar-timestamp fills, deterministic)
         +-- research/  costs+execution+regimes+split+walkforward+sensitivity+metrics
@@ -443,6 +456,7 @@ State notes:
 - **Money is `Decimal` end-to-end** for cash, prices, P&L, notional, commissions, drawdowns.
 - **Orders/fills carry explicit identity** (`new_id` in `utils/functions.py` → `ORD_<uuid-hex>`, `TRD_...`), enabling traceability.
 - **Paper-session persistence** is written by `persistence/session_store.py` under `paper_state/` (git-ignored) only when `save_session` is called (WS 6.5); the demo/tests/research write no persistent state by default.
+- **Session monitoring** (`services/session_monitoring.py`, WS 6.6) reads session state via `snapshot()` or direct counter access (read-only); the only disk-touching entry point is `write_html_report` (writes `reports/`, git-ignored). Scheduling is operator-level: OS cron / Task Scheduler wraps `paper_session_report.py` over `PaperSession.run_loop`.
 - **Backtest determinism** comes from bar-timestamp fills + explicit `Decimal` math; the paper broker uses wall-clock timestamps by contrast.
 
 ---
@@ -482,11 +496,14 @@ Legend: **IMPLEMENTED** = exists and exercised by tests/demos; **CONFIGURED-SCAF
 | Paper-session deterministic seams + polling | IMPLEMENTED | injected `clock` + provider + `PaperBroker(now_fn=...)`; `_consumed` duplicate guard |
 | Paper-session persistence (`paper_state/`) | IMPLEMENTED | `persistence/session_store.py` (WS 6.5), git-ignored `paper_state/`; 34 persistence tests |
 | Acceptance replay (V1 criteria 1–30) | IMPLEMENTED | `tests/test_acceptance_replay.py` (WS 6.7) — 30 offline tests |
+| Session monitoring: `SessionHealth` / `health()`, `SessionReport` / `build_report` / `report_from_snapshot`, `log_results` / `log_health`, `report_to_html` / `write_html_report` | IMPLEMENTED | `services/session_monitoring.py` (WS 6.6), 15 monitoring tests |
+| Operator CLI: offline report rendering from stored session payload | IMPLEMENTED | `scripts/paper_session_report.py` (WS 6.6) |
+| Architecture diagram (layered SVG) | IMPLEMENTED | `docs/architecture/architecture.svg` |
 | AI analysis / explainability | PLANNED | README Future phases; not started |
 | Real broker adapter | PLANNED | `PROJECT_PLAN.md` Phase 4; `Broker` ABC defined |
 | HTTP transport (curl.exe on Windows + urllib fallback) | IMPLEMENTED | `utils/http.py` |
 | Retry/backoff + structured logging | IMPLEMENTED | `utils/retry.py`, `utils/logging.py` |
-| Test suite | IMPLEMENTED | 546 tests pass offline (as of WS 6.7 verification) |
+| Test suite | IMPLEMENTED | 561 tests pass offline (as of WS 6.6 verification) |
 
 ---
 
@@ -494,7 +511,7 @@ Legend: **IMPLEMENTED** = exists and exercised by tests/demos; **CONFIGURED-SCAF
 
 Documented, intentional, or accepted gaps. Each is a deliberate boundary, not an omission to "fix" silently.
 
-1. **Session runtime is poll-driven, not OS-scheduled.** `services/paper_session.py` (WS 6.4b) implements `run_once`/`run_loop` against the Upstox completed-candle data; an OS-level scheduler (Task Scheduler / cron) wrapper is out of scope for V1.
+1. **Session runtime is poll-driven, not OS-scheduled.** `services/paper_session.py` (WS 6.4b) implements `run_once`/`run_loop` against the Upstox completed-candle data. The in-process poll seam is deterministic and testable. OS-level scheduled reporting is served by the `scripts/paper_session_report.py` CLI (WS 6.6), which an operator wires through Task Scheduler / cron; the scheduler itself remains outside the repository.
 2. **Session config is partially consumed, not env-wired.** `paper_interval`, `paper_risk_per_trade_pct` and `paper_stop_loss_pct` feed `PaperSession` defaults (WS 6.4b); `paper_lookback_days` and `paper_state_dir` have no runtime consumer, and none of the five are read from environment variables (`FNO_PAPER_*`).
 3. **Static risk caps ≠ full V1 risk model.** The `RiskManager` limits are absolute caps. The 1%-of-equity sizing, lot-rounding and cash bound are enforced by `RiskBasedPositionSizer` when it is injected (`StrategyService` or `PaperSession`); the fixed-quantity path relies on the static caps alone. The 2% stop-loss is enforced by `risk/stop_loss.py` when the session's stop policy is active.
 4. **`StrategyService` sizing is optional.** Without a sizer, orders are submitted at a fixed quantity and notional caps are enforced by `RiskManager` only at the static limit; with a `RiskBasedPositionSizer`, BUY entries are sized (1% equity, 2% stop, lot-rounding, cash bound) before the risk gate.
@@ -513,7 +530,7 @@ Documented, intentional, or accepted gaps. Each is a deliberate boundary, not an
 
 Derived from `README.md` "Future phases", `PROJECT_PLAN.md` §27/§28/§21, and the V1 specification.
 
-1. **Session operations / monitoring (WS 6.6, next).** Logging, health checks, scheduled-run wiring and per-day reporting for the running session (e.g. HTML output consistent with `research/report.py`). The core session engine, sizing, stop-loss and persistence introduced by WS 6.4b/6.4/6.3/6.5 are already implemented.
+1. **Session operations / monitoring (WS 6.6 — delivered).** Logging (`log_results`/`log_health`), health checks (`health()`/`SessionHealth`), reporting (`build_report`/`report_from_snapshot`/`SessionReport` with HTML output consistent with `research/report.py`) and the operator CLI (`scripts/paper_session_report.py`) are implemented and tested. Remaining evolution: scheduled-run wiring is operator-level, and richer per-day dashboards would build on the existing flat-HTML reports (`research/report.py` CSS).
 2. **AI analysis / explainability.** Decision-support layer behind an interface; structured signals, logged safely; never executes orders, never bypasses `RiskManager` (`PROJECT_PLAN.md` §9).
 3. **Historical-data CLI pipeline.** Breadth and convenience around `scripts/acquire_dataset.py`: multi-instrument schedules, incremental updates, cache validation, health reports.
 4. **Real broker adapter (Phase 4).** A separate `RealBroker` implementation satisfying the `Broker` ABC, explicitly configured and activated, enforced through `RiskManager`, independently tested, with audit logs — never silently enabled.
@@ -537,4 +554,4 @@ The system's design makes safety structural rather than behavioral. Reproduced a
 
 ---
 
-*End of architecture document. Facts verified against the repository at commit `3166aee` (WS 6.1 alignment); test suite: 546 passing (offline). This document describes existing behavior only and does not claim planned features as implemented.*
+*End of architecture document. Facts verified against the repository at commit `00ed8ed` (WS 6.6); test suite: 561 passing (offline). This document describes existing behavior only and does not claim planned features as implemented.*
