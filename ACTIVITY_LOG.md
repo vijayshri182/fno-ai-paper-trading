@@ -1262,6 +1262,47 @@ split discipline.
 
 ---
 
+## 4y. 2026-09-11 — WS 7.9 Durable experience store
+
+**Objective.** Durable, evidence-only persistence for the adaptive-learning
+loop: decision-time context, realized paper-trade outcomes, and AI-advisory
+metadata — stored idempotently and recoverable across restarts, with no
+execution capability (no orders, no broker, no risk bypass).
+
+**Decisions.**
+1. Domain (`experience/`) is fully decoupled from storage
+   (`persistence/experience_store.py`), so a future backend can replace the
+   JSONL store without changing the evidence contract.
+2. IDs are deterministic SHA-256 digests of the full decision-time payload
+   (`decision_identity`), so re-appending identical evidence is a no-op; the
+   single legal in-place transition is `pending_outcome` → `complete`
+   (outcome finalized later), enforced by the store.
+3. No-look-ahead is enforced by construction: `DecisionContext` contains only
+   decision-time data, `decision_payload()` has no outcome/exit/result fields,
+   and `AdvisoryEvidence` hard-wires `advisory_only=True` with no order/trade
+   reference.
+4. `ExperienceRecord.status` is derived: `complete` / `pending_outcome` /
+   `no_trade`. Records are immutable; a corrected outcome is a new record.
+5. Storage is an append-only JSONL log + `.meta.json` (schema version, count,
+   timestamps). `load()` is strict: missing metadata, corrupt lines, duplicate
+   ids, and unsupported schema versions raise instead of dropping evidence.
+6. Serialization is deterministic and type-preserving (features keep their
+   `Decimal`/`int`/`str` types via type tags); money/timestamps are canonical
+   strings, mirroring the WS 6.5 session-store convention.
+
+**Files.** `src/fno_ai_paper_trading/experience/` (records, enums, classification,
+queries, builders), `src/fno_ai_paper_trading/persistence/experience_store.py`,
+`src/fno_ai_paper_trading/persistence/__init__.py`, `tests/test_experience_store.py`.
+
+**Verification.** Full suite **680 passed** (626 + 54 new): idempotent
+append/merge, pending→complete upgrade, strict recovery (corrupt/missing/duplicate
+metadata), type-preserving round-trip, query/find/count_by filters, and
+no-execution/no-look-ahead guarantees.
+
+**Status.** Committed as `feat: add durable experience store`, pushed.
+
+---
+
 ## 5. Open Topics / Risks
 
 - **10-Sep-2026 real-data paper replay loss (~₹194.68).** An evaluation

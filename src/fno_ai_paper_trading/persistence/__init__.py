@@ -6,6 +6,14 @@
 restored into a fresh runtime after a restart, without a database and without
 any ``backtest.*`` coupling.
 """
+from fno_ai_paper_trading.persistence.experience_store import (
+    DEFAULT_EXPERIENCE_DIR,
+    AppendResult,
+    ExperienceStore,
+    MergeResult,
+    experience_from_dict,
+    experience_to_dict,
+)
 from fno_ai_paper_trading.persistence.session_store import (
     SCHEMA_VERSION,
     DEFAULT_STATE_DIR,
@@ -22,4 +30,10 @@ __all__ = [
     "StoredSession",
     "load_session",
     "save_session",
+    "DEFAULT_EXPERIENCE_DIR",
+    "AppendResult",
+    "ExperienceStore",
+    "MergeResult",
+    "experience_from_dict",
+    "experience_to_dict",
 ]

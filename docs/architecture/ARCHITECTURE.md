@@ -23,7 +23,7 @@
 **Out of scope (by design).**
 
 - **No live order execution.** No code path places real-money orders or contacts a broker order API. `PaperBroker.is_live` is hard-coded to `False` and raising live construction is rejected (`broker/paper_broker.py`).
-- **AI/adaptive learning is PLANNED (Phase 7+).** Advisory-only decision support behind an interface; it must never bypass the `RiskManager` and never place orders directly. The V1 baseline (MA 5/21) is frozen, and any regime-aware/AI candidate must clear the strategy-evaluation discipline (`PROJECT_PLAN.md` §17e). Future capabilities — five-year replay, continuous agent, GUI, alert engine, experience store, adaptive learning, champion/challenger, promotion/rollback — are documented in `PROJECT_PLAN.md` §17d–§17l and are **not implemented**.
+- **AI/adaptive learning is advisory (Phase 7, in progress).** Advisory-only decision support behind an interface; it must never bypass the `RiskManager` and never place orders directly. The V1 baseline (MA 5/21) is frozen, and any regime-aware/AI candidate must clear the strategy-evaluation discipline (`PROJECT_PLAN.md` §17e). Implemented so far: AI decision-support contracts, deterministic features, market regime detection, historical strategy evaluation, five-year replay capability, and the durable experience store (evidence-only, no execution path). Future capabilities — continuous agent, GUI, alert engine, adaptive learning, champion/challenger, promotion/rollback — are documented in `PROJECT_PLAN.md` §17d–§17l and are **not implemented**.
 - **No dashboard/UI.** Analytics/reporting produce flat HTML files (research reports and paper-session reports via `research/report.py` CSS); a live web dashboard is a future consideration.
 - **No database / multi-session ledger.** Paper-session state persists as JSON snapshots under git-ignored `paper_state/` (WS 6.5); a durable database is out of scope.
 
@@ -158,16 +158,25 @@ fno-ai-paper-trading/
 |       |-- portfolio/                   # portfolio.py
 |       |-- services/                    # trading_service.py, strategy_service.py,
 |       |   |                            #   paper_session.py, session_monitoring.py
-|       |-- persistence/                 # session_store.py (snapshot save/load)
+|       |-- persistence/                 # session_store.py (snapshot save/load),
+|       |   |                            #   experience_store.py (WS 7.9 JSONL evidence log)
 |       |-- backtest/                    # config, engine, result, datasets, __main__
 |       |-- research/                    # costs, execution, regimes, split, walkforward,
 |       |   |                           #   sensitivity, benchmark, metrics, experiment,
 |       |   |                           #   report, real_data, __main__
+|       |-- ai/                          # WS 7.1 decision-support contracts (advisory only)
+|       |-- features/                    # WS 7.2 deterministic feature engineering
+|       |-- regime/                      # WS 7.3 descriptive market regime detection
+|       |-- evaluation/                  # WS 7.4/7.5 historical + five-year replay,
+|       |   |                           #   session replay, reports
+|       |-- experience/                  # WS 7.9 evidence domain: records, enums,
+|       |   |                           #   classification, queries, builders
 |       `-- utils/                       # functions, http, retry, logging
 |-- scripts/                 # acquire_dataset.py, research_real_data.py,
 |                            #   upstox_smoke_test.py, generate_research_report.py,
-|                            #   generate_test_report.py, paper_session_report.py
-`-- tests/                  # 561 unit tests, no network, no external deps
+|                            #   generate_test_report.py, paper_session_report.py,
+|                            #   evaluate_historical.py, evaluate_five_year.py
+`-- tests/                  # 680 unit tests, no network, no external deps
 ```
 
 Build/run facts: Python 3.13+; virtualenv `.venv`; `pip install -r requirements.txt`; `python src/main.py` for demos; `pytest` for the suite; both `python -m fno_ai_paper_trading.backtest` and `python -m fno_ai_paper_trading.research` run offline demos.

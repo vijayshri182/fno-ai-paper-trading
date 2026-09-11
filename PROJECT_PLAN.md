@@ -1032,25 +1032,25 @@ of the baseline; the adaptive-learning product principle (§17f) and the
 supporting PLANNED capabilities (§17g–§17l) sit at the end of the sequence as
 controlled capabilities:
 
-*Work stream 7.1 — AI decision-support foundation* — **PLANNED**
+*Work stream 7.1 — AI decision-support foundation* — **DONE** (`cfba9b6`)
 * Advisory decision-support interface behind which future AI/deterministic models
   produce `BUY`/`HOLD`/`SELL` recommendations with confidence, rationale, market
   regime/context, model/version and timestamp. Advisory only; no execution path
   (§9, §17e.6).
 
-*Work stream 7.2 — Feature engineering* — **PLANNED**
+*Work stream 7.2 — Feature engineering* — **DONE** (`f512557`)
 * Normalize validated market data into decision-time features (prices, moving
   averages, volatility, regime indicators, transaction costs).
 
-*Work stream 7.3 — Market regime detection* — **PLANNED**
+*Work stream 7.3 — Market regime detection* — **DONE** (`baf4361`)
 * Classify bars/sessions as trending, sideways/choppy, high- or low-volatility;
   measure baseline behavior per regime (§17e.4).
 
-*Work stream 7.4 — Historical strategy evaluation* — **PLANNED**
+*Work stream 7.4 — Historical strategy evaluation* — **DONE** (`8690416`)
 * Replay multiple validated NIFTY 50 sessions; record the baseline metrics
   (§17e.2, §17e.3).
 
-*Work stream 7.5 — Five-year historical replay / evaluation* — **PLANNED**
+*Work stream 7.5 — Five-year historical replay / evaluation* — **DONE** (`b54530a`)
 * Process approximately the previous five years of validated NIFTY 50 intraday
   data: replay every available trading day deterministically, compute daily and
   aggregate performance, analyze trades/outcomes/regimes, and build a historical
@@ -1070,7 +1070,7 @@ controlled capabilities:
   evaluation, learning jobs) and MARKET OPEN (completed-candle paper trading)
   states without changing safety rules (§17h). Live data ≠ live execution.
 
-*Work stream 7.9 — Experience / trade-outcome store* — **PLANNED**
+*Work stream 7.9 — Experience / trade-outcome store* — **DONE**
 * Capture EVERY completed paper trade as an experience record (decision-time
   features, regime, recommendation/confidence/rationale, execution, realized
   outcome, transaction costs, drawdown/exposure context) — wins and losses alike
@@ -1210,11 +1210,15 @@ AI remains advisory. **Deterministic controls remain authoritative.**
 
 # 17f. Continuous Adaptive Learning (Long-Term Product Principle; PLANNED)
 
-**PLANNED.** Nothing in this section is implemented. It records the long-term
-product vision and the controls that will govern it. The deterministic risk and
-execution controls remain authoritative at all times, and the final system
-remains **paper trading** unless a future phase explicitly defines and approves
-a separate real-broker capability.
+**PLANNED.** The adaptive-learning *loop* remains PLANNED. The durable
+experience-record data foundation (WS 7.9) is implemented — the domain
+(`experience/`) and the idempotent JSONL store (`persistence/experience_store.py`)
+capture decision-time context, realized outcomes, and advisory metadata with no
+execution path and no look-ahead. Everything else in this section records the
+long-term product vision and the controls that will govern it. The
+deterministic risk and execution controls remain authoritative at all times, and
+the final system remains **paper trading** unless a future phase explicitly
+defines and approves a separate real-broker capability.
 
 ## 17f.1 Product vision
 

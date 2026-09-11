@@ -546,6 +546,33 @@ What changed (all `PLANNED`, nothing implemented):
   2 round trips, net P&L Rs 0.00 (evidence only).
 - 20 focused tests in `tests/test_five_year.py`.
 
+## 21. WS 7.9 — Durable experience store (2026-09-11)
+
+> Evidence-only persistence for the adaptive-learning loop: decision-time
+> context, realized trade outcomes, and AI-advisory metadata, stored durably
+> and idempotently — no execution path.
+
+- New `experience/` package: `records.py` (frozen `DecisionContext`,
+  `TradeOutcome`, `AdvisoryEvidence`, `ExperienceRecord`; `make_experience_id`
+  + `decision_identity` deterministic SHA-256 IDs), `enums.py`, `classification.py`
+  (outcome classification + holding duration), `queries.py` (`ExperienceQuery`,
+  `apply_query`, `count_by`), `builders.py` (construct decision/outcome/advisory/
+  record from existing domain objects).
+- No-look-ahead boundary: `DecisionContext` carries only decision-time data by
+  construction (`decision_payload()` contains no outcome/exit/result fields);
+  the AI advisory evidence is hard-wired `advisory_only=True` and never records
+  an order/trade id.
+- `persistence/experience_store.py`: append-only JSONL log + `.meta.json`
+  manifest carrying `schema_version`; idempotent `append`/`merge` (re-running a
+  replay is safe); strict `load` (missing metadata, corrupt lines, duplicate
+  ids, and unsupported schema versions all raise — evidence is never silently
+  dropped). Only legal in-place transition: `pending_outcome` → `complete`.
+- Type-preserving deterministic serialization (`Decimal`/`int`/`str` features),
+  in-memory mode for tests (`directory=None`), and query/find helpers ready for
+  WS 7.10/7.11/7.13 consumers.
+- 54 focused tests in `tests/test_experience_store.py`. Full suite **680 passed**
+  (626 + 54 new).
+
 ---
 
 *Sources: `PROJECT_PLAN.md` (§17b–17d, DoD §25–28), `docs/trading/PAPER_TRADING_V1.md`, `ACTIVITY_LOG.md`, `git log`, repository tree, and `pytest` results.*
