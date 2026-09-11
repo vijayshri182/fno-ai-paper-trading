@@ -6,12 +6,12 @@
 > reported from intent — only from code, tests and git.
 >
 > **State as of:** 2026-09-11 · Phase 6 **COMPLETE** · F&O Paper Trading V1
-> **IMPLEMENTATION COMPLETE** · V1 STATUS: **READY**. Checkpoint `02c18f3`;
-> branch `master` == `origin/master`. Full committed suite: **563 passed**
+> **IMPLEMENTATION COMPLETE** · V1 STATUS: **READY**. Latest committed checkpoint
+> `abf516f`; branch `master` == `origin/master`. Full committed suite: **563 passed**
 > (offline, deterministic, 0 skipped / 0 xfailed); **30/30 acceptance criteria
 > replay-green**; paper-only boundary verified. V1 baseline **MA(5,21) is FROZEN** —
 > Phase 7 strategy changes are evaluated empirically (historical replay +
-> out-of-sample validation), never triggered by a single session (see §14).
+> out-of-sample validation), never triggered by a single session (see §14, §15).
 
 ---
 
@@ -434,6 +434,44 @@ What changed (all `PLANNED`, nothing implemented):
 - Tests unchanged: full committed suite **563 passed** (0 skipped / 0 xfailed),
   plus 4 pre-existing, out-of-scope untracked AI-contract tests (567 total on
   disk).
+
+---
+
+## 15. Phase 7+ roadmap reconciliation — continuous adaptive paper-trading platform (2026-09-11)
+
+> Documentation-only workstream (commit: `docs: define continuous adaptive paper
+> trading roadmap`). **V1 remains COMPLETE. No trading code changed. MA(5,21)
+> remains the frozen V1 baseline.** This entry consolidates the long-term product
+> direction into a single authoritative roadmap (`PROJECT_PLAN.md` §17d–§17l):
+
+- **V1 COMPLETE** — deterministic paper trading is the delivered foundation;
+  nothing in this roadmap changes it. 563 committed tests pass at this
+  checkpoint (plus 4 pre-existing, out-of-scope untracked AI-contract tests on
+  disk).
+- **Frozen baseline:** MA(5,21). The 10-Sep-2026 replay observation (~₹194.68)
+  remains an evaluation data point, never a trigger for algorithm changes.
+- **Five-year historical evaluation (PLANNED):** replay ~5 years of validated
+  NIFTY 50 intraday data with train/validation/out-of-sample periods and
+  walk-forward; deterministic, no look-ahead, no leakage. NOT done yet.
+- **GUI / monitoring dashboard (PLANNED):** read-only first, always labeled
+  "PAPER TRADING — NO LIVE ORDERS".
+- **Continuous paper-trading agent (PLANNED):** MARKET OPEN/CLOSED states; live
+  market data never implies live execution.
+- **Alert engine (PLANNED):** pluggable trading/AI-learning/risk/system alerts,
+  all paper-tagged.
+- **Experience / trade-outcome store (PLANNED):** every completed paper trade —
+  wins and losses — contributes evidence.
+- **Adaptive learning loop (PLANNED):** learn models as recommended candidates
+  only; loss analysis informs, never reactively changes the algorithm.
+- **Champion vs challenger + controlled promotion/rollback (PLANNED):**
+  MA(5,21) remains Champion until a candidate clears historical + out-of-sample
+  validation and the promotion gate; version registry + rollback.
+- **AI is advisory only:** never bypasses `RiskManager`, sizing, stop-loss,
+  `PaperBroker` or `Portfolio` accounting; never enables live trading.
+- **Deterministic controls remain authoritative; watchdog/fail-safe (PLANNED)**
+  holds/stops paper execution rather than guessing.
+- **No live trading:** paper-only boundary absolute; a separate, disabled-by-default
+  capability would be needed for any future real execution.
 
 ---
 

@@ -590,6 +590,16 @@ All six risk-sizing criteria are **IMPLEMENTED** by `RiskBasedPositionSizer`
 - Live/streaming quotes behind an interface, if a vendor and token shape are approved.
 - AI-driven signal support behind the `Strategy` interface, never autonomous execution —
   Phase 7, advisory-only, evaluated against the frozen MA(5,21) baseline (`PROJECT_PLAN.md` §17d/§17e).
+- Continuous adaptive paper-trading platform (all **PLANNED** — `PROJECT_PLAN.md`
+  §17f–§17l): five-year historical NIFTY 50 replay/evaluation with
+  train/validation/out-of-sample periods and walk-forward; a continuous
+  paper-trading agent (MARKET OPEN/CLOSED states, live data never = live
+  execution); a read-only GUI/monitoring dashboard ("PAPER TRADING — NO LIVE
+  ORDERS"); a pluggable alert engine; an experience/trade-outcome store capturing
+  every completed paper trade (wins and losses); adaptive learning; champion vs
+  challenger evaluation; controlled promotion/rollback with a version registry;
+  and a watchdog/health fail-safe. None of these are implemented and none affect
+  V1.
 - A real broker adapter remains a separate, explicitly controlled capability, disabled
   by default, and is out of scope for V1 entirely.
 

@@ -1025,24 +1025,76 @@ stop-loss; `b05a17c` session runtime)
 
 The V1 MA(5,21) strategy is the **frozen baseline**. A single losing session —
 including the 10-Sep-2026 real-data paper replay (~₹194.68 loss) — must **NOT**
-trigger parameter changes or strategy replacement. The evaluation discipline in
-§17e is positioned **before** any tuning or replacement of the baseline:
+trigger parameter changes or strategy replacement. Continuous learning and AI are
+**PLANNED, later, controlled capabilities** — never implemented prematurely. The
+evaluation discipline in §17e is positioned **before** any tuning or replacement
+of the baseline; the adaptive-learning product principle (§17f) and the
+supporting PLANNED capabilities (§17g–§17l) sit at the end of the sequence as
+controlled capabilities:
 
-1. **Freeze & measure** — replay the MA(5,21) baseline over multiple validated
-   NIFTY 50 sessions and record the baseline metrics (§17e.3).
-2. **Regime analysis** — measure baseline behavior across trending,
-   sideways/choppy, high-volatility and low-volatility regimes (§17e.4).
-3. **Regime-aware hypotheses** — investigate a future regime filter
-   (§17e.5). Hypotheses only; not implemented rules.
-4. **AI decision support** — advisory-only structured recommendations behind an
-   interface (§17e.6), never autonomous execution.
-5. **Compare** — evaluate any enhanced candidate against the frozen baseline on
-   the same validated data and comparable assumptions (§17e.8).
-6. **Out-of-sample validate** — no acceptance on design/tuning data alone
-   (§17e.9).
-7. **Adopt only on evidence** — a candidate replaces or augments the baseline
-   only when evidence shows meaningful, robust improvement while respecting
-   risk constraints (§17e.10).
+*Work stream 7.1 — AI decision-support foundation* — **PLANNED**
+* Advisory decision-support interface behind which future AI/deterministic models
+  produce `BUY`/`HOLD`/`SELL` recommendations with confidence, rationale, market
+  regime/context, model/version and timestamp. Advisory only; no execution path
+  (§9, §17e.6).
+
+*Work stream 7.2 — Feature engineering* — **PLANNED**
+* Normalize validated market data into decision-time features (prices, moving
+  averages, volatility, regime indicators, transaction costs).
+
+*Work stream 7.3 — Market regime detection* — **PLANNED**
+* Classify bars/sessions as trending, sideways/choppy, high- or low-volatility;
+  measure baseline behavior per regime (§17e.4).
+
+*Work stream 7.4 — Historical strategy evaluation* — **PLANNED**
+* Replay multiple validated NIFTY 50 sessions; record the baseline metrics
+  (§17e.2, §17e.3).
+
+*Work stream 7.5 — Five-year historical replay / evaluation* — **PLANNED**
+* Process approximately the previous five years of validated NIFTY 50 intraday
+  data: replay every available trading day deterministically, compute daily and
+  aggregate performance, analyze trades/outcomes/regimes, and build a historical
+  experience dataset used for strategy/model evaluation (§17g). No look-ahead,
+  no leakage, reproducible, consistent cost assumptions.
+
+*Work stream 7.6 — Regime-aware strategy evaluation* — **PLANNED**
+* Investigate MA(5,21) + regime-filter hypotheses (§17e.5). Hypotheses only;
+  validated like any candidate.
+
+*Work stream 7.7 — GUI / monitoring dashboard* — **PLANNED**
+* Read-only-first web GUI exposing system/trading/performance/historical/learning
+  views, always marked **PAPER TRADING — NO LIVE ORDERS** (§17i).
+
+*Work stream 7.8 — Continuous paper-trading agent* — **PLANNED**
+* Always-running agent that safely transitions between MARKET CLOSED (replay,
+  evaluation, learning jobs) and MARKET OPEN (completed-candle paper trading)
+  states without changing safety rules (§17h). Live data ≠ live execution.
+
+*Work stream 7.9 — Experience / trade-outcome store* — **PLANNED**
+* Capture EVERY completed paper trade as an experience record (decision-time
+  features, regime, recommendation/confidence/rationale, execution, realized
+  outcome, transaction costs, drawdown/exposure context) — wins and losses alike
+  (§17f).
+
+*Work stream 7.10 — Adaptive learning & candidate generation* — **PLANNED**
+* Learn by outcome to produce candidate model/rule improvements. A single loss
+  never changes the algorithm (§17f).
+
+*Work stream 7.11 — Champion vs challenger evaluation* — **PLANNED**
+* Compare the frozen champion (MA 5/21) against challenger candidates on shared
+  historical + out-of-sample replay (§17f).
+
+*Work stream 7.12 — Controlled model promotion & rollback* — **PLANNED**
+* Promotion only on robust, validated evidence that preserves risk constraints;
+  model version registry + rollback (§17f).
+
+*Work stream 7.13 — Continuous feedback / learning loop* — **PLANNED**
+* Promoted model → paper trading → experience capture → repeat (§17f).
+
+*Work stream 7.14 — Alerting and operational hardening* — **PLANNED**
+* Pluggable alert engine (trading / AI-learning / risk / system alerts), every
+  trading alert labeled **PAPER TRADING — NO LIVE ORDER**; watchdog/health/fail-safe
+  behavior (§17j, §17k).
 
 * Any real-broker adapter — a **separate, explicitly controlled capability**, never
   silently enabled, still gated by `RiskManager`.
@@ -1147,10 +1199,273 @@ AI remains advisory. **Deterministic controls remain authoritative.**
 ## 17e.11 Distinctions preserved
 
 * V1 (Phase 6) = completed/stable paper-trading infrastructure.
-* Phase 7 = research & evaluation (this discipline).
+* Phase 7 = research & evaluation (this discipline) and the PLANNED capabilities
+  in §17f–§17l (five-year replay, agent, GUI, alerts, experience store, adaptive
+  learning, champion/challenger, promotion/rollback).
 * Future AI decision support = advisory layer being evaluated (PLANNED).
 * Future real broker integration = separate, explicitly controlled capability
   (disabled by default).
+
+---
+
+# 17f. Continuous Adaptive Learning (Long-Term Product Principle; PLANNED)
+
+**PLANNED.** Nothing in this section is implemented. It records the long-term
+product vision and the controls that will govern it. The deterministic risk and
+execution controls remain authoritative at all times, and the final system
+remains **paper trading** unless a future phase explicitly defines and approves
+a separate real-broker capability.
+
+## 17f.1 Product vision
+
+The long-term system is intended to evolve through:
+
+1. V1 Deterministic Paper Trading (delivered)
+2. Historical Evaluation
+3. AI Decision Support
+4. Market Regime Awareness
+5. Continuous Paper-Trading Agent
+6. Experience / Outcome Learning
+7. Adaptive Learning
+8. Champion / Challenger Models
+9. Controlled Promotion / Rollback
+10. Continuous Feedback Loop
+
+…while retaining deterministic risk and execution controls throughout.
+
+## 17f.2 Learning principle
+
+* EVERY completed paper trade generates a learning/experience record, whether
+  profitable or losing — and HOLD/rejected decisions where measurable.
+* **"Every completed paper trade contributes evidence to the learning system.
+  Adaptation occurs only after sufficient evidence, controlled evaluation, and
+  validation."** A loss must trigger ANALYSIS, not an uncontrolled algorithm
+  change (`LOSS → immediately modify algorithm` is forbidden).
+* The system learns from: winning trades; losing trades; stop-loss exits;
+  rejected/blocked decisions where applicable; HOLD decisions where measurable;
+  market regime; volatility/context; features available at decision time; AI
+  recommendation; confidence; rationale; actual execution; realized outcome;
+  transaction costs; drawdown/exposure context.
+* Learning is NOT loss-only. Winning trades are captured too — what conditions
+  produced success, which regimes favor the strategy, which features correlate
+  with good outcomes, whether confidence was well calibrated, and which
+  conditions to preserve.
+
+## 17f.3 Learning loop (future, conceptual)
+
+```text
+Paper Trade
+→ Capture Decision + Market Context
+→ Capture Execution
+→ Capture Outcome
+→ Store Experience
+→ Analyze Outcome
+→ Identify Patterns
+→ Generate Candidate Improvement
+→ Historical Replay
+→ Validation
+→ Out-of-Sample Test
+→ Champion vs Challenger
+→ Promotion Gate
+→ Approved Model
+→ Paper Trading
+→ Repeat
+```
+
+## 17f.4 Loss analysis (learn WHY, do not react)
+
+For a losing paper trade the system should analyse: was the market trending or
+sideways? weak or strong signal? was confidence appropriate? was volatility
+unusually high? did transaction cost materially affect the result? were the
+execution conditions representative? was the decision consistent with the
+available features? did the strategy behave differently under this regime? was
+the loss an expected outcome within the strategy's historical behavior? Is this
+a repeated pattern? The goal is to learn WHY the outcome occurred.
+
+## 17f.5 Adaptive learning architecture (future conceptual components)
+
+1. **Experience Store** — decision-time context + subsequent outcomes per trade.
+2. **Outcome Analyzer** — compares predictions/recommendations with actual outcomes.
+3. **Market Regime Analyzer** — measures performance by regime.
+4. **Learning / Model Training Layer** — produces candidate model/rule improvements.
+5. **Evaluation Engine** — replays historical data and compares candidates.
+6. **Champion/Challenger Model Framework** — Champion = currently approved
+   model/strategy; Challenger = candidate improvement.
+7. **Promotion Gate** — candidate becomes Champion only when predefined
+   evaluation and risk criteria are satisfied.
+8. **Model Version Registry** — tracks model version, feature version, strategy
+   version, training/evaluation period, metrics, promotion date, rollback info.
+9. **Rollback Capability** — if an adapted model performs worse, the system
+   returns to the previous approved version.
+
+## 17f.6 Experience / trade-outcome store (future fields)
+
+Every completed paper trade contributes evidence. Capture both WINNING and
+LOSING trades. Potential fields: decision timestamp; market-data context;
+features available at decision time; market regime; volatility/context; baseline
+signal; AI recommendation; AI confidence; rationale; model/version; position
+size; entry; exit; stop-loss; transaction costs; realized P&L; outcome;
+drawdown/exposure context. Also capture relevant HOLD/rejected decisions where
+measurable.
+
+## 17f.7 Hard safety boundary
+
+Adaptive learning may improve (always as recommendations/parameters/hypotheses):
+decision recommendations; confidence; regime interpretation; feature selection;
+model parameters; strategy hypotheses.
+
+Adaptive learning MUST NEVER automatically: bypass `RiskManager`; bypass position
+sizing; bypass stop-loss; bypass `PaperBroker`; bypass `Portfolio` accounting;
+enable live trading; weaken risk limits; change safety constraints merely to
+improve P&L. The deterministic safety layer remains authoritative.
+
+## 17f.8 Champion / Challenger
+
+* **Champion:** currently approved model/strategy. Current Champion = MA(5,21)
+  baseline (frozen).
+* **Challenger:** candidate improvement, e.g. MA(5,21) + regime filter + AI
+  decision support.
+* A Challenger must be evaluated on historical and out-of-sample data and must
+  NOT replace the Champion simply because it produced higher P&L on one day or
+  on the same data used for tuning.
+
+## 17f.9 Promotion Gate, version registry & rollback
+
+* **Promotion Gate:** a candidate may be promoted only after predefined criteria
+  are satisfied. Evaluate at minimum: P&L; return; drawdown; win rate; average
+  trade; transaction costs; regime-specific performance; robustness;
+  out-of-sample performance; risk constraints.
+* **Model/Strategy Version Registry:** track version; strategy; feature version;
+  model version; evaluation period; metrics; promotion date; rollback
+  information.
+* **Rollback:** if a promoted candidate later performs materially worse, return
+  to the previous approved Champion.
+
+---
+
+# 17g. Five-Year Historical Evaluation (PLANNED)
+
+A future capability to process approximately the previous **five years** of
+NIFTY 50 historical **intraday** data. **PLANNED — the run has NOT been
+completed.** Intended behaviour:
+
+* obtain validated historical data (`data/dataset_store.py`, `data/validation.py`);
+* process trading days and replay sessions deterministically;
+* evaluate every available trading day;
+* calculate daily and aggregate performance;
+* analyze trades, outcomes and market regimes;
+* build a historical experience dataset used for strategy/model evaluation.
+
+The five-year dataset is NOT to be used as a single train-and-report pool.
+Strictly apply:
+
+```text
+Training / Design Period → Validation Period → Out-of-Sample Period
+```
+
+and eventually **walk-forward evaluation**. Require: no look-ahead bias; no
+future-data leakage; reproducible replay; consistent transaction costs/slippage
+assumptions. Do not simply train/tune on all five years and report performance on
+the same data.
+
+---
+
+# 17h. Continuous Paper-Trading Agent (PLANNED)
+
+A future always-running server/agent with two safe states that it can transition
+between without changing safety rules:
+
+* **MARKET CLOSED:** process historical/missing data; run scheduled
+  replay/evaluation jobs; analyze completed trades; update experience data; run
+  learning/evaluation jobs; evaluate candidate models.
+* **MARKET OPEN:** consume the latest available market data; process completed
+  candles; calculate features; determine regime; obtain AI decision support;
+  apply deterministic risk controls; execute **PAPER** trades only; update
+  portfolio; record outcomes; generate alerts.
+
+The agent must clearly distinguish: **historical replay** (offline),
+**near-real-time paper trading** (current data, paper only), and **live trading**
+(never — "live" market data must never imply live broker execution). The
+paper-only safety boundary is absolute: no real broker orders; no automatic live
+trading; no risk-control bypass; no weakening safety limits to improve P&L; no
+AI-direct execution.
+
+---
+
+# 17i. GUI / Monitoring Dashboard (PLANNED)
+
+A future simple, read-only-first **monitoring** web GUI (no order entry) exposing:
+
+* **SYSTEM:** agent status; market status; data-feed health; last processed
+  candle; model/version; agent heartbeat; errors.
+* **TRADING:** today's P&L; equity; open position; trades; BUY/HOLD/SELL
+  decisions; confidence; rationale; entry/exit; stop-loss; position size;
+  transaction costs.
+* **PERFORMANCE:** equity curve; return %; win rate; round trips; average trade;
+  maximum drawdown; maximum drawdown %; daily/weekly/monthly performance.
+* **HISTORICAL:** date range; replay status; 5-year evaluation progress;
+  historical performance; regime performance.
+* **LEARNING:** experience count; winning/losing patterns; model versions;
+  Champion vs Challenger; candidate improvements; validation results;
+  promotion/rollback history.
+
+The GUI must prominently display **"PAPER TRADING — NO LIVE ORDERS"**.
+
+---
+
+# 17j. Alert Engine (PLANNED)
+
+A future **pluggable** alert layer. **No notification integrations are
+implemented.** Categories:
+
+* **Trading alerts:** BUY/SELL recommendation; HOLD/signal change where useful;
+  position opened; position closed; stop-loss triggered; trade completed; daily
+  P&L threshold.
+* **AI/learning alerts:** regime change; unusual confidence; repeated failure
+  pattern; challenger created; challenger evaluation completed; challenger
+  beats/fails champion; model promotion; model rollback.
+* **Risk alerts:** daily-loss threshold approaching; drawdown threshold; risk
+  rejection; position-sizing rejection; abnormal volatility.
+* **System alerts:** agent started/stopped; market opened/closed; data
+  unavailable; stale data; API failure; exception; watchdog restart;
+  storage/database failure.
+
+Potential future channels (not now): GUI/browser notification; email; Telegram;
+Slack/Teams; others later. Every trading alert must clearly identify the
+environment as **PAPER TRADING — NO LIVE ORDER**.
+
+---
+
+# 17k. Watchdog / Health / Fail-Safe (PLANNED)
+
+A future watchdog/health system so the agent fails **safely** — **HOLD / STOP
+paper execution rather than guessing** — when: data is stale; data is invalid;
+duplicate/out-of-order candles appear; a model fails; risk calculation fails; an
+API is unavailable; the server restarts; storage fails; an unexpected exception
+occurs. Include: heartbeat; health status; restart/recovery handling; error
+logging; alerting.
+
+---
+
+# 17l. Product Principles (Phase 7+) 
+
+Documented, non-negotiable:
+
+1. V1 is stable and remains the foundation.
+2. MA(5,21) is the frozen baseline.
+3. One losing day does not justify algorithm modification.
+4. Every completed paper trade contributes learning evidence.
+5. Learn from wins AND losses.
+6. Adaptation requires evidence and validation.
+7. No look-ahead bias.
+8. No future-data leakage.
+9. Out-of-sample testing is mandatory for candidate promotion.
+10. AI remains advisory.
+11. Deterministic risk controls remain authoritative.
+12. Paper execution remains separate from any future real execution.
+13. Every model/strategy change is versioned.
+14. Candidates can be rolled back.
+15. The agent must fail safely.
 
 ---
 
@@ -1173,6 +1488,14 @@ Future analytics should include:
 * Strategy-level performance
 
 Additional metrics can be added later.
+
+### Standardized Phase 7+ evaluation set (PLANNED)
+
+Future strategy/model evaluation (historical replay, champion/challenger
+comparison) standardizes on at least: total P&L; return %; win rate; round
+trips; average trade; transaction costs; maximum drawdown; maximum drawdown %;
+exposure; losing streak; regime-specific performance; confidence calibration
+where applicable. Risk-adjusted metrics can be added later.
 
 ---
 
@@ -1588,6 +1911,30 @@ The system should be capable of using **real market information while remaining 
 ---
 
 # 31. Change Log
+
+## 2026-09-11 — Phase 7+ roadmap reconciliation: continuous adaptive paper-trading platform (docs only)
+
+* Documentation/roadmap only. No `src/`, `tests/` or trading behavior changed.
+* §17d Phase 7 roadmap expanded to work streams **7.1–7.14** (all PLANNED): AI
+  decision-support foundation, feature engineering, market regime detection,
+  historical strategy evaluation, **five-year historical replay/evaluation**,
+  regime-aware evaluation, GUI/monitoring dashboard, continuous paper-trading
+  agent, experience/trade-outcome store, adaptive learning & candidate
+  generation, champion vs challenger, controlled promotion & rollback,
+  continuous feedback loop, alerting & operational hardening.
+* New sections: §17f (Continuous Adaptive Learning — product vision, learning
+  principle, learning loop, loss analysis, learning architecture, experience
+  store fields, hard safety boundary, champion/challenger, promotion gate +
+  version registry + rollback), §17g (Five-Year Historical Evaluation with
+  train/validation/out-of-sample and walk-forward discipline), §17h
+  (Continuous Paper-Trading Agent, MARKET OPEN/CLOSED states), §17i (GUI /
+  Monitoring Dashboard, read-only first), §17j (Alert Engine, pluggable), §17k
+  (Watchdog / Health / Fail-Safe), §17l (15 Product Principles).
+* §18 extended with the standardized Phase 7+ evaluation set.
+* Explicit: nothing here is implemented; 5-year run NOT done; no GUI, agent,
+  alert engine, experience store, adaptive learning, champion/challenger, or
+  live trading exists. The 10-Sep-2026 replay loss (~₹194.68) remains an
+  observation; MA(5,21) stays the frozen baseline.
 
 ## 2026-09-11 — Phase 7 roadmap: strategy evaluation & regime-aware discipline (docs only)
 

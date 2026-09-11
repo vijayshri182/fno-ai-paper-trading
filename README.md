@@ -2,6 +2,16 @@
 
 A modular Python system for paper-trading Futures & Options instruments.
 
+**Long-term direction (PLANNED, not implemented):** an *AI-Enabled F&O Market
+Decision Support & Continuous Adaptive Paper-Trading Platform* —
+deterministic V1 paper trading → historical evaluation → AI decision support →
+market-regime awareness → continuous paper-trading agent → experience/outcome
+learning → adaptive learning → champion/challenger models → controlled
+promotion/rollback → continuous feedback loop. Everything beyond today's
+deterministic paper trading is **PLANNED/FUTURE**; AI is advisory, deterministic
+risk controls remain authoritative, and live trading is never enabled
+(`PROJECT_PLAN.md` §17d–§17l).
+
 **Phase 1 scope:** configuration, data models, in-memory data provider, pre-trade
 risk management, a simulated paper broker, portfolio accounting and a test suite.
 
@@ -471,7 +481,8 @@ Never commit real values to `.env` — the file is git-ignored.
 | **Phase 3 (historical, ready)** | Local dataset cache + read-only Upstox historical adapter + interval/validation tooling — enabled when the user configures `UPSTOX_ACCESS_TOKEN` |
 | **Phase 3 (upcoming)** | Historical-data CLI/download pipeline |
 | **Phase 6 (Paper Trading V1, done — READY)** | Live/current-data paper session: completed-5m-candle loop, 1% risk sizing, 2% stop-loss, long-only NIFTY 50, persistence under git-ignored `paper_state/`, monitoring/ops, 30 offline acceptance-replay tests — see `docs/trading/PAPER_TRADING_V1.md` |
-| **Phase 7 (post-V1, PLANNED — evaluation-first)** | MA(5,21) is the frozen baseline; regime-aware and AI decision-support candidates are researched and evaluated first (historical multi-session replay → regime analysis → out-of-sample validation → baseline comparison → adopt only on evidence), with advisory-only AI behind an interface — see `PROJECT_PLAN.md` §17d/§17e |
+| **Phase 7 (post-V1, PLANNED — evaluation-first)** | MA(5,21) is the frozen baseline; ~5-year historical replay/evaluation (train/validation/out-of-sample), then regime-aware and AI decision-support candidates are researched and validated (historical + out-of-sample, no look-ahead, no leakage) before adoption, with advisory-only AI behind an interface — see `PROJECT_PLAN.md` §17d/§17e/§17g |
+| **Phase 7+ (PLANNED — later, controlled)** | Continuous paper-trading agent, GUI/monitoring dashboard (read-only, "PAPER TRADING — NO LIVE ORDERS"), pluggable alert engine, experience/trade-outcome store, adaptive learning, champion/challenger evaluation, controlled promotion/rollback with version registry, watchdog/fail-safe, continuous feedback loop — none implemented (`PROJECT_PLAN.md` §17f, §17h–§17l) |
 | **Phase 4** | Real broker adapter behind an interface, required to remain disabled by default |
 
 ---

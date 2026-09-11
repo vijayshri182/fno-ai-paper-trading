@@ -1088,6 +1088,69 @@ No source or test files changed by this workstream.
 
 ---
 
+## 4s. 2026-09-11 — Phase 7+ roadmap reconciliation: continuous adaptive paper-trading platform (docs only)
+
+**Objective.** Consolidate the long-term direction — an "AI-Enabled F&O Market
+Decision Support & Continuous Adaptive Paper-Trading Platform" — into a single
+authoritative documentation-only roadmap (`PROJECT_PLAN.md` §17d–§17l).
+Documentation changes only; no `src/` or `tests/` changes.
+
+**Design decisions (recorded before editing).**
+
+1. **Single comprehensive commit.** This workstream (planned commit `docs: define
+   continuous adaptive paper trading roadmap`) absorbs the earlier uncommitted
+   adaptive-learning requirements into one reconciled roadmap (§17f–§17l) rather
+   than a separate commit.
+2. **Roadmap numbering §17d → 7.1–7.14.** AI decision-support foundation; feature
+   engineering; market regime detection; historical strategy evaluation; five-year
+   historical replay/evaluation; regime-aware strategy evaluation; GUI/monitoring
+   dashboard; continuous paper-trading agent; experience/trade-outcome store;
+   adaptive learning & candidate generation; champion vs challenger; controlled
+   promotion & rollback; continuous feedback loop; alerting & operational
+   hardening. All **PLANNED**.
+3. **Continuous adaptive learning (§17f).** Product vision (V1 deterministic →
+   historical evaluation → AI decision support → regime awareness → continuous
+   agent → experience/outcome learning → adaptive learning → champion/challenger →
+   controlled promotion/rollback → continuous feedback loop); the learning
+   principle "every completed paper trade contributes evidence…; adaptation only
+   after sufficient evidence, controlled evaluation and validation"; loss analysis
+   (learn WHY, never reactively change the algorithm); 9 learning-architecture
+   components (experience store, outcome analyzer, regime analyzer, learning layer,
+   evaluation engine, champion/challenger, promotion gate, version registry,
+   rollback); experience-store fields; a hard safety boundary (must never bypass
+   risk/sizing/stop-loss/broker/portfolio accounting, never enable live trading);
+   champion = MA(5,21) frozen, challenger gated by historical + out-of-sample
+   evidence; promotion gate + version registry + rollback.
+4. **§17g Five-Year Historical Evaluation.** ~5 years of validated NIFTY 50
+   intraday data replayed deterministically; train/validation/out-of-sample and
+   walk-forward; no look-ahead, no leakage; explicitly NOT yet completed.
+5. **§17h Continuous agent, §17i GUI, §17j alerts, §17k watchdog, §17l principles.**
+   Agent has MARKET CLOSED/OPEN safe states (live data never = live execution);
+   GUI is read-only-first and always labeled "PAPER TRADING — NO LIVE ORDERS";
+   alert engine is pluggable with paper-tagged alerts; watchdog fails safely
+   (HOLD/STOP, never guess); 15 non-negotiable product principles documented.
+6. **Reconciliation across docs.** README.md now explicitly separates what exists
+   today from what is planned next (long-term direction note + Phase 7/7+ rows);
+   `ARCHITECTURE.md` gains the PLANNED complete-target-architecture pipeline
+   (Market Data → … → Feedback Loop) plus supporting services (GUI, Alert Engine,
+   Agent Scheduler, Watchdog); `PAPER_TRADING_V1.md` future extensions extended;
+   `PROGRESS.md` header checkpoint updated and new §15 entry added. Nothing
+   planned is claimed as implemented, and no roadmap is overfit to the
+   10-Sep-2026 observation (~₹194.68 — MA(5,21) stays the frozen baseline).
+
+**Files changed (documentation only).** `README.md`, `PROJECT_PLAN.md`,
+`PROGRESS.md`, `ACTIVITY_LOG.md` (this entry), `docs/architecture/ARCHITECTURE.md`,
+`docs/trading/PAPER_TRADING_V1.md`.
+
+**Verification.** Documentation-only diff; full committed suite **563 passed**
+(0 skipped / 0 xfailed; 567 total on disk including the pre-existing untracked
+AI-contract tests). No source or test files changed.
+
+**Status.** Committed as `docs: define continuous adaptive paper trading roadmap`
+and pushed to `origin/master`.
+
+---
+
 ## 5. Open Topics / Risks
 
 - **10-Sep-2026 real-data paper replay loss (~₹194.68).** An evaluation

@@ -23,7 +23,7 @@
 **Out of scope (by design).**
 
 - **No live order execution.** No code path places real-money orders or contacts a broker order API. `PaperBroker.is_live` is hard-coded to `False` and raising live construction is rejected (`broker/paper_broker.py`).
-- **AI/adaptive learning is PLANNED (Phase 7).** Advisory-only decision support behind an interface; it must never bypass the `RiskManager` and never place orders directly. The V1 baseline (MA 5/21) is frozen, and any regime-aware/AI candidate must clear the strategy-evaluation discipline (`PROJECT_PLAN.md` §17e) before influencing decisions.
+- **AI/adaptive learning is PLANNED (Phase 7+).** Advisory-only decision support behind an interface; it must never bypass the `RiskManager` and never place orders directly. The V1 baseline (MA 5/21) is frozen, and any regime-aware/AI candidate must clear the strategy-evaluation discipline (`PROJECT_PLAN.md` §17e). Future capabilities — five-year replay, continuous agent, GUI, alert engine, experience store, adaptive learning, champion/challenger, promotion/rollback — are documented in `PROJECT_PLAN.md` §17d–§17l and are **not implemented**.
 - **No dashboard/UI.** Analytics/reporting produce flat HTML files (research reports and paper-session reports via `research/report.py` CSS); a live web dashboard is a future consideration.
 - **No database / multi-session ledger.** Paper-session state persists as JSON snapshots under git-ignored `paper_state/` (WS 6.5); a durable database is out of scope.
 
@@ -499,7 +499,7 @@ Legend: **IMPLEMENTED** = exists and exercised by tests/demos; **CONFIGURED-SCAF
 | Session monitoring: `SessionHealth` / `health()`, `SessionReport` / `build_report` / `report_from_snapshot`, `log_results` / `log_health`, `report_to_html` / `write_html_report` | IMPLEMENTED | `services/session_monitoring.py` (WS 6.6), 15 monitoring tests |
 | Operator CLI: offline report rendering from stored session payload | IMPLEMENTED | `scripts/paper_session_report.py` (WS 6.6) |
 | Architecture diagram (layered SVG) | IMPLEMENTED | `docs/architecture/architecture.svg` |
-| AI decision support / regime-aware evolution | PLANNED | `PROJECT_PLAN.md` §17d/§17e — evaluation-first: frozen MA(5,21) baseline, regime analysis, advisory AI behind an interface; nothing implemented |
+| AI decision support / regime-aware evolution | PLANNED | `PROJECT_PLAN.md` §17d–§17f — evaluation-first: frozen MA(5,21) baseline, regime analysis, advisory AI behind an interface, adaptive learning as a controlled capability; nothing implemented |
 | Real broker adapter | PLANNED | `PROJECT_PLAN.md` Phase 4; `Broker` ABC defined |
 | HTTP transport (curl.exe on Windows + urllib fallback) | IMPLEMENTED | `utils/http.py` |
 | Retry/backoff + structured logging | IMPLEMENTED | `utils/retry.py`, `utils/logging.py` |
@@ -521,7 +521,7 @@ Documented, intentional, or accepted gaps. Each is a deliberate boundary, not an
 8. **Research results are historical/synthetic evidence.** Costs are illustrative (`IndiaCostSchedule.nse_fo_illustrative`); the MA(5,21) full-period real-data result is negative net of costs. Nothing here is investment advice or a claim of future profitability.
 9. **Instrument universe is indices only.** The registry contains NIFTY 50 / BANKNIFTY / FINNIFTY index keys with lot size 1 and tick 0.05; no futures/options instrument master augmentation is automated (Kite master CSV support exists but is not scheduled).
 10. **Snapshot-based persistence only.** Recovery is via `save_session`/`load_session` (WS 6.5) for a single named session under `paper_state/`; snapshot schema migration and a searchable multi-session store are not supported.
-11. **AI is PLANNED, evaluation-first.** Phase 7 AI/regime work is documented, not implemented; it will be decision support only, evaluated against the frozen MA(5,21) baseline (§17e), and must never bypass `RiskManager` or place orders.
+11. **AI and continuous learning are PLANNED, evaluation-first.** Phase 7+ AI/regime/agent/learning work is documented, not implemented; it will be decision support only, evaluated against the frozen MA(5,21) baseline (§17e–§17l), and must never bypass `RiskManager` or place orders.
 12. **Single HTTP transport caveat.** Windows uses a `curl.exe` subprocess (needed to defeat Cloudflare WAF blocking stdlib `urllib`); this is a platform-specific dependency that should be revisited when the environment changes.
 
 ---
@@ -532,11 +532,64 @@ Derived from `README.md` "Future phases", `PROJECT_PLAN.md` §27/§28/§21, and 
 
 1. **Session operations / monitoring (WS 6.6 — delivered).** Logging (`log_results`/`log_health`), health checks (`health()`/`SessionHealth`), reporting (`build_report`/`report_from_snapshot`/`SessionReport` with HTML output consistent with `research/report.py`) and the operator CLI (`scripts/paper_session_report.py`) are implemented and tested. Remaining evolution: scheduled-run wiring is operator-level, and richer per-day dashboards would build on the existing flat-HTML reports (`research/report.py` CSS).
 2. **AI decision support / regime-aware evolution.** Advisory decision-support layer behind an interface; structured signals (action, confidence, rationale, regime/context, model/version, timestamp), logged safely; never executes orders, never bypasses `RiskManager`. Every candidate is evaluated against the frozen MA(5,21) baseline via historical replay + out-of-sample validation before adoption (`PROJECT_PLAN.md` §9, §17d, §17e).
-3. **Historical-data CLI pipeline.** Breadth and convenience around `scripts/acquire_dataset.py`: multi-instrument schedules, incremental updates, cache validation, health reports.
-4. **Real broker adapter (Phase 4).** A separate `RealBroker` implementation satisfying the `Broker` ABC, explicitly configured and activated, enforced through `RiskManager`, independently tested, with audit logs — never silently enabled.
-5. **Snapshot schema migration / multi-session store.** `save_session`/`load_session` (WS 6.5) supports a single named snapshot layout under `paper_state/`; versioned schema migration and a searchable multi-session store would extend it.
-6. **Extended instrument universe & calendar.** Futures/options contracts with real lot sizes/expiries; sourced, maintainable trading calendar.
-7. **Analytics upgrades.** Dashboard/UI (future consideration) and richer attribution on top of the existing `PerformanceMetrics` and HTML notebook.
+3. **Continuous adaptive paper-trading platform (PLANNED — see `PROJECT_PLAN.md` §17f–§17l).** The documented target architecture is:
+
+   ```text
+   Market Data
+     ↓
+   Data Validation
+     ↓
+   Feature Engineering
+     ↓
+   Market Regime
+     ↓
+   Baseline Strategy / AI Decision Support
+     ↓
+   Signal + Confidence
+     ↓
+   Deterministic Risk Gate
+     ↓
+   Position Sizing
+     ↓
+   Stop Loss
+     ↓
+   Paper Execution
+     ↓
+   Portfolio Accounting
+     ↓
+   Monitoring
+     ↓
+   Experience Store
+     ↓
+   Outcome Analysis
+     ↓
+   Learning / Candidate Generation
+     ↓
+   Historical Evaluation
+     ↓
+   Out-of-Sample Validation
+     ↓
+   Champion vs Challenger
+     ↓
+   Promotion / Rollback
+     ↓
+   Approved Decision Model
+     ↓
+   Continuous Paper Trading
+     ↓
+   Feedback Loop
+   ```
+
+   Separate supporting services (all PLANNED): GUI Dashboard (read-only,
+   "PAPER TRADING — NO LIVE ORDERS"), Alert Engine (pluggable), Agent
+   Scheduler, Watchdog / Health Monitor. Everything in this pipeline beyond
+   today's implemented deterministic path is **PLANNED** — nothing here is claimed
+   as implemented, and "live" market data never implies live broker execution.
+4. **Historical-data CLI pipeline.** Breadth and convenience around `scripts/acquire_dataset.py`: multi-instrument schedules, incremental updates, cache validation, health reports.
+5. **Real broker adapter (Phase 4).** A separate `RealBroker` implementation satisfying the `Broker` ABC, explicitly configured and activated, enforced through `RiskManager`, independently tested, with audit logs — never silently enabled.
+6. **Snapshot schema migration / multi-session store.** `save_session`/`load_session` (WS 6.5) supports a single named snapshot layout under `paper_state/`; versioned schema migration and a searchable multi-session store would extend it.
+7. **Extended instrument universe & calendar.** Futures/options contracts with real lot sizes/expiries; sourced, maintainable trading calendar.
+8. **Analytics upgrades.** Dashboard/UI (future consideration) and richer attribution on top of the existing `PerformanceMetrics` and HTML notebook.
 
 ---
 
@@ -554,4 +607,4 @@ The system's design makes safety structural rather than behavioral. Reproduced a
 
 ---
 
-*End of architecture document. Facts verified against the repository at commit `00ed8ed` (WS 6.6); test suite: 561 passing (offline). This document describes existing behavior only and does not claim planned features as implemented.*
+*End of architecture document. Facts verified against the repository at commit `02c18f3`; committed test suite: 563 passing (offline). This document describes existing behavior and clearly labels planned features as PLANNED — it does not claim planned features as implemented.*
