@@ -497,6 +497,19 @@ What changed (all `PLANNED`, nothing implemented):
   (`ai.DecisionContext.features`).
 - 17 focused tests in `tests/test_features.py`.
 
+## 18. WS 7.3 — Market regime detection (2026-09-11)
+
+> Regimes are descriptive, never prescriptive: detection places no trades and
+> changes no risk controls.
+
+- New `src/fno_ai_paper_trading/regime/` package: `RegimeDetector` (stateless,
+  deterministic) classifying validated bars into `TrendState` (UP/DOWN/SIDEWAYS)
+  from `ma_gap_pct` and `VolatilityState` (LOW/NORMAL/HIGH) from the short/long
+  variance ratio; `MarketRegime` frozen record with `label` (e.g. `up_normal`).
+- Built on WS 7.2 features — a regime at bar *i* never uses bars after *i*
+  (`detect_prefix` contract-tested).
+- 13 focused tests in `tests/test_regime.py`.
+
 ---
 
 *Sources: `PROJECT_PLAN.md` (§17b–17d, DoD §25–28), `docs/trading/PAPER_TRADING_V1.md`, `ACTIVITY_LOG.md`, `git log`, repository tree, and `pytest` results.*

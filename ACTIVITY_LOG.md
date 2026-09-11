@@ -1184,6 +1184,25 @@ in the repo, reconciled and committed).
 
 ---
 
+## 4v. 2026-09-11 — WS 7.3 Market regime detection
+
+**Objective.** Deterministic, decision-time regime classification over validated bars.
+
+**Decisions.**
+1. `regime/` package: `RegimeDetector` (stateless) → `TrendState` (UP/DOWN/SIDEWAYS via
+   `ma_gap_pct`) and `VolatilityState` (LOW/NORMAL/HIGH via short/long variance ratio);
+   configurable thresholds, safe defaults.
+2. Built on WS 7.2 features; `detect_prefix(bars, i)` never uses bars after *i*.
+3. Descriptive only — no ordering/risk actions inside the package.
+
+**Files.** `src/fno_ai_paper_trading/regime/{__init__,detector}.py`, `tests/test_regime.py`.
+
+**Verification.** Full suite **597 passed** (584 + 13 new).
+
+**Status.** Committed as `feat: WS 7.3 deterministic market regime detection`, pushed.
+
+---
+
 ## 5. Open Topics / Risks
 
 - **10-Sep-2026 real-data paper replay loss (~₹194.68).** An evaluation
