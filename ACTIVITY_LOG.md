@@ -25,7 +25,7 @@
 | 3 | Strategy research & robustness evaluation (costs, regimes, in/out-of-sample, walk-forward, sensitivity, benchmark, metrics, experiments, HTML notebook) | **DONE** — commits `fb3f1c5`, `3a60a41` |
 | 4 | Historical-data CLI + real-data research (NIFTY 50 1d 2015–2024) | **DONE** — commits `da1b59a`, `e1a2b38`; real dataset acquired 2026-09-08 |
 | 5 | AI analysis / decision support; backtesting engine + analytics | **Backtest engine:** folded into Phase 2 (implemented); analytics extended by the research framework (Phase 3). **AI analysis / decision support:** planned (not started) |
-| 6 | Paper Trading V1 — current-data paper session | **IN PROGRESS** — WS 6.2 **DONE** (`e853667`, pushed); WS 6.3 **DONE** (`b4f8129`, pushed); WS 6.4 (2% stop-loss) **DONE** (`75d3a44`, pushed); WS 6.4b (session runtime) **DONE** (`b05a17c`, pushed); WS 6.5 (persistence) **DONE** (`118e976`, pushed); **WS 6.7 (acceptance replay) DONE** (`0e5ce1c`, pushed, 546 suite passing); **WS 6.1 (doc alignment) DONE** (`248c895`, pushed); **WS 6.6 (session operations / monitoring) DONE** (`00ed8ed` + docs `7db73a7`, pushed, 561 suite passing) |
+| 6 | Paper Trading V1 — current-data paper session | **IN PROGRESS** — WS 6.2 **DONE** (`e853667`, pushed); WS 6.3 **DONE** (`b4f8129`, pushed); WS 6.4 (2% stop-loss) **DONE** (`75d3a44`, pushed); WS 6.4b (session runtime) **DONE** (`b05a17c`, pushed); WS 6.5 (persistence) **DONE** (`118e976`, pushed); **WS 6.7 (acceptance replay) DONE** (`0e5ce1c`, pushed, 546 suite passing); **WS 6.1 (doc alignment) DONE** (`248c895`, pushed); **WS 6.6 (session operations / monitoring) DONE** (`00ed8ed` + docs `c4570ba`, pushed, 561 suite passing) |
 
 *Phase numbers in this table follow the activity log's own scheme; for plan-level numbering see PROJECT_PLAN §17d (Paper Trading V1 = Phase 6).*
 
@@ -933,7 +933,7 @@ future-extension bullet), this log and `PROGRESS.md`.
 **Verification.** Full suite: **561 passed in 2.82s** (546 baseline + 15 new).
 
 **Status.** Committed as `00ed8ed` (`feat: WS 6.6 session monitoring - health
-checks, reports, operator logging, HTML output`) and `7db73a7` (`docs: WS 6.6
+checks, reports, operator logging, HTML output`) and `c4570ba` (`docs: WS 6.6
 session monitoring + architecture SVG (561 tests)`), pushed to `origin/master`.
 
 ---

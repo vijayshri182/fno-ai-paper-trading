@@ -5,7 +5,7 @@
 > the **actual repository state** (files, tests, commits). No progress is
 > reported from intent — only from code, tests and git.
 >
-> **State as of:** 2026-09-11 · HEAD `7db73a7` (`docs: WS 6.6 session monitoring + architecture SVG (561 tests)`) — WS 6.6 implementation `00ed8ed` + docs.
+> **State as of:** 2026-09-11 · HEAD `c4570ba` (`docs: WS 6.6 session monitoring + architecture SVG (561 tests)`) — WS 6.6 implementation `00ed8ed` + docs.
 > Working tree clean. Full suite: **561 passed** (offline, deterministic).
 
 ---
@@ -28,12 +28,12 @@ trading, AI and real-broker integration remain explicitly out of scope.
 | Item | Value |
 |---|---|
 | Branch | `master` |
-| HEAD SHA | `7db73a7` |
-| origin/master | `7db73a7` |
+| HEAD SHA | `c4570ba` |
+| origin/master | `c4570ba` |
 | HEAD == origin/master | ✅ yes (pushed) |
 | Working tree | clean |
 
-Committed: `7db73a7` (docs) → `00ed8ed` (WS 6.6) → `87cb906` (docs) → `248c895` (WS 6.1) → `3166aee` (docs) → `0e5ce1c` (WS 6.7) → `118e976` (WS 6.5) → `b05a17c` (WS 6.4b) → `75d3a44` (WS 6.4) → `b4f8129` (WS 6.3) → `e853667` (WS 6.2). All pushed.
+Committed: `c4570ba` (docs) → `00ed8ed` (WS 6.6) → `87cb906` (docs) → `248c895` (WS 6.1) → `3166aee` (docs) → `0e5ce1c` (WS 6.7) → `118e976` (WS 6.5) → `b05a17c` (WS 6.4b) → `75d3a44` (WS 6.4) → `b4f8129` (WS 6.3) → `e853667` (WS 6.2). All pushed.
 
 ## 2. Current phase
 
