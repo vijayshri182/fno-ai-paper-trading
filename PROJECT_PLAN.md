@@ -371,7 +371,11 @@ No strategy should be assumed profitable without testing.
 
 # 9. AI Architecture
 
-AI will be introduced in Phase 3.
+AI will be introduced in **Phase 7** (post-V1), strictly as an **advisory
+decision-support layer**. It is **PLANNED** — no AI model, API or learning loop
+is implemented anywhere in the repository. The V1 baseline is the frozen
+MA(5,21) strategy; any future AI or regime-aware candidate must clear the
+strategy-evaluation discipline (§17e) before it can influence decisions.
 
 AI should primarily provide:
 
@@ -382,6 +386,11 @@ AI should primarily provide:
 * Explanation
 * Risk/context commentary
 * Structured reasoning
+
+A future AI recommendation will be a structured, advisory object capturing at a
+minimum: an action (`BUY`/`HOLD`/`SELL`), a confidence, a rationale, the market
+regime/context, a model/version tag and a timestamp. It is advisory only — it
+never creates an order by itself (see §17e).
 
 AI should NOT:
 
@@ -1012,12 +1021,136 @@ stop-loss; `b05a17c` session runtime)
 * Deterministic replay tests for the session; execute the V1 acceptance criteria
   (§13 of `PAPER_TRADING_V1.md`) offline in the automated suite (30 tests).
 
-**Phase 7 — Future broker/live boundary work (AFTER paper trading is proven stable)**
+**Phase 7 — Post-V1 evolution, evaluation-first (paper-trading-only)**
 
-* AI analysis downstream of the strategy interface — decision support only, never
-  autonomous execution.
+The V1 MA(5,21) strategy is the **frozen baseline**. A single losing session —
+including the 10-Sep-2026 real-data paper replay (~₹194.68 loss) — must **NOT**
+trigger parameter changes or strategy replacement. The evaluation discipline in
+§17e is positioned **before** any tuning or replacement of the baseline:
+
+1. **Freeze & measure** — replay the MA(5,21) baseline over multiple validated
+   NIFTY 50 sessions and record the baseline metrics (§17e.3).
+2. **Regime analysis** — measure baseline behavior across trending,
+   sideways/choppy, high-volatility and low-volatility regimes (§17e.4).
+3. **Regime-aware hypotheses** — investigate a future regime filter
+   (§17e.5). Hypotheses only; not implemented rules.
+4. **AI decision support** — advisory-only structured recommendations behind an
+   interface (§17e.6), never autonomous execution.
+5. **Compare** — evaluate any enhanced candidate against the frozen baseline on
+   the same validated data and comparable assumptions (§17e.8).
+6. **Out-of-sample validate** — no acceptance on design/tuning data alone
+   (§17e.9).
+7. **Adopt only on evidence** — a candidate replaces or augments the baseline
+   only when evidence shows meaningful, robust improvement while respecting
+   risk constraints (§17e.10).
+
 * Any real-broker adapter — a **separate, explicitly controlled capability**, never
   silently enabled, still gated by `RiskManager`.
+
+---
+
+# 17e. Strategy Evaluation & Improvement Discipline
+
+This discipline governs ALL post-V1 strategy work (regime filters, AI decision
+support, parameter variations). **PLANNED** for Phase 7 — the discipline itself
+is a documented contract, not a training/learning implementation.
+
+## 17e.1 Frozen V1 baseline
+
+* MA(5,21) is the V1 baseline strategy and is **frozen**.
+* A single losing session must NOT trigger parameter changes. In particular, the
+  10-Sep-2026 real-data paper replay loss (~₹194.68) is **an evaluation
+  observation, not a reason by itself to change the algorithm**. It demonstrates
+  why multi-session evaluation and regime analysis are required.
+
+## 17e.2 Historical evaluation
+
+* Replay **multiple** validated historical NIFTY 50 sessions (validated, hashed
+  datasets via `data/dataset_store.py`/`data/validation.py`) before any
+  conclusion can be drawn about a strategy or candidate.
+
+## 17e.3 Baseline metrics
+
+* Record, at minimum: total P&L; return %; win rate; number of round trips;
+  average trade; transaction costs; maximum drawdown; maximum drawdown %;
+  exposure / position size; losing streak where applicable.
+
+## 17e.4 Market regime analysis
+
+* Evaluate strategy behavior across regimes: **trending**, **sideways/choppy**,
+  **high volatility**, **low volatility**. Regime definitions and measurement
+  are themselves Phase 7 research.
+
+## 17e.5 Regime-aware improvement (hypotheses only)
+
+* These are **design hypotheses, NOT implemented trading rules**:
+  * strong trend → allow crossover signals
+  * sideways/choppy → prefer `HOLD` / avoid weak entries
+  * high volatility → consider reduced risk/position size
+  * weak signal → `HOLD`
+  * strong signal + confirmation → allow recommendation
+* Every hypothesis must enter the evaluation discipline like any candidate
+  (§17e.8–17e.10).
+
+## 17e.6 AI decision support (future, advisory only)
+
+* A future AI decision support layer may produce advisory `BUY` / `HOLD` /
+  `SELL` recommendations with: confidence, rationale, market regime/context,
+  model/version, timestamp.
+* **Hard safety boundary:** AI must NEVER directly execute an order, bypass
+  `RiskManager`, bypass position sizing, bypass stop-loss, bypass `PaperBroker`,
+  modify `Portfolio` accounting, or enable live trading automatically.
+
+## 17e.7 Design principle (preferred flow)
+
+```text
+Validated Market Data
+→ Feature Engineering
+→ Market Regime Detection
+→ Baseline Strategy
+→ AI Decision Support            (future, advisory)
+→ Signal + Confidence
+→ Deterministic Risk Gate        (authoritative)
+→ Position Sizing
+→ Stop Loss
+→ Paper Execution
+→ Portfolio Accounting
+→ Monitoring
+→ Historical Evaluation
+→ Baseline vs Enhanced Comparison
+→ Out-of-Sample Validation
+```
+
+AI remains advisory. **Deterministic controls remain authoritative.**
+
+## 17e.8 Comparison framework
+
+* **Baseline:** MA(5,21).
+* **Enhanced candidate:** MA(5,21) + Market Regime Filter + AI Decision Support
+  (future).
+* The enhanced approach must be evaluated against the frozen baseline using the
+  **same historical data and comparable assumptions**.
+
+## 17e.9 Out-of-sample validation
+
+* A strategy improvement must NOT be accepted solely because it performs better
+  on the data used to design/tune it.
+* Require: training/design period; validation period; out-of-sample evaluation;
+  no look-ahead bias; no future-data leakage; reproducible replay.
+
+## 17e.10 Adoption rule
+
+* A new strategy/filter/AI enhancement should only replace or augment the
+  baseline when evidence demonstrates **meaningful improvement while respecting
+  risk constraints**.
+
+## 17e.11 Distinctions preserved
+
+* V1 (Phase 6) = completed/stable paper-trading infrastructure.
+* Phase 7 = research & evaluation (this discipline).
+* Future AI decision support = advisory layer being evaluated (PLANNED).
+* Future real broker integration = separate, explicitly controlled capability
+  (disabled by default).
 
 ---
 
@@ -1278,13 +1411,16 @@ only). The live/current-data paper-session loop is implemented
 (`services/paper_session.py`, WS 6.4b) with stop-loss (WS 6.4), persistence
 (WS 6.5), monitoring/ops (WS 6.6), 30 offline acceptance-replay tests (WS 6.7)
 and an architecture diagram (`docs/architecture/architecture.svg`). State of
-record at V1 READY: **561/561 tests passing (0 skipped, 0 xfailed), 30/30 V1
-acceptance criteria passing, paper-only execution boundary (`is_live=False`
+record at V1 READY: **563/563 committed tests passing (0 skipped, 0 xfailed),
+30/30 V1 acceptance criteria passing, paper-only execution boundary (`is_live=False`
 everywhere, no real-broker code, no live order placement), deterministic session
 runtime, persistence/recovery, session monitoring, acceptance replay, no live
 broker execution.** `FNO_PAPER_*` env wiring for the five scaffolded fields is
-deferred to **Phase 7** (out of V1 scope). Live trading remains explicitly out of
-scope.
+deferred to **Phase 7** (out of V1 scope). **Phase 7 (post-V1) is
+evaluation-first:** the MA(5,21) baseline is frozen, and any regime-aware or AI
+candidate must clear the discipline in §17e (the 10-Sep-2026 real-data paper
+replay loss of ~₹194.68 is an evaluation observation, not a reason to change the
+algorithm). Live trading remains explicitly out of scope.
 
 ---
 
@@ -1452,6 +1588,21 @@ The system should be capable of using **real market information while remaining 
 ---
 
 # 31. Change Log
+
+## 2026-09-11 — Phase 7 roadmap: strategy evaluation & regime-aware discipline (docs only)
+
+* Documentation-only. No `src/`, `tests/` or trading behavior changed.
+* §9 (AI Architecture) updated to Phase 7 (post-V1, advisory-only, PLANNED).
+* §17d Phase 7 rewritten as an **evaluation-first** sequence; new §17e
+  (Strategy Evaluation & Improvement Discipline) added: frozen MA(5,21)
+  baseline, no single-session algorithm changes, historical multi-session
+  evaluation, baseline metrics, market-regime analysis, regime-aware hypotheses
+  (not implemented), advisory AI decision support with a hard safety boundary,
+  baseline-vs-enhanced comparison, out-of-sample validation, and the adoption
+  rule. The 10-Sep-2026 real-data paper replay loss (~₹194.68) is documented as
+  an evaluation observation, not a trigger for algorithm change.
+* "Current Phase" state-of-record updated to 563/563 committed tests and the
+  Phase 7 evaluation-first framing.
 
 ## 2026-09-11 — Phase 6 WS 6.6: Session operations / monitoring
 

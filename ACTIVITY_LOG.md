@@ -1038,8 +1038,62 @@ session monitoring + architecture SVG (561 tests)`), pushed to `origin/master`.
 
 ---
 
+## 4r. 2026-09-11 — Phase 7 roadmap: strategy evaluation & regime-aware discipline (docs only)
+
+**Objective.** Position Phase 7 as evaluation-first: keep MA(5,21) frozen as the V1
+baseline, measure it across multiple validated NIFTY 50 sessions, analyse
+market-regime behavior, and only then investigate regime-aware/AI candidates —
+validated out-of-sample and compared against the baseline before adoption.
+Documentation-only; no `src/` or `tests/` changes.
+
+**Design decisions (recorded before editing).**
+
+1. **Freeze the baseline.** MA(5,21) is declared the frozen V1 baseline. A single
+   losing session — including the 10-Sep-2026 real-data paper replay loss
+   (~₹194.68) — must never trigger parameter changes or strategy replacement.
+2. **Evaluation discipline as a contract (§17e).** Added `PROJECT_PLAN.md` §17e:
+   historical multi-session evaluation, baseline metrics (P&L, return %, win rate,
+   round trips, avg trade, transaction costs, max drawdown + %, exposure, losing
+   streaks), regime analysis (trending / sideways-choppy / high-vol / low-vol),
+   regime-aware hypotheses (explicitly NOT implemented rules), advisory AI decision
+   support (action / confidence / rationale / regime / model+version / timestamp)
+   with a hard safety boundary (never executes, never bypasses risk gate, sizing,
+   stop-loss, `PaperBroker`, `Portfolio`, never auto-enables live trading),
+   baseline-vs-enhanced comparison on the same data/assumptions, out-of-sample
+   validation, and an adoption rule. Includes the design pipeline
+   `Validated Market Data → … → Out-of-Sample Validation` (deterministic risk gate
+   remains authoritative).
+3. **Roadmap reordering (§17d).** Phase 7 in `PROJECT_PLAN.md` §17d rewritten as an
+   evaluation-first sequence placed BEFORE any tuning or replacement of the
+   baseline. Everything is labelled **PLANNED** — nothing is claimed as implemented.
+4. **Consistency across docs.** README.md (future-phases table, safety limitations,
+   Phase refs), `docs/architecture/ARCHITECTURE.md` (scope bullet, status table,
+   limitations, future evolution) and `docs/trading/PAPER_TRADING_V1.md`
+   (out-of-scope row, future extensions, footer HEAD `02c18f3`) reconciled to the
+   same framing; `PROGRESS.md` header + new §14 entry updated (563 committed tests).
+5. **Observation-only loss reference.** The 10-Sep-2026 ~₹194.68 replay loss is
+   cited exactly once per document as an evaluation observation motivating
+   multi-session evaluation — the roadmap is not overfit to that session.
+
+**Files changed (documentation only).** `README.md`, `PROJECT_PLAN.md`,
+`PROGRESS.md`, `ACTIVITY_LOG.md` (this entry), `docs/architecture/ARCHITECTURE.md`,
+`docs/trading/PAPER_TRADING_V1.md`.
+
+**Verification.** Full committed suite: **563 passed** (0 skipped / 0 xfailed).
+No source or test files changed by this workstream.
+
+**Status.** Documentation-only, committed as
+`docs: strengthen strategy evaluation and regime-aware roadmap`, pushed to
+`origin/master`.
+
+---
+
 ## 5. Open Topics / Risks
 
+- **10-Sep-2026 real-data paper replay loss (~₹194.68).** An evaluation
+  observation, NOT a reason to change the algorithm (MA(5,21) stays the frozen V1
+  baseline). Multi-session replay, regime analysis and out-of-sample validation are
+  required before any candidate is considered — see `PROJECT_PLAN.md` §17d/§17e.
 - The Kite Connect credential flow (api key + access token) is implemented and
   tested with mocked HTTP. It has **not** been exercised against the live
   service end-to-end; that requires a real session token and is left for the

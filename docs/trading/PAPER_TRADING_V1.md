@@ -429,7 +429,7 @@ WS 6.2–6.4b):
 | NIFTY futures / options | V1 trades the index (cash-equivalent, `INDEX` type) only |
 | Short selling | Long-only V1 |
 | Leverage | Position notional bounded by available cash |
-| AI-driven signals | AI analysis is a later phase and must sit behind an interface with non-autonomous execution |
+| AI-driven signals | AI/adaptive-learning signals are a later, PLANNED phase (Phase 7), advisory-only behind an interface, evaluated against the frozen MA(5,21) baseline; never autonomous execution (`PROJECT_PLAN.md` §17d/§17e) |
 | Persistent database / durable state | JSON snapshots under `paper_state/` are implemented (WS 6.5); a database / full multi-session ledger remains out of scope |
 | Broker order placement / order APIs | No order-capable vendor surface exists or is planned for V1 |
 | Tick-by-tick / intra-bar execution | Completed 5m bars only |
@@ -559,6 +559,13 @@ All six risk-sizing criteria are **IMPLEMENTED** by `RiskBasedPositionSizer`
   and P&L calculations assume no correlated positions.
 - **Research ≠ trading:** historical MA(5,21) results are a research baseline, not a
   guarantee that the live V1 session will be profitable.
+- **Evaluation-first discipline (Phase 7, PLANNED):** the MA(5,21) strategy is the
+  frozen V1 baseline. A single losing session — including the 10-Sep-2026 real-data
+  paper replay loss of approximately ₹194.68 — is an **evaluation observation**, not a
+  reason by itself to change the algorithm. It illustrates why multi-session replay,
+  market-regime analysis and out-of-sample validation are required before any
+  candidate (regime filter or AI decision support) can be considered for adoption
+  (`PROJECT_PLAN.md` §17e).
 
 ### Future extensions (not before V1)
 
@@ -581,10 +588,11 @@ All six risk-sizing criteria are **IMPLEMENTED** by `RiskBasedPositionSizer`
   `FNO_PAPER_STATE_DIR`) plus `.env.example` rows — **deferred to Phase 7** (out of
   V1 scope; the session consumes the typed defaults for three of the five).
 - Live/streaming quotes behind an interface, if a vendor and token shape are approved.
-- AI-driven signal support behind the `Strategy` interface, never autonomous execution.
+- AI-driven signal support behind the `Strategy` interface, never autonomous execution —
+  Phase 7, advisory-only, evaluated against the frozen MA(5,21) baseline (`PROJECT_PLAN.md` §17d/§17e).
 - A real broker adapter remains a separate, explicitly controlled capability, disabled
   by default, and is out of scope for V1 entirely.
 
 ---
 
-*Contract maintained against repository HEAD `00ed8ed` (WS 6.6). Paper-trading only. No live orders, no real money.*
+*Contract maintained against repository HEAD `02c18f3`. Paper-trading only. No live orders, no real money. V1 baseline MA(5,21) is frozen; Phase 7 strategy changes are evaluated, never assumed.*

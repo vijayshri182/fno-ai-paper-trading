@@ -6,11 +6,12 @@
 > reported from intent — only from code, tests and git.
 >
 > **State as of:** 2026-09-11 · Phase 6 **COMPLETE** · F&O Paper Trading V1
-> **IMPLEMENTATION COMPLETE** · V1 STATUS: **READY**. Documented at base HEAD
-> `302bf35`; the operative docs-finalization checkpoint is committed on top
-> (`docs: finalize Phase 6 and F&O Paper Trading V1`). Working tree clean.
-> Full suite: **561 passed** (offline, deterministic, 0 skipped / 0 xfailed);
-> **30/30 acceptance criteria replay-green**; paper-only boundary verified.
+> **IMPLEMENTATION COMPLETE** · V1 STATUS: **READY**. Checkpoint `02c18f3`;
+> branch `master` == `origin/master`. Full committed suite: **563 passed**
+> (offline, deterministic, 0 skipped / 0 xfailed); **30/30 acceptance criteria
+> replay-green**; paper-only boundary verified. V1 baseline **MA(5,21) is FROZEN** —
+> Phase 7 strategy changes are evaluated empirically (historical replay +
+> out-of-sample validation), never triggered by a single session (see §14).
 
 ---
 
@@ -64,8 +65,8 @@ Committed: `302bf35` (docs) → `c4570ba` (docs) → `00ed8ed` (WS 6.6) → `87c
 
 > MVP = every capability required for an end-to-end **paper-trading-only** system
 > that can trade current data with 1% risk sizing and 2% stop-loss — i.e.
-> Phases 1, 2, 3, 4 **plus** Phase 6 (V1). AI (Phase 5) and live-broker (Phase 7)
-> are **not** MVP capabilities (see §9).
+> Phases 1, 2, 3, 4 **plus** Phase 6 (V1). AI/adaptive learning and live-broker
+> work are **Phase 7 (post-V1) and not** MVP capabilities (see §9, `PROJECT_PLAN.md` §17d).
 
 **Current estimate: 100%** — Phase 6 COMPLETE · V1 READY · `FNO_PAPER_*` env wiring explicitly out of V1 (Phase 7).
 
@@ -106,7 +107,7 @@ Sum = 16×1.0 = **16 / 16 = 100%** — Phase 6 COMPLETE; V1 READY.
 | 2 | Real market data + strategy + backtest harness | **COMPLETE** | commits `a86ec64`, `a1c1d7d` |
 | 3 | Strategy research & robustness framework | **COMPLETE** | commits `fb3f1c5`, `3a60a41` |
 | 4 | Historical-data CLI + real-data research | **COMPLETE** | commits `da1b59a`, `e1a2b38` |
-| 5 | AI analysis / decision support | **NOT STARTED** | no AI code; **out of MVP scope** |
+| 5 | AI analysis / decision support | **NOT STARTED** | Phase 7, PLANNED, advisory-only; no AI code; **out of MVP scope** |
 | 6 | Paper Trading V1 | **COMPLETE** | WS 6.1–6.7 **DONE** (all committed + pushed); V1 **READY**; `FNO_PAPER_*` env wiring re-scoped to Phase 7 (out of V1 scope) |
 | 7 | Real broker / live boundary | **NOT STARTED** | explicitly out of scope |
 
@@ -188,7 +189,7 @@ Status legend: ✅ COMPLETE · 🟡 IN PROGRESS · ⬜ NOT STARTED · ⛔ BLOCKE
 
 ## 9. Intentionally out of scope (current phase)
 
-- **AI analysis / decision support (Phase 5)** — no code; must sit behind an interface, never autonomous execution.
+- **AI analysis / decision support (Phase 7, PLANNED)** — documented, not implemented; must sit behind an interface, never autonomous execution, evaluated against the frozen MA(5,21) baseline (§14).
 - **Real broker / live trading (Phase 7)** — separate, explicitly controlled capability; disabled forever by default.
 - **Streaming / tick quotes** — V1 uses the read-only historical endpoint (quotes derived from last bar); no websocket/streaming code.
 - **Session operations / monitoring (WS 6.6)** — **DONE** (commit `00ed8ed`, pushed); operator scheduled runs (Task Scheduler / cron) remain an environment deployment concern.
@@ -397,6 +398,42 @@ Status legend: ✅ COMPLETE · 🟡 IN PROGRESS · ⬜ NOT STARTED · ⛔ BLOCKE
   existing WS 6.4b `TestWarmup.test_signal_allowed_at_warmup_boundary` test.
 - No known code-level blockers. Phase 6 remaining: `FNO_PAPER_*` env wiring
   (deferred by design) and live/streaming quotes (out of scope).
+
+---
+
+## 14. Phase 7 documentation — strategy evaluation & regime-aware discipline (2026-09-11)
+
+> Documentation-only workstream (commit: `docs: strengthen strategy evaluation and
+> regime-aware roadmap`). **V1 remains COMPLETE. No trading code changed. MA(5,21)
+> remains the frozen V1 baseline. Phase 7 will evaluate improvements empirically —
+> regime-aware and AI enhancements require historical and out-of-sample validation
+> (`PROJECT_PLAN.md` §17d/§17e).**
+
+What changed (all `PLANNED`, nothing implemented):
+
+- **§17e evaluation discipline** added to `PROJECT_PLAN.md`: frozen MA(5,21)
+  baseline; a losing session never triggers parameter changes; multi-session
+  historical replay (`datasets/` + `data/validation.py`); baseline metrics
+  (P&L, return %, win rate, round trips, avg trade, transaction costs, max
+  drawdown + %, exposure, losing streaks); market-regime analysis (trending,
+  sideways/choppy, high/low volatility); regime-aware hypotheses (design only);
+  advisory AI decision support (action/confidence/rationale/regime/model/
+  version/timestamp) with a hard safety boundary; baseline-vs-enhanced
+  comparison; out-of-sample validation; adoption rule; and the design pipeline
+  `Validated Market Data → … → Out-of-Sample Validation` (deterministic risk
+  gate remains authoritative).
+- **§17d Phase 7 roadmap** rewritten as an evaluation-first sequence BEFORE any
+  tuning/replacement of the baseline strategy.
+- **README.md, `ARCHITECTURE.md`, `PAPER_TRADING_V1.md`, and §9 of
+  `PROJECT_PLAN.md`** reconciled to the same framing (AI/regime = Phase 7,
+  PLANNED, advisory-only, never autonomous).
+- **Documented observation:** the 10-Sep-2026 real-data paper replay loss
+  (~₹194.68) is an evaluation observation, NOT a reason by itself to change the
+  algorithm — it demonstrates why multi-session evaluation and regime analysis
+  are required. The roadmap is not overfit to that single session.
+- Tests unchanged: full committed suite **563 passed** (0 skipped / 0 xfailed),
+  plus 4 pre-existing, out-of-scope untracked AI-contract tests (567 total on
+  disk).
 
 ---
 

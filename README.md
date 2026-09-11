@@ -93,7 +93,8 @@ tests/                                # Unit tests — no external dependencies
 
 All money/price fields use `decimal.Decimal` throughout. Interfaces (ABCs) are
 stable, so additional strategies, historical-data tooling (Phase 3) and AI
-(Phase 3) plug in without touching the core accounting/risk/strategy paths.
+(Phase 7, advisory-only) plug in without touching the core
+accounting/risk/strategy paths.
 
 ---
 
@@ -440,8 +441,12 @@ Never commit real values to `.env` — the file is git-ignored.
   send data without credentials and raise a typed `ProviderConfigurationError`
   when misconfigured.
 - **No AI/strategy claims:** the strategy engine is deterministic (moving
-  average crossover). AI analysis is planned and will sit behind an interface
-  with non-autonomous execution.
+  average crossover; MA(5,21) is the frozen V1 baseline). AI analysis and
+  adaptive learning are **PLANNED (Phase 7)** and will sit behind an interface
+  with non-autonomous, advisory execution only. No single session (including
+  the 10-Sep-2026 real-data paper replay loss of ~₹194.68) triggers parameter
+  changes; any candidate improvement must clear the evaluation discipline in
+  `PROJECT_PLAN.md` §17e.
 - **Market data is offline-safe:** the only provider exercised by the demos is
   `InMemoryMarketDataProvider`. The Kite Connect and Upstox adapters are
   read-only market-data clients, unit-tested against mocked HTTP; they never
@@ -464,8 +469,9 @@ Never commit real values to `.env` — the file is git-ignored.
 | **Phase 2 (done)** | Strategy engine, real market-data provider interface, moving-average crossover strategy, read-only Kite Connect adapter, deterministic backtest harness |
 | **Phase 3 (research, done)** | Deterministic research & robustness framework: Indian cost model, execution assumptions, regime datasets, in/out-of-sample splits, walk-forward, parameter sensitivity, benchmark, robust metrics, experiment records, HTML notebook |
 | **Phase 3 (historical, ready)** | Local dataset cache + read-only Upstox historical adapter + interval/validation tooling — enabled when the user configures `UPSTOX_ACCESS_TOKEN` |
-| **Phase 3 (upcoming)** | Historical-data CLI/download pipeline, AI analysis/explainability (behind an interface, never autonomous execution) |
-| **Phase 6 (Paper Trading V1, in progress)** | Live/current-data paper session: completed-5m-candle loop, 1% risk sizing, 2% stop-loss, long-only NIFTY 50, persistence under git-ignored `paper_state/`, 30 offline acceptance-replay tests — see `docs/trading/PAPER_TRADING_V1.md` |
+| **Phase 3 (upcoming)** | Historical-data CLI/download pipeline |
+| **Phase 6 (Paper Trading V1, done — READY)** | Live/current-data paper session: completed-5m-candle loop, 1% risk sizing, 2% stop-loss, long-only NIFTY 50, persistence under git-ignored `paper_state/`, monitoring/ops, 30 offline acceptance-replay tests — see `docs/trading/PAPER_TRADING_V1.md` |
+| **Phase 7 (post-V1, PLANNED — evaluation-first)** | MA(5,21) is the frozen baseline; regime-aware and AI decision-support candidates are researched and evaluated first (historical multi-session replay → regime analysis → out-of-sample validation → baseline comparison → adopt only on evidence), with advisory-only AI behind an interface — see `PROJECT_PLAN.md` §17d/§17e |
 | **Phase 4** | Real broker adapter behind an interface, required to remain disabled by default |
 
 ---
