@@ -7,7 +7,6 @@ used by five-year replay (WS 7.5) and champion/challenger comparison (WS 7.11).
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Mapping, Sequence
@@ -20,6 +19,7 @@ from fno_ai_paper_trading.evaluation.records import (
     EvaluationConfig,
     EvaluationRun,
     SessionEvaluation,
+    SessionReplay,
     composite_curve,
     losing_streak_of,
     max_drawdown_of,
@@ -31,15 +31,6 @@ from fno_ai_paper_trading.strategies.base import Strategy
 
 def _now_iso() -> str:
     return datetime.now().isoformat(timespec="seconds")
-
-
-@dataclass(frozen=True)
-class _SessionRun:
-    """Internal per-session summary used to build records and the aggregate."""
-
-    session: SessionEvaluation
-    curve: tuple
-    result: BacktestResult
 
 
 class HistoricalEvaluator:
@@ -65,7 +56,7 @@ class HistoricalEvaluator:
     ) -> EvaluationRun:
         """Evaluate ``strategy`` over every dataset (validated before replay)."""
         params = dict(strategy_params or {})
-        runs: list[_SessionRun] = []
+        replays: list[SessionReplay] = []
         for dataset in datasets:
             experiment = run_dataset_experiment(
                 dataset,
@@ -78,13 +69,61 @@ class HistoricalEvaluator:
                 ),
                 slippage_assumptions=f"rate={self.config.slippage_rate}",
             )
-            runs.append(self._session_run(experiment.result, strategy.name, params,
-                                          dataset.path.stem, experiment.config.dataset_hash,
-                                          experiment.config.start_date,
-                                          experiment.config.end_date,
-                                          experiment.metrics.exposure_pct))
-        return self._finish(runs, name=name, strategy_name=strategy.name,
-                            strategy_params=params, baseline=baseline)
+            replays.append(self.replay_from_experiment(experiment, dataset.path.stem))
+        return self.build_run(replays, name=name, strategy_name=strategy.name,
+                              strategy_params=params, baseline=baseline)
+
+    def replay_bars(
+        self,
+        bars: Sequence[MarketPrice],
+        strategy: Strategy,
+        *,
+        dataset_name: str = "inline",
+        dataset_hash: str = "",
+        strategy_params: Mapping[str, Any] | None = None,
+    ) -> SessionReplay:
+        """Replay one bar series and return the full per-day replay detail."""
+        params = dict(strategy_params or {})
+        experiment = run_experiment(
+            list(bars),
+            strategy,
+            self.config.backtest(),
+            name=f"replay:{dataset_name}",
+            strategy_params=params,
+            dataset_name=dataset_name,
+            dataset_hash=dataset_hash,
+            cost_assumptions=(
+                f"rate={self.config.commission_rate} fixed={self.config.commission_fixed}"
+            ),
+            slippage_assumptions=f"rate={self.config.slippage_rate}",
+        )
+        return self.replay_from_experiment(experiment, dataset_name)
+
+    def replay_from_experiment(self, experiment, dataset_name: str) -> SessionReplay:
+        """Wrap a research experiment into a :class:`SessionReplay`."""
+        result = experiment.result
+        return SessionReplay(
+            session=SessionEvaluation(
+                dataset_name=dataset_name,
+                dataset_hash=experiment.config.dataset_hash,
+                start_date=experiment.config.start_date,
+                end_date=experiment.config.end_date,
+                bars_processed=len(result.equity_curve),
+                strategy_name=experiment.config.strategy_name,
+                strategy_params=dict(experiment.config.strategy_params),
+                net_pnl=result.total_pnl,
+                net_return_pct=result.total_return_pct,
+                win_rate=result.win_rate,
+                num_trades=result.num_trades,
+                total_commission=result.total_commission,
+                slippage_cost=result.slippage_cost,
+                max_drawdown=result.max_drawdown,
+                max_drawdown_pct=result.max_drawdown_pct,
+                exposure_pct=experiment.metrics.exposure_pct,
+            ),
+            equity_curve=tuple(result.equity_curve),
+            result=result,
+        )
 
     def evaluate_bars(
         self,
@@ -99,72 +138,24 @@ class HistoricalEvaluator:
     ) -> EvaluationRun:
         """Evaluate over an inline bar series (used by tests and demos)."""
         params = dict(strategy_params or {})
-        experiment = run_experiment(
-            list(bars),
-            strategy,
-            self.config.backtest(),
-            name=f"{name}:{dataset_name}",
+        replay = self.replay_bars(
+            bars, strategy, dataset_name=dataset_name, dataset_hash=dataset_hash,
             strategy_params=params,
-            dataset_name=dataset_name,
-            dataset_hash=dataset_hash,
-            cost_assumptions=(
-                f"rate={self.config.commission_rate} fixed={self.config.commission_fixed}"
-            ),
-            slippage_assumptions=f"rate={self.config.slippage_rate}",
         )
-        run = self._session_run(experiment.result, strategy.name, params,
-                                dataset_name, dataset_hash,
-                                experiment.config.start_date,
-                                experiment.config.end_date,
-                                experiment.metrics.exposure_pct)
-        return self._finish([run], name=name, strategy_name=strategy.name,
-                            strategy_params=params, baseline=baseline)
+        return self.build_run([replay], name=name, strategy_name=strategy.name,
+                              strategy_params=params, baseline=baseline)
 
-    # ------------------------------------------------------------------
-    # internals
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _session_run(
-        result: BacktestResult,
-        strategy_name: str,
-        strategy_params: Mapping[str, Any],
-        dataset_name: str,
-        dataset_hash: str,
-        start_date,
-        end_date,
-        exposure_pct: Decimal,
-    ) -> _SessionRun:
-        session = SessionEvaluation(
-            dataset_name=dataset_name,
-            dataset_hash=dataset_hash,
-            start_date=start_date,
-            end_date=end_date,
-            bars_processed=len(result.equity_curve),
-            strategy_name=strategy_name,
-            strategy_params=dict(strategy_params),
-            net_pnl=result.total_pnl,
-            net_return_pct=result.total_return_pct,
-            win_rate=result.win_rate,
-            num_trades=result.num_trades,
-            total_commission=result.total_commission,
-            slippage_cost=result.slippage_cost,
-            max_drawdown=result.max_drawdown,
-            max_drawdown_pct=result.max_drawdown_pct,
-            exposure_pct=exposure_pct,
-        )
-        return _SessionRun(session=session, curve=tuple(result.equity_curve), result=result)
-
-    def _finish(
+    def build_run(
         self,
-        runs: Sequence[_SessionRun],
+        replays: Sequence[SessionReplay],
         *,
         name: str,
         strategy_name: str,
         strategy_params: Mapping[str, Any],
-        baseline: bool,
+        baseline: bool = False,
     ) -> EvaluationRun:
-        aggregate = self._aggregate(runs)
+        """Combine per-day replays into a single standardized evaluation run."""
+        aggregate = self._aggregate(list(replays))
         return EvaluationRun(
             name=name,
             strategy_name=strategy_name,
@@ -172,22 +163,22 @@ class HistoricalEvaluator:
             config=self.config,
             created_at=_now_iso(),
             baseline=baseline,
-            sessions=tuple(run.session for run in runs),
+            sessions=tuple(r.session for r in replays),
             aggregate=aggregate,
         )
 
-    def _aggregate(self, runs: Sequence[_SessionRun]) -> EvaluationAggregate:
+    def _aggregate(self, replays: Sequence[SessionReplay]) -> EvaluationAggregate:
         initial = self.config.initial_capital
-        bars_processed = sum(r.session.bars_processed for r in runs)
-        num_trades = sum(r.result.num_trades for r in runs)
-        winning = sum(r.result.winning_trades for r in runs)
-        losing = sum(r.result.losing_trades for r in runs)
-        gross_profit = sum(r.result.gross_profit for r in runs)
-        gross_loss = sum(r.result.gross_loss for r in runs)
-        total_commission = sum(r.result.total_commission for r in runs)
-        slippage = sum(r.result.slippage_cost for r in runs)
+        bars_processed = sum(r.session.bars_processed for r in replays)
+        num_trades = sum(r.result.num_trades for r in replays)
+        winning = sum(r.result.winning_trades for r in replays)
+        losing = sum(r.result.losing_trades for r in replays)
+        gross_profit = sum(r.result.gross_profit for r in replays)
+        gross_loss = sum(r.result.gross_loss for r in replays)
+        total_commission = sum(r.result.total_commission for r in replays)
+        slippage = sum(r.result.slippage_cost for r in replays)
 
-        curve = composite_curve([r.session for r in runs], [r.curve for r in runs], initial)
+        curve = composite_curve([r.session for r in replays], [r.equity_curve for r in replays], initial)
         final_equity = curve[-1].equity if curve else initial
         total_pnl = final_equity - initial
         total_return_pct = (total_pnl / initial * Decimal("100")) if initial > 0 else Decimal("0")
@@ -199,10 +190,10 @@ class HistoricalEvaluator:
         win_rate = (Decimal(winning) / Decimal(num_trades) * Decimal("100")) if num_trades > 0 else Decimal("0")
         profit_factor = _profit_factor(gross_profit, gross_loss)
         avg_trade = (total_pnl / Decimal(num_trades)) if num_trades > 0 else None
-        exposure = _combined_exposure(runs, bars_processed)
+        exposure = _combined_exposure(replays, bars_processed)
 
         return EvaluationAggregate(
-            sessions=len(runs),
+            sessions=len(replays),
             bars_processed=bars_processed,
             num_trades=num_trades,
             winning_trades=winning,
@@ -222,12 +213,12 @@ class HistoricalEvaluator:
         )
 
 
-def _combined_exposure(runs: Sequence[_SessionRun], bars_processed: int) -> Decimal:
+def _combined_exposure(replays: Sequence[SessionReplay], bars_processed: int) -> Decimal:
     if bars_processed <= 0:
         return Decimal("0")
     bars = sum(
         (r.session.exposure_pct / Decimal("100") * Decimal(str(r.session.bars_processed))
-         for r in runs),
+         for r in replays),
         Decimal("0"),
     )
     return bars / Decimal(bars_processed) * Decimal("100")

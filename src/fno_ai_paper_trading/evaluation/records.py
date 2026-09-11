@@ -13,7 +13,7 @@ from decimal import Decimal
 from typing import Any, Mapping, Sequence
 
 from fno_ai_paper_trading.backtest.config import BacktestConfig
-from fno_ai_paper_trading.backtest.result import EquityPoint
+from fno_ai_paper_trading.backtest.result import BacktestResult, EquityPoint
 from fno_ai_paper_trading.utils.functions import positive_decimal, positive_int
 
 
@@ -115,6 +115,15 @@ class EvaluationRun:
     baseline: bool
     sessions: tuple[SessionEvaluation, ...]
     aggregate: EvaluationAggregate
+
+
+@dataclass(frozen=True)
+class SessionReplay:
+    """Full per-day replay detail used to combine evaluations across days."""
+
+    session: SessionEvaluation
+    equity_curve: tuple[EquityPoint, ...]
+    result: BacktestResult
 
 
 # ---------------------------------------------------------------------------

@@ -1229,6 +1229,39 @@ over validated datasets, with the standardized metric set.
 
 ---
 
+## 4x. 2026-09-11 — WS 7.5 Five-year historical replay capability
+
+**Objective.** Deterministic, resumable, day-by-day replay over a configurable
+multi-year date range with honest progress accounting and train/validation/OOS
+split discipline.
+
+**Decisions.**
+1. `DayBars` wraps per-day chronologically-ordered bars with a `source_hash`
+   identity; per-day validation errors are counted and skipped without aborting.
+2. `ProgressStore` keys by `date|source_hash` so different sources for the same
+   date are tracked independently. Interrupted runs resume cleanly via JSON
+   checkpoint.
+3. `PeriodSplitConfig` assigns contiguous training / validation / out-of-sample
+   labels before any evaluation occurs.
+4. `FiveYearReport.status` is `COMPLETE` only when every provided day was
+   processed and no days were skipped as invalid — never claims five years
+   complete without evidence.
+5. `scripts/evaluate_five_year.py` chunks validated dataset CSVs by trading day,
+   replays frozen MA(5,21), and writes JSON + HTML + resumable progress.
+6. Uses the WS 7.4 `HistoricalEvaluator.replay_bars()` → `build_run()` API
+   cleanly, avoiding double-replay and preserving composite curve correctness.
+
+**Files.** `src/fno_ai_paper_trading/evaluation/five_year.py`,
+`scripts/evaluate_five_year.py`, `tests/test_five_year.py`.
+
+**Verification.** Full suite **626 passed** (606 + 20 new); CLI smoke run over
+3 datasets: 296 trading days processed, 2 round trips, net P&L Rs 0.00
+(evidence only).
+
+**Status.** Committed as `feat: WS 7.5 five-year historical replay capability`, pushed.
+
+---
+
 ## 5. Open Topics / Risks
 
 - **10-Sep-2026 real-data paper replay loss (~₹194.68).** An evaluation

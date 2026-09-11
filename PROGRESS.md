@@ -528,6 +528,24 @@ What changed (all `PLANNED`, nothing implemented):
   (evidence only).
 - 18 focused tests in `tests/test_evaluation.py`.
 
+## 20. WS 7.5 — Five-year historical replay capability (2026-09-11)
+
+> Honest day-by-day replay over a configurable multi-year date range, with
+> resumable progress and train/validation/OOS split discipline.
+
+- New `evaluation/five_year.py`: `DayBars`, `PeriodSplitConfig`, `split_period`,
+  `ProgressStore` (composite date+source key), `FiveYearEvaluation.run()`,
+  `FiveYearReport`, `five_year_report_to_dict`, `five_year_report_to_html`.
+- `ProgressStore` tracks processed days per source hash; interrupted runs resume
+  cleanly. Status is `COMPLETE` only when every provided day was processed.
+- Per-day validation errors are counted (skipped_invalid) without stopping the run.
+- Period labels (training / validation / out-of-sample) are contiguous and
+  deterministic, computed before any evaluation.
+- `scripts/evaluate_five_year.py` CLI chunks validated dataset CSVs by trading
+  day and replays the frozen MA(5,21) baseline. Smoke run: 296 trading days,
+  2 round trips, net P&L Rs 0.00 (evidence only).
+- 20 focused tests in `tests/test_five_year.py`.
+
 ---
 
 *Sources: `PROJECT_PLAN.md` (§17b–17d, DoD §25–28), `docs/trading/PAPER_TRADING_V1.md`, `ACTIVITY_LOG.md`, `git log`, repository tree, and `pytest` results.*
