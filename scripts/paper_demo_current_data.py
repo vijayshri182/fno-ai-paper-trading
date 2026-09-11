@@ -99,7 +99,9 @@ def _choose_when(last_bar: datetime, minutes: int) -> datetime:
 def _print_summary(report) -> None:
     print("Paper session report")
     print(f"  instrument : {report.instrument} @ {report.interval}")
-    print(f"  source     : {report.source}")
+    print(f"  data source: {report.data_source}")
+    print(f"  replay mode: {report.replay_mode}")
+    print(f"  live orders: {'Yes' if report.live_orders else 'No'}")
     print(f"  generated  : {report.generated_at.isoformat(timespec='seconds')}")
     print(f"  initial    : {report.initial_cash:f}")
     print(f"  cash       : {report.cash:f}")
@@ -108,6 +110,10 @@ def _print_summary(report) -> None:
     print(f"  today      : {report.realized_pnl_today:f}")
     print(f"  unrealized : {report.unrealized_pnl:f}")
     print(f"  open qty   : {report.open_quantity}")
+    if report.return_pct is not None:
+        print(f"  return %   : {report.return_pct:f}")
+    if report.max_drawdown is not None:
+        print(f"  max drawdown: {report.max_drawdown:f} ({report.max_drawdown_pct:f}%)")
     if report.win_rate is not None:
         print(
             f"  win-rate   : {report.win_rate:f} "
@@ -116,8 +122,9 @@ def _print_summary(report) -> None:
     else:
         print(f"  wins/loss  : {report.wins} / {report.losses}")
     print(
-        f"  counters   : consumed={report.consumed_bars} orders={report.orders_submitted} "
-        f"fills={report.fills} trades={report.trades} rejects={report.rejections} "
+        f"  counters   : consumed={report.consumed_bars} round_trips={report.round_trips} "
+        f"trade_events={report.trades} orders={report.orders_submitted} fills={report.fills} "
+        f"rejects={report.rejections} "
         f"skips={report.skips}"
     )
     if report.ledger:
@@ -139,6 +146,7 @@ def _run_session(
     when: datetime,
     out_html: str | None,
     out_json: str | None,
+    data_source: str,
 ) -> int:
     """Replay ``bars`` through the existing PaperSession path and render reports."""
     provider = InMemoryMarketDataProvider(
@@ -162,7 +170,14 @@ def _run_session(
         print(f"provider error: {result.provider_error}", file=sys.stderr)
         return 1
 
-    report = build_report(session, [result], when=when)
+    report = build_report(
+        session,
+        [result],
+        when=when,
+        data_source=data_source,
+        replay_mode="Offline paper replay",
+        live_orders=False,
+    )
     _print_summary(report)
 
     if out_html:
@@ -228,10 +243,12 @@ def main(argv: list[str] | None = None) -> int:
 
     instrument = get_research_instrument("NIFTY 50")
     label = ""
+    data_source = ""
 
     if args.smoke:
         bars = build_crossing_ohlcv(instrument)
         label = "smoke (synthetic, no network)"
+        data_source = "Synthetic smoke data"
         print("Paper demo — deterministic smoke run (no network, no credentials)")
     elif args.day:
         try:
@@ -272,6 +289,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"saved          : {saved.path}")
         print(f"data hash      : {saved.data_hash}")
         label = f"upstox {day.isoformat()}"
+        data_source = "Upstox historical data"
     else:
         stored = load_dataset(args.csv)
         bars = stored.bars
@@ -284,6 +302,12 @@ def main(argv: list[str] | None = None) -> int:
             print("dataset failed validation; refusing to replay.", file=sys.stderr)
             return 2
         label = "offline CSV replay"
+        provider_name = str(stored.metadata.get("provider", "saved")).strip()
+        data_source = (
+            "Upstox historical data"
+            if provider_name.casefold() == "upstox"
+            else f"Saved {provider_name} historical data"
+        )
 
     if not bars:
         print("no bars to replay; nothing to do.", file=sys.stderr)
@@ -309,6 +333,7 @@ def main(argv: list[str] | None = None) -> int:
         when=when,
         out_html=args.html,
         out_json=args.json,
+        data_source=data_source,
     )
 
 

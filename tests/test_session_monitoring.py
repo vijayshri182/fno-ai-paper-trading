@@ -221,6 +221,9 @@ class TestBuildReport:
         assert report.source == "live"
         assert report.instrument == "NIFTY_INDEX"
         assert report.interval == "5m"
+        assert report.data_source == "Paper session data"
+        assert report.replay_mode == "Paper session execution"
+        assert report.live_orders is False
         assert report.generated_at == OPEN_NOW
         assert report.initial_cash == Decimal("100000")
         assert report.cash == Decimal("101000")
@@ -237,9 +240,43 @@ class TestBuildReport:
         assert report.skips == 0
         assert report.wins == 1
         assert report.losses == 0
+        assert report.round_trips == 1
         assert report.win_rate == Decimal("1")
         assert len(report.ledger) == 33
         assert len(report.equity_curve) == 33
+        assert all(point.equity > 0 for point in report.equity_curve)
+        assert report.return_pct == Decimal("1")
+        assert report.max_drawdown == Decimal("0")
+        assert report.max_drawdown_pct == Decimal("0")
+
+    def test_report_filters_warmup_sentinel_only_from_displayed_curve(self) -> None:
+        session = _make_session(
+            _bars(40, closes=WIN_CLOSES), plan=ROUND_TRIP, warmup_bars=4
+        )
+        result = session.run_once(OPEN_NOW)
+        report = build_report(session, results=[result], when=OPEN_NOW)
+
+        warmup_steps = [step for step in result.steps if step.equity == 0]
+        assert warmup_steps
+        assert report.equity_curve[0].time > result.steps[0].bar.timestamp
+        assert len(report.equity_curve) == len(result.steps) - len(warmup_steps)
+
+    def test_historical_replay_presentation_is_explicit(self) -> None:
+        session, result = _run_round_trip()
+        report = build_report(
+            session,
+            results=[result],
+            when=OPEN_NOW,
+            data_source="Upstox historical data",
+            replay_mode="Offline paper replay",
+            live_orders=False,
+        )
+
+        html = report_to_html(report)
+        assert "Data source" in html and "Upstox historical data" in html
+        assert "Replay mode" in html and "Offline paper replay" in html
+        assert "Live orders" in html and ">No<" in html
+        assert "paper-session operations &middot; live" not in html
 
     def test_report_without_results_uses_fill_ledger(self) -> None:
         session, _ = _run_round_trip()
@@ -270,6 +307,12 @@ class TestBuildReport:
         report = build_report(session, results=[result], when=OPEN_NOW)
         payload = report_to_dict(report)
         assert payload["summary"]["cash"] == "101000"
+        assert payload["data_source"] == "Paper session data"
+        assert payload["replay_mode"] == "Paper session execution"
+        assert payload["live_orders"] is False
+        assert payload["summary"]["round_trips"] == 1
+        assert payload["summary"]["return_pct"] == "1.00"
+        assert payload["summary"]["max_drawdown"] == "0"
         assert payload["summary"]["win_rate"] == "1"
         assert payload["summary"]["consumed_bars"] == 33
         assert any(row["signal"] == "BUY" for row in payload["ledger"])
@@ -285,6 +328,9 @@ class TestBuildReport:
         assert "Paper session report" in html
         assert "NIFTY_INDEX" in html
         assert "Ledger" in html
+        assert "Round trips" in html
+        assert "Trade/accounting events" in html
+        assert "Orders" in html
         assert "no secret data" in html
         assert "<script>" not in html
 
@@ -324,7 +370,10 @@ class TestSnapshotReport:
         ):
             assert getattr(from_snap, field) == getattr(from_live, field), field
         assert from_snap.win_rate == from_live.win_rate
+        assert from_snap.round_trips == from_live.round_trips
         assert from_snap.ledger == from_live.ledger
+        assert from_snap.max_drawdown is None
+        assert from_snap.max_drawdown_pct is None
 
     def test_snapshot_open_position_marked_at_entry(self) -> None:
         session, _ = _run_buy()
