@@ -1303,6 +1303,38 @@ no-execution/no-look-ahead guarantees.
 
 ---
 
+## 4z. 2026-09-11 — WS 7.10 Adaptive learning & candidate generation
+
+**Objective.** "Learn by outcome, do not react" (§17f.2/§17f.4/§17f.7): read the
+experience store, produce a deterministic outcome summary, and emit improvement
+*hypotheses* only after hard evidence thresholds — where a single loss (or win)
+can never change the algorithm.
+
+**Decisions.**
+1. `learning/outcome.py` computes the aggregate from **complete** records only;
+   `pending_outcome`/`no_trade` records are counted but excluded. Metrics:
+   net P&L, gross win/loss, win rate, expectancy, avg win/loss, profit factor,
+   per-regime / per-signal / per-advisory-usage breakdowns.
+2. `learning/candidates.py` gates generation on `min_completed` (=20), per-regime
+   minimums (=10), and a `win_rate_delta` edge (=0.05). Emitted candidates are
+   inert data: `regime_focus` (a regime out/underperforms the overall win rate)
+   and `advisory_alignment` (accepted vs rejected/overridden advisory split).
+   Insufficient-evidence groups are reported, not silently dropped.
+3. Everything is immutable and deterministic (`now` injectable for tests).
+4. Hard boundary: the `learning` package has no import of strategy / risk /
+   sizing / stop-loss / broker / portfolio / paper-session code (AST test), so
+   candidates cannot be applied in-process; WS 7.11/7.12 own evaluation.
+
+**Files.** `src/fno_ai_paper_trading/learning/` (outcome.py, candidates.py,
+`__init__.py`), `tests/test_learning.py`.
+
+**Verification.** Full suite **700 passed** (680 + 20 new); threshold, breakdown,
+single-loss/single-win, no-look-ahead and import-boundary tests all green.
+
+**Status.** Committed as `feat: WS 7.10 adaptive learning and candidate generation`, pushed.
+
+---
+
 ## 5. Open Topics / Risks
 
 - **10-Sep-2026 real-data paper replay loss (~₹194.68).** An evaluation

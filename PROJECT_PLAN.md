@@ -1076,7 +1076,7 @@ controlled capabilities:
   outcome, transaction costs, drawdown/exposure context) — wins and losses alike
   (§17f).
 
-*Work stream 7.10 — Adaptive learning & candidate generation* — **PLANNED**
+*Work stream 7.10 — Adaptive learning & candidate generation* — **DONE**
 * Learn by outcome to produce candidate model/rule improvements. A single loss
   never changes the algorithm (§17f).
 
@@ -1211,10 +1211,12 @@ AI remains advisory. **Deterministic controls remain authoritative.**
 # 17f. Continuous Adaptive Learning (Long-Term Product Principle; PLANNED)
 
 **PLANNED.** The adaptive-learning *loop* remains PLANNED. The durable
-experience-record data foundation (WS 7.9) is implemented — the domain
-(`experience/`) and the idempotent JSONL store (`persistence/experience_store.py`)
-capture decision-time context, realized outcomes, and advisory metadata with no
-execution path and no look-ahead. Everything else in this section records the
+experience-record data foundation (WS 7.9) and the evidence-only outcome
+analysis + candidate generation (WS 7.10) are implemented — WS 7.10 emits only
+inert improvement hypotheses gated by hard evidence thresholds and has no
+dependency on strategy/risk/broker code. From WS 7.11 onward the remaining
+champion/challenger evaluation, promotion gate, rollback, and the continuous
+feedback loop stay PLANNED. Everything else in this section records the
 long-term product vision and the controls that will govern it. The
 deterministic risk and execution controls remain authoritative at all times, and
 the final system remains **paper trading** unless a future phase explicitly

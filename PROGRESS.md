@@ -573,6 +573,28 @@ What changed (all `PLANNED`, nothing implemented):
 - 54 focused tests in `tests/test_experience_store.py`. Full suite **680 passed**
   (626 + 54 new).
 
+## 22. WS 7.10 — Adaptive learning & candidate generation (2026-09-11)
+
+> Learn by outcome, never react: deterministic outcome analysis over the
+> experience store, with improvement *hypotheses* emitted only after hard
+> evidence thresholds are met. Nothing is ever applied here.
+
+- New `learning/` package:
+  - `outcome.py` — `OutcomeAnalysis` (deterministic; complete-only math):
+    net P&L, gross win/loss, win rate, expectancy, avg win/loss, profit factor,
+    plus per-regime / per-signal / per-advisory-usage breakdowns.
+    `pending_outcome` / `no_trade` records are counted but excluded.
+  - `candidates.py` — `CandidateGenerator` + `CandidateConfig` (thresholds),
+    emitting inert `Candidate` hypothesis records only when thresholds are met:
+    `min_completed` (default 20), per-regime minimums, and a `win_rate_delta`
+    edge (default 0.05) for both `regime_focus` and `advisory_alignment`
+    candidates. A single win or loss never produces anything (§17f.2).
+- Safety boundary: the `learning` package imports no strategy / risk / sizing /
+  stop-loss / broker / portfolio / service-module code (AST-enforced test), and
+  candidates are data — validation of any hypothesis is deferred to WS 7.11/7.12.
+- 20 focused tests in `tests/test_learning.py`. Full suite **700 passed**
+  (680 + 20 new).
+
 ---
 
 *Sources: `PROJECT_PLAN.md` (§17b–17d, DoD §25–28), `docs/trading/PAPER_TRADING_V1.md`, `ACTIVITY_LOG.md`, `git log`, repository tree, and `pytest` results.*

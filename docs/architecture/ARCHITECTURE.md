@@ -23,7 +23,7 @@
 **Out of scope (by design).**
 
 - **No live order execution.** No code path places real-money orders or contacts a broker order API. `PaperBroker.is_live` is hard-coded to `False` and raising live construction is rejected (`broker/paper_broker.py`).
-- **AI/adaptive learning is advisory (Phase 7, in progress).** Advisory-only decision support behind an interface; it must never bypass the `RiskManager` and never place orders directly. The V1 baseline (MA 5/21) is frozen, and any regime-aware/AI candidate must clear the strategy-evaluation discipline (`PROJECT_PLAN.md` §17e). Implemented so far: AI decision-support contracts, deterministic features, market regime detection, historical strategy evaluation, five-year replay capability, and the durable experience store (evidence-only, no execution path). Future capabilities — continuous agent, GUI, alert engine, adaptive learning, champion/challenger, promotion/rollback — are documented in `PROJECT_PLAN.md` §17d–§17l and are **not implemented**.
+- **AI/adaptive learning is advisory (Phase 7, in progress).** Advisory-only decision support behind an interface; it must never bypass the `RiskManager` and never place orders directly. The V1 baseline (MA 5/21) is frozen, and any regime-aware/AI candidate must clear the strategy-evaluation discipline (`PROJECT_PLAN.md` §17e). Implemented so far: AI decision-support contracts, deterministic features, market regime detection, historical strategy evaluation, five-year replay capability, the durable experience store (evidence-only, no execution path), and adaptive learning's outcome analysis + gated candidate generation (inert hypotheses only). Future capabilities — continuous agent, GUI, alert engine, champion/challenger, promotion/rollback — are documented in `PROJECT_PLAN.md` §17d–§17l and are **not implemented**.
 - **No dashboard/UI.** Analytics/reporting produce flat HTML files (research reports and paper-session reports via `research/report.py` CSS); a live web dashboard is a future consideration.
 - **No database / multi-session ledger.** Paper-session state persists as JSON snapshots under git-ignored `paper_state/` (WS 6.5); a durable database is out of scope.
 
@@ -171,6 +171,8 @@ fno-ai-paper-trading/
 |       |   |                           #   session replay, reports
 |       |-- experience/                  # WS 7.9 evidence domain: records, enums,
 |       |   |                           #   classification, queries, builders
+|       |-- learning/                   # WS 7.10 outcome analysis + gated candidate
+|       |   |                           #   generation (inert hypotheses, no execution)
 |       `-- utils/                       # functions, http, retry, logging
 |-- scripts/                 # acquire_dataset.py, research_real_data.py,
 |                            #   upstox_smoke_test.py, generate_research_report.py,
