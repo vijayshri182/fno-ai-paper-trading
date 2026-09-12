@@ -23,7 +23,7 @@
 **Out of scope (by design).**
 
 - **No live order execution.** No code path places real-money orders or contacts a broker order API. `PaperBroker.is_live` is hard-coded to `False` and raising live construction is rejected (`broker/paper_broker.py`).
-- **AI/adaptive learning is advisory (Phase 7, in progress).** Advisory-only decision support behind an interface; it must never bypass the `RiskManager` and never place orders directly. The V1 baseline (MA 5/21) is frozen, and any regime-aware/AI candidate must clear the strategy-evaluation discipline (`PROJECT_PLAN.md` §17e). Implemented so far: AI decision-support contracts, deterministic features, market regime detection, historical strategy evaluation, five-year replay capability, the durable experience store (evidence-only, no execution path), and adaptive learning's outcome analysis + gated candidate generation (inert hypotheses only). Future capabilities — continuous agent, GUI, alert engine, champion/challenger, promotion/rollback — are documented in `PROJECT_PLAN.md` §17d–§17l and are **not implemented**.
+- **AI/adaptive learning is advisory (Phase 7, in progress).** Advisory-only decision support behind an interface; it must never bypass the `RiskManager` and never place orders directly. The V1 baseline (MA 5/21) is frozen, and any regime-aware/AI candidate must clear the strategy-evaluation discipline (`PROJECT_PLAN.md` §17e). Implemented so far: AI decision-support contracts, deterministic features, market regime detection, historical strategy evaluation, five-year replay capability, the durable experience store (evidence-only, no execution path), adaptive learning's outcome analysis + gated candidate generation (inert hypotheses only), and champion vs challenger evaluation (evidence-only comparison; the regime-filtered challenger never modifies the baseline). Future capabilities — continuous agent, GUI, alert engine, promotion/rollback, continuous feedback loop — are documented in `PROJECT_PLAN.md` §17d–§17l and are **not implemented**.
 - **No dashboard/UI.** Analytics/reporting produce flat HTML files (research reports and paper-session reports via `research/report.py` CSS); a live web dashboard is a future consideration.
 - **No database / multi-session ledger.** Paper-session state persists as JSON snapshots under git-ignored `paper_state/` (WS 6.5); a durable database is out of scope.
 
@@ -152,7 +152,8 @@ fno-ai-paper-trading/
 |       |-- data/                        # provider ABC + mock/kite/upstox + market_hours +
 |       |   |                            #   intervals, instrument_registry, errors,
 |       |   |                            #   dataset_store, validation
-|       |-- strategies/                  # base, engine, moving_average_cross
+|       |-- strategies/                  # base, engine, moving_average_cross,
+|       |   |                           #   regime_filtered (WS 7.11 challenger)
 |       |-- risk/                        # manager.py, sizer.py, stop_loss.py
 |       |-- broker/                      # base.py, paper_broker.py
 |       |-- portfolio/                   # portfolio.py
@@ -168,7 +169,8 @@ fno-ai-paper-trading/
 |       |-- features/                    # WS 7.2 deterministic feature engineering
 |       |-- regime/                      # WS 7.3 descriptive market regime detection
 |       |-- evaluation/                  # WS 7.4/7.5 historical + five-year replay,
-|       |   |                           #   session replay, reports
+|       |   |                           #   session replay, reports,
+|       |   |                           #   champion_challenger (WS 7.11 comparison)
 |       |-- experience/                  # WS 7.9 evidence domain: records, enums,
 |       |   |                           #   classification, queries, builders
 |       |-- learning/                   # WS 7.10 outcome analysis + gated candidate
@@ -177,8 +179,9 @@ fno-ai-paper-trading/
 |-- scripts/                 # acquire_dataset.py, research_real_data.py,
 |                            #   upstox_smoke_test.py, generate_research_report.py,
 |                            #   generate_test_report.py, paper_session_report.py,
-|                            #   evaluate_historical.py, evaluate_five_year.py
-`-- tests/                  # 680 unit tests, no network, no external deps
+|                            #   evaluate_historical.py, evaluate_five_year.py,
+|                            #   evaluate_champion_challenger.py (WS 7.11)
+`-- tests/                  # 724 unit tests, no network, no external deps
 ```
 
 Build/run facts: Python 3.13+; virtualenv `.venv`; `pip install -r requirements.txt`; `python src/main.py` for demos; `pytest` for the suite; both `python -m fno_ai_paper_trading.backtest` and `python -m fno_ai_paper_trading.research` run offline demos.
@@ -510,11 +513,11 @@ Legend: **IMPLEMENTED** = exists and exercised by tests/demos; **CONFIGURED-SCAF
 | Session monitoring: `SessionHealth` / `health()`, `SessionReport` / `build_report` / `report_from_snapshot`, `log_results` / `log_health`, `report_to_html` / `write_html_report` | IMPLEMENTED | `services/session_monitoring.py` (WS 6.6), 15 monitoring tests |
 | Operator CLI: offline report rendering from stored session payload | IMPLEMENTED | `scripts/paper_session_report.py` (WS 6.6) |
 | Architecture diagram (layered SVG) | IMPLEMENTED | `docs/architecture/architecture.svg` |
-| AI decision support / regime-aware evolution | PLANNED | `PROJECT_PLAN.md` §17d–§17f — evaluation-first: frozen MA(5,21) baseline, regime analysis, advisory AI behind an interface, adaptive learning as a controlled capability; nothing implemented |
+| AI decision support / regime-aware evolution | IMPLEMENTED (evaluation-first) | `PROJECT_PLAN.md` §17d–§17f — frozen MA(5,21) baseline; WS 7.1–7.5 features/regime/evaluation/replay, WS 7.9 experience store, WS 7.10 gated candidate generation, WS 7.11 champion vs challenger (evidence only). Promotion/rollback remains PLANNED |
 | Real broker adapter | PLANNED | `PROJECT_PLAN.md` Phase 4; `Broker` ABC defined |
 | HTTP transport (curl.exe on Windows + urllib fallback) | IMPLEMENTED | `utils/http.py` |
 | Retry/backoff + structured logging | IMPLEMENTED | `utils/retry.py`, `utils/logging.py` |
-| Test suite | IMPLEMENTED | 561 tests pass offline (as of WS 6.6 verification) |
+| Test suite | IMPLEMENTED | 724 tests pass offline (as of WS 7.11) |
 
 ---
 
@@ -532,7 +535,7 @@ Documented, intentional, or accepted gaps. Each is a deliberate boundary, not an
 8. **Research results are historical/synthetic evidence.** Costs are illustrative (`IndiaCostSchedule.nse_fo_illustrative`); the MA(5,21) full-period real-data result is negative net of costs. Nothing here is investment advice or a claim of future profitability.
 9. **Instrument universe is indices only.** The registry contains NIFTY 50 / BANKNIFTY / FINNIFTY index keys with lot size 1 and tick 0.05; no futures/options instrument master augmentation is automated (Kite master CSV support exists but is not scheduled).
 10. **Snapshot-based persistence only.** Recovery is via `save_session`/`load_session` (WS 6.5) for a single named session under `paper_state/`; snapshot schema migration and a searchable multi-session store are not supported.
-11. **AI and continuous learning are PLANNED, evaluation-first.** Phase 7+ AI/regime/agent/learning work is documented, not implemented; it will be decision support only, evaluated against the frozen MA(5,21) baseline (§17e–§17l), and must never bypass `RiskManager` or place orders.
+11. **AI and continuous learning are PLANNED, evaluation-first.** Phase 7 evaluation foundations (features, regime, historical/five-year replay, experience store, candidate generation, champion vs challenger comparison) are implemented, but promotion/rollback, the continuous agent, GUI, and the adaptive-learning loop are not; any eventual mechanism will be decision support only, evaluated against the frozen MA(5,21) baseline (§17e–§17l), and must never bypass `RiskManager` or place orders.
 12. **Single HTTP transport caveat.** Windows uses a `curl.exe` subprocess (needed to defeat Cloudflare WAF blocking stdlib `urllib`); this is a platform-specific dependency that should be revisited when the environment changes.
 
 ---

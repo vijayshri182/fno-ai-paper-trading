@@ -1335,6 +1335,49 @@ single-loss/single-win, no-look-ahead and import-boundary tests all green.
 
 ---
 
+## 4aa. 2026-09-12 — WS 7.11 Champion vs challenger evaluation
+
+**Objective.** Evaluate challenger candidates against the frozen MA(5,21)
+champion on *shared* data with *identical* cost/execution assumptions so any
+difference is attributable to signal selection alone — evidence only, no
+promotion (gating is WS 7.12).
+
+**Decisions.**
+1. New challenger `RegimeFilteredMovingAverageCross` (`strategies/regime_filtered.py`):
+   wraps MA(5,21) and suppresses BUY entries when the regime trend at the
+   decision bar is not in `allowed_trends` (default `("UP",)`). SELL/HOLD pass
+   through untouched, so the challenger can only stay flat longer — it never
+   widens an open risk state. Regime comes from `RegimeDetector.detect_prefix`,
+   the same no-look-ahead feature prefix used by the AI boundary; the baseline is
+   never modified.
+2. `evaluation/champion_challenger.py`: `ChampionChallenger` iterates the same
+   `HistoricalEvaluator` over champion + each challenger (`run`/`run_bars`/
+   `run_days`). `run_days` reuses the five-year `split_period`, producing an
+   overall `ComparisonReport` plus per-period reports (training / validation /
+   out-of-sample), with labels computed up front from day counts.
+3. `ChallengerDelta` records raw deltas (net P&L, win rate, max drawdown %,
+   profit factor) + a single `beats_champion` boolean — explicitly only a
+   headline summary, marked `evidence_only=True`. No adoption/rollback logic
+   exists in this workstream.
+4. Serialization (`comparison_report_to_dict` / `multi_period_comparison_to_dict`)
+   and HTML (labelled "evidence, not promotion") follow the WS 7.4/7.5 report
+   conventions. CLI: `scripts/evaluate_champion_challenger.py`.
+
+**Files.** `src/fno_ai_paper_trading/strategies/regime_filtered.py`,
+`src/fno_ai_paper_trading/evaluation/champion_challenger.py`,
+`tests/test_champion_challenger.py`, `scripts/evaluate_champion_challenger.py`,
+`strategies/__init__.py`, `evaluation/__init__.py`.
+
+**Verification.** Full suite **724 passed** (700 + 24 new). Strategy tests cover
+UP-allowed BUY, SIDEWAYS up-cross suppression, SELL passthrough, prefix-only
+regime equivalence vs `detect_prefix`, and determinism; comparison tests cover
+delta correctness, period isolation, twin-with-no-filter == champion (zero
+delta), and serialization/HTML smoke.
+
+**Status.** Committed as `feat: WS 7.11 champion vs challenger evaluation`, pushed.
+
+---
+
 ## 5. Open Topics / Risks
 
 - **10-Sep-2026 real-data paper replay loss (~₹194.68).** An evaluation

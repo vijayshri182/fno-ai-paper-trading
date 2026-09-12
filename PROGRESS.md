@@ -595,6 +595,45 @@ What changed (all `PLANNED`, nothing implemented):
 - 20 focused tests in `tests/test_learning.py`. Full suite **700 passed**
   (680 + 20 new).
 
+## 23. WS 7.11 — Champion vs challenger evaluation (2026-09-12)
+
+> Evidence, not promotion: run the frozen MA(5,21) champion side-by-side against
+> challenger candidates on *shared* data with *identical* cost/execution
+> assumptions, so any difference comes from signal selection alone. Running a
+> comparison never promotes anyone — gating is deferred to WS 7.12.
+
+- New `strategies/regime_filtered.py`: `RegimeFilteredMovingAverageCross`
+  challenger (evaluation-only). Wraps the frozen MA(5,21) crossover and
+  suppresses BUY entries when the regime trend at the decision bar
+  (`RegimeDetector.detect_prefix` — same no-look-ahead feature prefix the AI
+  boundary consumes) is not in `allowed_trends` (default `("UP",)`). SELL/HOLD
+  pass through untouched, so the challenger never widens an open risk state;
+  the baseline MA(5,21) itself is never modified.
+- New `evaluation/champion_challenger.py`:
+  - `ChampionChallenger` runner — `run` / `run_bars` / `run_days`, all replaying
+    the champion and every challenger through the same `HistoricalEvaluator`
+    (identical `EvaluationConfig`).
+  - `run_days` reuses the five-year `split_period` machinery → overall report +
+    one `ComparisonReport` per period (training / validation / out-of-sample),
+    with day counts labelled up front (no evaluation can influence them).
+  - `ChallengerDelta` — raw evidence-only deltas (net P&L, win rate, max
+    drawdown %, profit factor) plus a single `beats_champion` boolean
+    (`challenger pnl >= champion` AND maxdd % <= champion). Every delta is
+    flagged `evidence_only=True`; no adoption logic exists here.
+  - `ComparisonReport` / `MultiPeriodComparison` + deterministic
+    `comparison_report_to_dict` / `comparison_report_to_html` (label:
+    "evidence, not promotion").
+- `strategies/__init__.py` and `evaluation/__init__.py` exports extended.
+- `scripts/evaluate_champion_challenger.py` CLI: day-chunks datasets, compares
+  MA(5,21) vs two regime-filtered candidates, writes JSON + HTML.
+- 24 focused tests in `tests/test_champion_challenger.py`, including strategy
+  behaviour (UP allowed → BUY, SIDEWAYS up-cross suppressed, SELL always passes
+  through), derivation-only prefix equivalence vs `detect_prefix`, delta
+  correctness, period isolation, twin-with-no-filter equals champion (zero
+  delta), and serialization/HTML smoke.
+- Full suite **724 passed** (700 + 24 new); no regressions. Baseline remains
+  frozen; challengers are candidates only.
+
 ---
 
 *Sources: `PROJECT_PLAN.md` (§17b–17d, DoD §25–28), `docs/trading/PAPER_TRADING_V1.md`, `ACTIVITY_LOG.md`, `git log`, repository tree, and `pytest` results.*
