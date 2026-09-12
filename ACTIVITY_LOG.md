@@ -1525,8 +1525,60 @@ pushed.
 
 ---
 
+## 4af. 2026-09-12 - Real-data champion model-performance report (continuous 5m replay)
+
+**Scope.** Replace the one-session-per-day "five-year" style evaluation with a
+**continuous** paper replay of the frozen champion MA(5,21) over real NIFTY 50
+5-minute history (87,193 bars, 2022-01-03 .. 2026-09-11) plus the full evidence
+bundle and documentation deliverable
+(`docs/model_performance_report.md`, git-ignored
+`reports/model_performance/`).
+
+**Verification.** 813 passed (788 + 25 new): `test_fast_signal.py` (O(n) signal
+precompute bit-for-bit equal to `strategy.analyze(bars[:i+1])` on 406 real
+sampled prefixes), `test_model_performance.py` (engine `signals=` path ===
+per-bar analyze path; round-trip reconciliation exact; decision-time entry
+regimes; period/regime aggregation partition; benchmark/index math; splits;
+walk-forward equivalence to `run_walk_forward`; cost sensitivity; determinism;
+save/load round trip), `test_coverage.py` (full calendar, weekend/gap,
+missing-day, duplicate-timestamp validation, histogram/hash).
+
+**Headline findings (honest, real data).** Net return **-143.21%** (final equity
+-₹43,210 from ₹100,000), max DD 143.29%, 2,601 round trips, 15.53% win rate,
+Sharpe -1.95, friction ₹146,129 (commission ₹33,722 + slippage ₹112,407) against
+**gross trading P&L ≈ +₹2,918**; every year negative (2022..2026); NIFTY
+buy-and-hold +27.96% (1d) / +29.62% (5m). Train/validation/test all negative;
+walk-forward combined return -66.79%; every decision-time regime bucket negative
+(9.77%-18.42% win rates); cost sensitivity: only the zero-cost scenario is
+positive (+2.92%), base/high both deeply negative. This is a **clear negative
+result for the registered champion on real data** — consistent in direction with
+the 10-Sep-2026 note below, and much larger once continuous compounding, stop-loss
+re-entry and decision-time regimes are included.
+
+**Decisions.** Engine gained a backward-compatible optional `signals=` stream;
+new `evaluation/` modules (fast_signal, model_performance, coverage, perf_reports)
+and two scripts (acquire data, generate report). Kept MA(5,21) **frozen**; no
+parameter shopping on this single 4.7-year window (explicit overfit caveat in the
+report). Documented limitations: ~4.7 years real history (not five), no cash/margin
+floor in either paper broker (negative equity is an implicit-leverage artifact),
+gross benchmark vs net strategy, illustrative cost model, candidate missing-day
+upper bounds.
+
+**Status.** Committed as `feat: champion model-performance evaluation on real
+NIFTY 5m + report evidence` (550b5c8), pushed.
+
+---
+
 ## 5. Open Topics / Risks
 
+- **12-Sep-2026 continuous real-data replay: champion MA(5,21) nets -143.21%**
+  over 87,193 real NIFTY 5m bars (friction ₹146,129 vs gross trading P&L ≈
+  +₹2,918; all years and all decision-time regimes negative; only the zero-cost
+  scenario is positive). An evaluation observation — MA(5,21) stays the frozen V1
+  baseline and is NOT changed; this is documented evidence for the promotion gate
+  (see `docs/model_performance_report.md`), not a reason to alter the algorithm.
+  Any candidate/variant must pass the net-of-cost, continuous-replay, regime +
+  walk-forward + OOS gates from §10 of that report before promotion.
 - **10-Sep-2026 real-data paper replay loss (~₹194.68).** An evaluation
   observation, NOT a reason to change the algorithm (MA(5,21) stays the frozen V1
   baseline). Multi-session replay, regime analysis and out-of-sample validation are

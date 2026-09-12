@@ -456,8 +456,13 @@ Never commit real values to `.env` — the file is git-ignored.
   non-autonomous, advisory execution only; every alert is labeled **PAPER
   TRADING — NO LIVE ORDER**. No single session (including
   the 10-Sep-2026 real-data paper replay loss of ~₹194.68) triggers parameter
-  changes; any candidate improvement must clear the evaluation discipline in
-  `PROJECT_PLAN.md` §17e.
+  changes; the **12-Sep-2026 continuous real-data model-performance report**
+  (`docs/model_performance_report.md`) documents that the frozen champion nets
+  **-143.21%** over 87,193 real NIFTY 5m bars (all years and all decision-time
+  regimes negative; NIFTY buy-and-hold +27.96%) — a clear negative result on
+  real data, kept as evidence for the promotion gate, not a reason to change
+  the algorithm. Any candidate improvement must clear the evaluation discipline
+  in `PROJECT_PLAN.md` §17e.
 - **Market data is offline-safe:** the only provider exercised by the demos is
   `InMemoryMarketDataProvider`. The Kite Connect and Upstox adapters are
   read-only market-data clients, unit-tested against mocked HTTP; they never

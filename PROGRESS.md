@@ -5,13 +5,20 @@
 > the **actual repository state** (files, tests, commits). No progress is
 > reported from intent — only from code, tests and git.
 >
-> **State as of:** 2026-09-11 · Phase 6 **COMPLETE** · F&O Paper Trading V1
+> **State as of:** 2026-09-12 · Phase 6 **COMPLETE** · F&O Paper Trading V1
 > **IMPLEMENTATION COMPLETE** · V1 STATUS: **READY**. Latest committed checkpoint
-> `abf516f`; branch `master` == `origin/master`. Full committed suite: **563 passed**
-> (offline, deterministic, 0 skipped / 0 xfailed); **30/30 acceptance criteria
-> replay-green**; paper-only boundary verified. V1 baseline **MA(5,21) is FROZEN** —
+> `550b5c8`; branch `master` == `origin/master`. Full committed suite: **813 passed**
+> (offline, deterministic, 0 skipped / 0 xfailed); paper-only boundary verified.
+> V1 baseline **MA(5,21) is FROZEN** —
 > Phase 7 strategy changes are evaluated empirically (historical replay +
 > out-of-sample validation), never triggered by a single session (see §14, §15).
+> Phase 7 evidence: **real-data champion model-performance report complete**
+> (`docs/model_performance_report.md`, continuous 5m replay over 87,193 NIFTY bars
+> 2022-01-03..2026-09-11) — champion nets **-143.21%** (friction ₹146,129 vs gross
+> trading P&L ≈ +₹2,918; every year and every decision-time regime negative;
+> benchmark +27.96% buy-and-hold; all splits/walk-forward negative). This is a
+> **clear negative result on real data**; MA(5,21) remains frozen pending any
+> challenger passing the §17d/§17e promotion gates.
 
 ---
 
