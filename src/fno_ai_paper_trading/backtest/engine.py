@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
+from typing import Sequence
 
 from fno_ai_paper_trading.broker.paper_broker import PaperBroker, PaperBrokerConfig
 from fno_ai_paper_trading.config.settings import Environment, PaperSettings
@@ -22,7 +23,7 @@ from fno_ai_paper_trading.models.order import Fill, Order
 from fno_ai_paper_trading.portfolio.portfolio import Portfolio
 from fno_ai_paper_trading.risk.manager import RiskManager
 from fno_ai_paper_trading.risk.stop_loss import StopLossPolicy, enforce_stop
-from fno_ai_paper_trading.strategies.base import Strategy
+from fno_ai_paper_trading.strategies.base import SignalResult, Strategy
 from fno_ai_paper_trading.utils.functions import new_id
 
 from fno_ai_paper_trading.backtest.config import BacktestConfig
@@ -119,7 +120,19 @@ class BacktestEngine:
         bars: list[MarketPrice],
         strategy: Strategy,
         config: BacktestConfig | None = None,
+        *,
+        signals: Sequence[SignalResult] | None = None,
     ) -> BacktestResult:
+        """Run ``strategy`` (or precomputed ``signals``) over chronological bars.
+
+        ``signals`` is an optional decision-time shortcut for long series: when
+        provided it must be exactly ``len(bars)`` entries long with
+        ``signals[i]`` equal to ``strategy.analyze(bars[:i+1])``. Bypassing the
+        per-bar prefix slice avoids the O(n^2) cost of re-slicing a large series
+        while preserving the no-look-ahead contract — every signal for bar ``i``
+        is still a pure function of bars ``[:i+1]``. When ``signals`` is None the
+        engine calls ``strategy.analyze(bars[:i+1])`` exactly as before.
+        """
         config = config or BacktestConfig()
         slippage = (
             config.execution.total_adverse_rate
@@ -138,6 +151,12 @@ class BacktestEngine:
         risk_manager = self._build_risk_manager(config)
         stop_policy = StopLossPolicy(config.stop_loss_pct) if config.enable_stop_loss else None
 
+        if signals is not None:
+            if len(signals) != len(bars):
+                raise ValueError(
+                    f"signals must have one entry per bar ({len(signals)} != {len(bars)})"
+                )
+
         equity_curve: list[EquityPoint] = []
         peak_equity = config.initial_capital
         signals_generated = 0
@@ -148,7 +167,7 @@ class BacktestEngine:
 
         for i, bar in enumerate(bars):
             # --- strategy sees only past + present ---
-            signal = strategy.analyze(bars[: i + 1])
+            signal = signals[i] if signals is not None else strategy.analyze(bars[: i + 1])
 
             if signal.actionable and signal.instrument is not None:
                 signals_generated += 1
