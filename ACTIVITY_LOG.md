@@ -1378,6 +1378,46 @@ delta), and serialization/HTML smoke.
 
 ---
 
+## 4ab. 2026-09-12 — WS 7.12 Controlled model promotion & rollback
+
+**Objective.** Let a challenger become the champion only through a promotion
+gate over robust out-of-sample evidence that preserves risk constraints, tracked
+in a model/strategy version registry with rollback (§17f.9) — all purely a
+decision over evidence.
+
+**Decisions.**
+1. `promotion/gate.py`: pure, deterministic gate over `DeltaView` (a plain,
+   JSON-friendly slice of a WS 7.11 delta). `PromotionCriteria` defaults:
+   `oos_min_days=3`, `require_validation_not_worse=True`,
+   `require_positive_oos_pnl=False`. To promote, the challenger must beat the
+   champion out-of-sample (net P&L >= AND maxDD % <=), have enough OOS days, and
+   not be worse on validation. Verdicts include every reason + evidence snapshot;
+   rejection leaves the registry untouched. Adapters support WS 7.11
+   `ChallengerDelta` objects, `MultiPeriodComparison` objects, and serialized
+   report JSON.
+2. `promotion/registry.py`: append-only JSONL `VersionRegistry`
+   (`start`/`promote`/`rollback`/`rollback_to`), replayed into state on load;
+   exactly one ACTIVE champion, previous versions RETIRED / ROLLED_BACK; corrupt
+   or unknown log lines raise. Default `model_registry/` (gitignored).
+3. Safety boundary: `promotion/` imports no broker / portfolio / risk / service
+   / backtest code — promotion is bookkeeping over evidence; it can never enable
+   live trading or weaken risk controls; MA(5,21) remains champion until a
+   candidate clears the gate.
+4. CLI `scripts/manage_model_versions.py`: `list`, `start`, `promote`
+   (gate-checked; rejected candidates are not written), `rollback [--to]`.
+
+**Files.** `src/fno_ai_paper_trading/promotion/` (gate.py, registry.py,
+`__init__.py`), `tests/test_promotion.py`, `scripts/manage_model_versions.py`,
+`.gitignore` (+`model_registry/`).
+
+**Verification.** Full suite **751 passed** (724 + 27 new); registry persistence
+round-trips, corrupt-log rejection, gate accept/reject matrices, DeltaView
+adapters, and an end-to-end gate over a real `MultiPeriodComparison` all green.
+
+**Status.** Committed as `feat: WS 7.12 controlled promotion and rollback`, pushed.
+
+---
+
 ## 5. Open Topics / Risks
 
 - **10-Sep-2026 real-data paper replay loss (~₹194.68).** An evaluation

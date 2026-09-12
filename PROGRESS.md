@@ -634,6 +634,39 @@ What changed (all `PLANNED`, nothing implemented):
 - Full suite **724 passed** (700 + 24 new); no regressions. Baseline remains
   frozen; challengers are candidates only.
 
+## 24. WS 7.12 — Controlled model promotion & rollback (2026-09-12)
+
+> A challenger becomes the champion only through the promotion gate (robust,
+> risk-preserving evidence) and is recorded in an append-only version registry.
+> Rollback restores the previous approved version. Everything is a decision over
+> evidence — promotion never runs a strategy, places an order, or touches risk
+> controls.
+
+- New `promotion/` package:
+  - `gate.py` — `PromotionGate` + `PromotionCriteria` (oos_min_days default 3,
+    require_validation_not_worse, require_positive_oos_pnl). Pure decision over
+    plain `DeltaView` evidence (JSON-friendly; adapters from WS 7.11
+    `ChallengerDelta`, comparison objects, and report JSON). Promotion requires
+    the challenger to beat the champion out-of-sample (net P&L >= champion AND
+    max drawdown % <=) with sufficient OOS days, not be worse on validation, and
+    never weaken risk constraints. Rejected challengers are untouched; verdicts
+    carry a full evidence trail and a paper-only disclaimer.
+  - `registry.py` — `VersionRegistry` append-only JSONL log (`start`/`promote`/
+    `rollback`/`rollback_to`), replayed deterministically at load (corrupt lines
+    raise). Exactly one ACTIVE champion at a time; previous versions are
+    RETIRED or ROLLED_BACK. Default dir `model_registry/` (gitignored).
+- `scripts/manage_model_versions.py` CLI: `list` / `start` / `promote`
+  (gate-checked against a champion-vs-challenger report JSON; rejections refuse
+  to write) / `rollback`.
+- 27 focused tests in `tests/test_promotion.py`, including registry persistence
+  and corrupt-log rejection, gate accept/reject matrices, `DeltaView` adapters,
+  a criterion-validation edge, and an end-to-end test over a real WS 7.11
+  `MultiPeriodComparison` (twin promoted; suppressed candidate rejected).
+- Full suite **751 passed** (724 + 27 new); no regressions. The promotion gate
+  and rollback are implemented but the continuous feedback *loop* (WS 7.13)
+  stays PLANNED — the frozen MA(5,21) baseline remains the champion until a
+  candidate clears the gate.
+
 ---
 
 *Sources: `PROJECT_PLAN.md` (§17b–17d, DoD §25–28), `docs/trading/PAPER_TRADING_V1.md`, `ACTIVITY_LOG.md`, `git log`, repository tree, and `pytest` results.*
