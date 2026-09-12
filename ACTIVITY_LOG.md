@@ -1501,6 +1501,30 @@ validation, and the execution-import boundary all green.
 
 ---
 
+## 4ae. 2026-09-12 — Phase-7 close-out: 20-item engineering report
+
+**Objective.** Produce the final engineering deliverable for human review once
+WS 7.14 landed (`39b7791`).
+
+**Decisions.** A 20-item report (`docs/engineering_report.md`) grounded in the
+implemented evidence rather than intent: paper-only boundary + AST import-boundary
+proofs; frozen MA(5,21) baseline; deterministic risk/execution gates; Decimal
+currency integrity; no-look-ahead construction; deterministic core; failure-safe
+data; standardized evaluation incl. five-year replay; regime detection; durable
+experience store; gated candidate generation; champion-vs-challenger evidence;
+promotion/rollback; the feedback loop; capture correctness; alerting + watchdog;
+test suite/acceptance (788 passed, 37 modules); operations artifacts (13 CLIs,
+git-ignored state, offline HTML, `.env`-only secrets); and an explicit
+scope-honesty item (WS 7.6–7.8, notification integrations, live broker NOT
+implemented). Updated `PROJECT_PLAN.md` §17d intro and README capability rows to
+match reality (alert engine/adaptive learning/feedback loop/watchdog moved from
+PLANNED to implemented).
+
+**Status.** Committed as `docs: Phase-7 close-out 20-item engineering report`,
+pushed.
+
+---
+
 ## 5. Open Topics / Risks
 
 - **10-Sep-2026 real-data paper replay loss (~₹194.68).** An evaluation

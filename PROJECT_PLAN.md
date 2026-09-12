@@ -981,6 +981,9 @@ sizing is **not** a replacement for the caps.
 Phase 6 delivery status below; the historical-research milestone and the
 live/current-data paper path are implemented and committed. Live trading stays
 explicitly out of scope.
+Post-WS-7.14 status: the evaluation-first AI/learning runtime (WS 7.1–7.5 and
+7.9–7.14) is implemented and reviewed — see `docs/engineering_report.md`
+(20-item engineering report).
 
 Per `docs/trading/PAPER_TRADING_V1.md` §2.4, the plan assigns **Phase 6** to Paper
 Trading V1. Phase 6 is broken into ordered work streams, each annotated with its

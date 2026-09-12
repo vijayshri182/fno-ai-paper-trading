@@ -451,9 +451,10 @@ Never commit real values to `.env` — the file is git-ignored.
   send data without credentials and raise a typed `ProviderConfigurationError`
   when misconfigured.
 - **No AI/strategy claims:** the strategy engine is deterministic (moving
-  average crossover; MA(5,21) is the frozen V1 baseline). AI analysis and
-  adaptive learning are **PLANNED (Phase 7)** and will sit behind an interface
-  with non-autonomous, advisory execution only. No single session (including
+  average crossover; MA(5,21) is the frozen V1 baseline). AI decision support
+  and the learning loop (Phase 7) are implemented behind an interface with
+  non-autonomous, advisory execution only; every alert is labeled **PAPER
+  TRADING — NO LIVE ORDER**. No single session (including
   the 10-Sep-2026 real-data paper replay loss of ~₹194.68) triggers parameter
   changes; any candidate improvement must clear the evaluation discipline in
   `PROJECT_PLAN.md` §17e.
@@ -482,7 +483,7 @@ Never commit real values to `.env` — the file is git-ignored.
 | **Phase 3 (upcoming)** | Historical-data CLI/download pipeline |
 | **Phase 6 (Paper Trading V1, done — READY)** | Live/current-data paper session: completed-5m-candle loop, 1% risk sizing, 2% stop-loss, long-only NIFTY 50, persistence under git-ignored `paper_state/`, monitoring/ops, 30 offline acceptance-replay tests — see `docs/trading/PAPER_TRADING_V1.md` |
 | **Phase 7 (post-V1, in progress — evaluation-first)** | AI decision-support foundation (advisory only), deterministic feature engineering, market regime detection, historical strategy evaluation, ~5-year replay capability, the durable experience store, outcome analysis / candidate generation, champion vs challenger evaluation, controlled promotion/rollback via an evidence-gated promotion gate + version registry, the continuous feedback/learning loop (paper-trade replay → experience capture → hypotheses → comparison → gate → promoted champion feeds the next cycle), and a pluggable alert engine + watchdog/health/fail-safe (all alerts labeled **PAPER TRADING — NO LIVE ORDER**) are implemented; MA(5,21) is the frozen baseline; regime-aware and AI candidates are researched/validated (historical + out-of-sample, no look-ahead, no leakage) before adoption — see `PROJECT_PLAN.md` §17d/§17e/§17g |
-| **Phase 7+ (PLANNED — later, controlled)** | Continuous paper-trading agent, GUI/monitoring dashboard (read-only, "PAPER TRADING — NO LIVE ORDERS"), pluggable alert engine, adaptive learning, continuous feedback loop, watchdog/fail-safe — not implemented (`PROJECT_PLAN.md` §17f, §17h–§17l) |
+| **Phase 7+ (PLANNED — later, controlled)** | Regime-aware strategy evaluation (WS 7.6), continuous paper-trading agent (WS 7.8), GUI/monitoring dashboard (read-only, "PAPER TRADING — NO LIVE ORDERS" — WS 7.7), and third-party notification integrations — not implemented (`PROJECT_PLAN.md` §17f, §17h–§17l) |
 | **Phase 4** | Real broker adapter behind an interface, required to remain disabled by default |
 
 ---

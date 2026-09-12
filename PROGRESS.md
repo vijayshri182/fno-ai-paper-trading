@@ -743,4 +743,19 @@ What changed (all `PLANNED`, nothing implemented):
 
 ---
 
+## 27. Phase-7 close-out — 20-item engineering report (2026-09-12)
+
+Delivered `docs/engineering_report.md`: a 20-item engineering report for human
+review covering the paper-only boundary, the frozen MA(5,21) baseline, risk/
+execution gates, numeric integrity, no-look-ahead guarantees, deterministic
+core, failure-safe data handling, evaluation/replay discipline, experience
+store, gated candidate generation, champion-vs-challenger evidence, promoted
+promotion/rollback, the feedback loop, capture correctness, alerting + watchdog,
+testing/acceptance, operations/artifacts, and an explicit scope-honesty section
+(WS 7.6–7.8 and notification integrations remain PLANNED). **788 tests pass
+offline; Phase 7 is complete: 11 of 14 work streams implemented, WS 7.6–7.8
+stay PLANNED behind the evaluation discipline.**
+
+---
+
 *Sources: `PROJECT_PLAN.md` (§17b–17d, DoD §25–28), `docs/trading/PAPER_TRADING_V1.md`, `ACTIVITY_LOG.md`, `git log`, repository tree, and `pytest` results.*
