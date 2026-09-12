@@ -1459,6 +1459,48 @@ repeat leg, serialization and the execution-import boundary all green.
 
 ---
 
+## 4ad. 2026-09-12 — WS 7.14 Alerting and operational hardening
+
+**Objective.** Implement the pluggable alert engine and watchdog/health/
+fail-safe layer (§17j, §17k): trading / AI-learning / risk / system alerts —
+every trading alert carrying the **PAPER TRADING — NO LIVE ORDER** marker —
+and a watchdog that fails safely (HOLD/STOP rather than guessing). The whole
+layer is advisory data and delivery; it never executes.
+
+**Decisions.**
+1. `alerting/alerts.py`: `AlertCategory`, `AlertLevel`, frozen `Alert` with
+   `to_dict`/`from_dict`, `PAPER_TRADING_LABEL` constant, and `trading_alert`
+   builder whose environment field is unforgetably the paper label.
+2. `alerting/engine.py`: pluggable `AlertSink` — `FileAlertSink` (JSONL),
+   `CollectingAlertSink`, `ChainedAlertSink` — with `AlertEngine` that stamps
+   the environment marker on every emitted alert (even if a caller omits it),
+   keeps a bounded history, and isolates sink failures. No notification
+   integration ships; all sinks are local so nothing can reach external
+   services accidentally.
+3. `alerting/health.py`: deterministic `Watchdog` — `is_stale`,
+   `bar_sequence_is_valid` for duplicate/out-of-order candles, per-component
+   `HealthReport`, and `TradingSafety` (SAFE / WATCH / STOP with the instruction
+   to HOLD/STOP paper execution rather than guess). `alerts_for` maps the
+   report into paper-labelled SYSTEM/RISK alerts. A STOP is data for operators;
+   the watchdog never places orders or changes risk controls.
+4. `scripts/run_watchdog.py`: health report over dataset sequences, experience
+   store and model registry; JSON + HTML artifacts; optional `--as-of` /
+   `--max-bar-age-hours` wall-clock staleness bound.
+5. Safety boundary: alerting imports no broker / portfolio / risk / service /
+   execution code (AST-verified); delivery and fail-safe decisions are pure
+   bookkeeping.
+
+**Files.** `src/fno_ai_paper_trading/alerting/` (alerts.py, engine.py, health.py,
+`__init__.py`), `tests/test_alerting.py`, `scripts/run_watchdog.py`.
+
+**Verification.** Full suite **788 passed** (769 + 19 new); alert serialization,
+engine dispatch/history/file sink, watchdog SAFE/STOP/WATCH paths, bar-sequence
+validation, and the execution-import boundary all green.
+
+**Status.** Committed as `feat: WS 7.14 alerting and operational hardening`, pushed.
+
+---
+
 ## 5. Open Topics / Risks
 
 - **10-Sep-2026 real-data paper replay loss (~₹194.68).** An evaluation

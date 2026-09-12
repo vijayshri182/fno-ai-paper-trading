@@ -706,4 +706,41 @@ What changed (all `PLANNED`, nothing implemented):
 
 ---
 
+## 26. WS 7.14 — Alerting and operational hardening (2026-09-12)
+
+> A pluggable alert engine plus a watchdog / health / fail-safe layer (§17j,
+> §17k). Every alert carries the **PAPER TRADING — NO LIVE ORDER** marker; a
+> fail-safe decision (STOP) is *data* telling operators to HOLD/STOP paper
+> execution rather than guess — the watchdog itself never executes.
+
+- New `alerting/` package:
+  - `alerts.py` — `AlertCategory` (TRADING / AI_LEARNING / RISK / SYSTEM),
+    `AlertLevel`, frozen `Alert` record (to_dict/from_dict), the mandatory
+    `PAPER_TRADING_LABEL`, and a `trading_alert` builder whose environment is
+    always the paper label.
+  - `engine.py` — pluggable `AlertSink` (file / in-memory collector / chained
+    fan-out); `AlertEngine` stamps every alert with the paper marker, forces
+    the label even if a caller omits it, and keeps a bounded history. No
+    third-party notification integration exists (all sinks are local).
+  - `health.py` — `Watchdog` with deterministic staleness/integrity checks
+    (`is_stale`, `bar_sequence_is_valid`), per-component `HealthReport`, the
+    `TradingSafety` fail-safe decision (SAFE/WATCH/STOP with a HOLD/STOP
+    instruction rather than guessing), and `alerts_for` mapping findings into
+    paper-labelled SYSTEM/RISK alerts. Pure functions, fully testable offline.
+- `scripts/run_watchdog.py` CLI — health report over dataset bar sequences,
+    the experience store, and the model registry; emits alerts (+ JSONL), and
+    writes JSON + HTML artifacts. `--as-of`/`--max-bar-age-hours` control the
+    wall-clock staleness bound (offline snapshots read as current by default).
+- 19 focused tests in `tests/test_alerting.py`: alert serialization + mandatory
+  paper label, engine dispatch/history bounds/chained sinks/JSONL file sink,
+  watchdog freshness → SAFE, stale/failed → STOP with a HOLD instruction,
+  WATCH derivation, alert mapping, bar-sequence validation, aware/naive
+  staleness rejection, report JSON serialization, and AST import boundaries
+  (no broker/portfolio/risk/services/execution imports in the alerting package).
+- Full suite **788 passed** (769 + 19 new). All work streams 7.1–7.14 are now
+  implemented; MA(5,21) remains the registered champion until a candidate
+  clears the gate on real data.
+
+---
+
 *Sources: `PROJECT_PLAN.md` (§17b–17d, DoD §25–28), `docs/trading/PAPER_TRADING_V1.md`, `ACTIVITY_LOG.md`, `git log`, repository tree, and `pytest` results.*

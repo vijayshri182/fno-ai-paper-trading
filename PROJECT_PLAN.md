@@ -1097,10 +1097,11 @@ controlled capabilities:
   `learning/loop.py` (champion replay → capture → hypotheses → comparison →
   gate → promoted champion leads the next cycle) with WS 7.13.
 
-*Work stream 7.14 — Alerting and operational hardening* — **PLANNED**
+*Work stream 7.14 — Alerting and operational hardening* — **DONE**
 * Pluggable alert engine (trading / AI-learning / risk / system alerts), every
   trading alert labeled **PAPER TRADING — NO LIVE ORDER**; watchdog/health/fail-safe
-  behavior (§17j, §17k).
+  behavior (§17j, §17k). Implemented in `alerting/` (alerts, engine, health)
+  with WS 7.14.
 
 * Any real-broker adapter — a **separate, explicitly controlled capability**, never
   silently enabled, still gated by `RiskManager`.
@@ -1228,8 +1229,8 @@ logic, WS 7.12 decides promotion from robust out-of-sample/validation evidence
 with rollback as bookkeeping over evidence only, and WS 7.13 wires the stages
 together end-to-end (paper-trade replay → experience capture → hypotheses →
 comparison → promotion gate → promoted champion leads the next cycle) while
-remaining paper-only. Only WS 7.14 (alerting and operational hardening) stays
-PLANNED. Everything else in this section records the
+remaining paper-only. WS 7.14 (alerting + watchdog/health/fail-safe) completes
+the work-stream set. Everything else in this section records the
 long-term product vision and the controls that will govern it. The
 deterministic risk and execution controls remain authoritative at all times, and
 the final system remains **paper trading** unless a future phase explicitly
@@ -1432,10 +1433,14 @@ The GUI must prominently display **"PAPER TRADING — NO LIVE ORDERS"**.
 
 ---
 
-# 17j. Alert Engine (PLANNED)
+# 17j. Alert Engine (IMPLEMENTED — WS 7.14)
 
-A future **pluggable** alert layer. **No notification integrations are
-implemented.** Categories:
+The **pluggable** alert layer described below is implemented as the `alerting/`
+package (`alerts.py`, `engine.py`): trading / AI-learning / risk / system
+categories, a sink-based delivery interface (file / in-memory collector /
+chained), and a mandatory **PAPER TRADING — NO LIVE ORDER** marker on every
+emitted alert. **No third-party notification integrations are implemented** (no
+email/Telegram/Slack/Teams adapters ship). Categories:
 
 * **Trading alerts:** BUY/SELL recommendation; HOLD/signal change where useful;
   position opened; position closed; stop-loss triggered; trade completed; daily
@@ -1455,14 +1460,15 @@ environment as **PAPER TRADING — NO LIVE ORDER**.
 
 ---
 
-# 17k. Watchdog / Health / Fail-Safe (PLANNED)
+# 17k. Watchdog / Health / Fail-Safe (IMPLEMENTED — WS 7.14)
 
-A future watchdog/health system so the agent fails **safely** — **HOLD / STOP
-paper execution rather than guessing** — when: data is stale; data is invalid;
-duplicate/out-of-order candles appear; a model fails; risk calculation fails; an
-API is unavailable; the server restarts; storage fails; an unexpected exception
-occurs. Include: heartbeat; health status; restart/recovery handling; error
-logging; alerting.
+The watchdog/health/fail-safe layer described below is implemented in
+`alerting/health.py` (staleness + bar-sequence integrity checks, per-component
+`HealthReport`, and the SAFE / WATCH / STOP `TradingSafety` decision that tells
+operators to **HOLD/STOP paper execution rather than guessing**). A STOP is
+advisory data — the watchdog never places orders, never bypasses risk, and
+never changes controls. Supports: heartbeat timestamps; health status; a
+fail-safe/restart decision record; error logging to the alert engine.
 
 ---
 

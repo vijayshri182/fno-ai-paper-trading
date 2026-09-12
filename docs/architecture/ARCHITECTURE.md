@@ -23,7 +23,7 @@
 **Out of scope (by design).**
 
 - **No live order execution.** No code path places real-money orders or contacts a broker order API. `PaperBroker.is_live` is hard-coded to `False` and raising live construction is rejected (`broker/paper_broker.py`).
-- **AI/adaptive learning is advisory (Phase 7, in progress).** Advisory-only decision support behind an interface; it must never bypass the `RiskManager` and never place orders directly. The V1 baseline (MA 5/21) is frozen, and any regime-aware/AI candidate must clear the strategy-evaluation discipline (`PROJECT_PLAN.md` §17e). Implemented so far: AI decision-support contracts, deterministic features, market regime detection, historical strategy evaluation, five-year replay capability, the durable experience store (evidence-only, no execution path), adaptive learning's outcome analysis + gated candidate generation (inert hypotheses only), champion vs challenger evaluation (evidence-only comparison; the regime-filtered challenger never modifies the baseline), the promotion gate + model version registry with rollback (decisions over evidence only; champion stays frozen until a candidate clears the gate; no live-execution path), and the continuous feedback/learning loop (WS 7.13: paper-trade replay → experience capture → hypotheses → comparison → gate → promoted champion feeds the next cycle). Future capabilities — continuous agent, GUI, alert engine — are documented in `PROJECT_PLAN.md` §17d–§17l and are **not implemented**.
+- **AI/adaptive learning is advisory (Phase 7, in progress).** Advisory-only decision support behind an interface; it must never bypass the `RiskManager` and never place orders directly. The V1 baseline (MA 5/21) is frozen, and any regime-aware/AI candidate must clear the strategy-evaluation discipline (`PROJECT_PLAN.md` §17e). Implemented so far: AI decision-support contracts, deterministic features, market regime detection, historical strategy evaluation, five-year replay capability, the durable experience store (evidence-only, no execution path), adaptive learning's outcome analysis + gated candidate generation (inert hypotheses only), champion vs challenger evaluation (evidence-only comparison; the regime-filtered challenger never modifies the baseline), the promotion gate + model version registry with rollback (decisions over evidence only; champion stays frozen until a candidate clears the gate; no live-execution path), the continuous feedback/learning loop (WS 7.13: paper-trade replay → experience capture → hypotheses → comparison → gate → promoted champion feeds the next cycle), and a pluggable alert engine + watchdog/health/fail-safe (WS 7.14: every alert labeled `PAPER TRADING — NO LIVE ORDER`, STOP decisions are advisory data only). Future capabilities — continuous agent, GUI — are documented in `PROJECT_PLAN.md` §17d–§17l and are **not implemented**.
 - **No dashboard/UI.** Analytics/reporting produce flat HTML files (research reports and paper-session reports via `research/report.py` CSS); a live web dashboard is a future consideration.
 - **No database / multi-session ledger.** Paper-session state persists as JSON snapshots under git-ignored `paper_state/` (WS 6.5); a durable database is out of scope.
 
@@ -179,6 +179,8 @@ fno-ai-paper-trading/
 |       |   |                           #   feedback loop (capture.py, loop.py)
 |       |-- promotion/                  # WS 7.12 promotion gate + append-only model
 |       |   |                           #   version registry & rollback (evidence only)
+|       |-- alerting/                   # WS 7.14 pluggable alert engine + watchdog /
+|       |   |                           #   health / fail-safe (delivery only)
 |       `-- utils/                       # functions, http, retry, logging
 |-- scripts/                 # acquire_dataset.py, research_real_data.py,
 |                            #   upstox_smoke_test.py, generate_research_report.py,
@@ -186,8 +188,9 @@ fno-ai-paper-trading/
 |                            #   evaluate_historical.py, evaluate_five_year.py,
 |                            #   evaluate_champion_challenger.py (WS 7.11),
 |                            #   manage_model_versions.py (WS 7.12),
-|                            #   run_learning_loop.py (WS 7.13)
-`-- tests/                  # 769 unit tests, no network, no external deps
+|                            #   run_learning_loop.py (WS 7.13),
+|                            #   run_watchdog.py (WS 7.14)
+`-- tests/                  # 788 unit tests, no network, no external deps
 ```
 
 Build/run facts: Python 3.13+; virtualenv `.venv`; `pip install -r requirements.txt`; `python src/main.py` for demos; `pytest` for the suite; both `python -m fno_ai_paper_trading.backtest` and `python -m fno_ai_paper_trading.research` run offline demos.
@@ -519,11 +522,11 @@ Legend: **IMPLEMENTED** = exists and exercised by tests/demos; **CONFIGURED-SCAF
 | Session monitoring: `SessionHealth` / `health()`, `SessionReport` / `build_report` / `report_from_snapshot`, `log_results` / `log_health`, `report_to_html` / `write_html_report` | IMPLEMENTED | `services/session_monitoring.py` (WS 6.6), 15 monitoring tests |
 | Operator CLI: offline report rendering from stored session payload | IMPLEMENTED | `scripts/paper_session_report.py` (WS 6.6) |
 | Architecture diagram (layered SVG) | IMPLEMENTED | `docs/architecture/architecture.svg` |
-| AI decision support / regime-aware evolution | IMPLEMENTED (evaluation-first) | `PROJECT_PLAN.md` §17d–§17f — frozen MA(5,21) baseline; WS 7.1–7.5 features/regime/evaluation/replay, WS 7.9 experience store, WS 7.10 gated candidate generation, WS 7.11 champion vs challenger (evidence only), WS 7.12 promotion gate + version registry/rollback, WS 7.13 continuous feedback/learning loop. WS 7.14 alerting/hardening remains PLANNED |
+| AI decision support / regime-aware evolution | IMPLEMENTED (evaluation-first) | `PROJECT_PLAN.md` §17d–§17f — frozen MA(5,21) baseline; WS 7.1–7.5 features/regime/evaluation/replay, WS 7.9 experience store, WS 7.10 gated candidate generation, WS 7.11 champion vs challenger (evidence only), WS 7.12 promotion gate + version registry/rollback, WS 7.13 continuous feedback/learning loop, WS 7.14 alerting + watchdog/health/fail-safe (paper-labelled, delivery-only) |
 | Real broker adapter | PLANNED | `PROJECT_PLAN.md` Phase 4; `Broker` ABC defined |
 | HTTP transport (curl.exe on Windows + urllib fallback) | IMPLEMENTED | `utils/http.py` |
 | Retry/backoff + structured logging | IMPLEMENTED | `utils/retry.py`, `utils/logging.py` |
-| Test suite | IMPLEMENTED | 769 tests pass offline (as of WS 7.13) |
+| Test suite | IMPLEMENTED | 788 tests pass offline (as of WS 7.14) |
 
 ---
 
@@ -541,7 +544,7 @@ Documented, intentional, or accepted gaps. Each is a deliberate boundary, not an
 8. **Research results are historical/synthetic evidence.** Costs are illustrative (`IndiaCostSchedule.nse_fo_illustrative`); the MA(5,21) full-period real-data result is negative net of costs. Nothing here is investment advice or a claim of future profitability.
 9. **Instrument universe is indices only.** The registry contains NIFTY 50 / BANKNIFTY / FINNIFTY index keys with lot size 1 and tick 0.05; no futures/options instrument master augmentation is automated (Kite master CSV support exists but is not scheduled).
 10. **Snapshot-based persistence only.** Recovery is via `save_session`/`load_session` (WS 6.5) for a single named session under `paper_state/`; snapshot schema migration and a searchable multi-session store are not supported.
-11. **AI and continuous learning are PLANNED, evaluation-first.** Phase 7 evaluation foundations (features, regime, historical/five-year replay, experience store, candidate generation, champion vs challenger comparison, promotion gate + version registry/rollback, and the continuous feedback/learning loop) are implemented, but the continuous agent, GUI, and alerting/hardening are not; any eventual mechanism will be decision support only, evaluated against the frozen MA(5,21) baseline (§17e–§17l), and must never bypass `RiskManager` or place orders.
+11. **AI and continuous learning are PLANNED, evaluation-first.** Phase 7 evaluation foundations (features, regime, historical/five-year replay, experience store, candidate generation, champion vs challenger comparison, promotion gate + version registry/rollback, the continuous feedback/learning loop, and a pluggable paper-labelled alert engine + watchdog/fail-safe) are implemented, but the continuous agent and GUI are not; any eventual mechanism will be decision support only, evaluated against the frozen MA(5,21) baseline (§17e–§17l), and must never bypass `RiskManager` or place orders.
 12. **Single HTTP transport caveat.** Windows uses a `curl.exe` subprocess (needed to defeat Cloudflare WAF blocking stdlib `urllib`); this is a platform-specific dependency that should be revisited when the environment changes.
 
 ---
@@ -600,9 +603,11 @@ Derived from `README.md` "Future phases", `PROJECT_PLAN.md` §27/§28/§21, and 
    Feedback Loop
    ```
 
-   Separate supporting services (all PLANNED): GUI Dashboard (read-only,
-   "PAPER TRADING — NO LIVE ORDERS"), Alert Engine (pluggable), Agent
-   Scheduler, Watchdog / Health Monitor. Everything in this pipeline beyond
+   Separate supporting services: Alert Engine (pluggable, WS 7.14 — IMPLEMENTED
+   in `alerting/`, all alerts paper-labelled) and Watchdog / Health Monitor
+   (WS 7.14 — IMPLEMENTED in `alerting/health.py`, STOP decisions are advisory
+   only); still PLANNED: GUI Dashboard (read-only, "PAPER TRADING — NO LIVE
+   ORDERS") and Agent Scheduler. Everything in this pipeline beyond
    today's implemented deterministic path is **PLANNED** — nothing here is claimed
    as implemented, and "live" market data never implies live broker execution.
 4. **Historical-data CLI pipeline.** Breadth and convenience around `scripts/acquire_dataset.py`: multi-instrument schedules, incremental updates, cache validation, health reports.
