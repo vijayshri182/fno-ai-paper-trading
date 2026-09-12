@@ -669,4 +669,41 @@ What changed (all `PLANNED`, nothing implemented):
 
 ---
 
+## 25. WS 7.13 — Continuous feedback / learning loop (2026-09-12)
+
+> The §17f.3 loop is now an executable, repeatable, evidence-only program:
+> replay the champion -> capture completed trades as experience -> analyze and
+> generate inert hypotheses -> compare champions vs challengers -> promote only
+> through the gate -> the promoted model becomes the next cycle's champion.
+
+- `learning/capture.py` — experience capture bridge ("Paper Trade -> Capture ->
+  Store Experience"). Replays the champion over day-bars with the same
+  deterministic evaluator, pairs entry/exit trades FIFO per instrument, and
+  builds complete `ExperienceRecord`s (regime label from the decision-time
+  prefix via `RegimeDetector`). Only closed round trips become records; open
+  positions are counted but never recorded (no unrealized P&L into evidence).
+  Deterministic: identical captures produce identical experience IDs, so the
+  append-only `ExperienceStore` merge is idempotent.
+- `learning/loop.py` — `LearningLoop.run_cycle` wires the full stage over one
+  day batch: champion/challenger comparison (WS 7.11 on the WS 7.12 split), experience
+  capture + store merge, hypothesis generation (WS 7.10 over the accumulated
+  evidence), and gate evaluation + promotion (WS 7.12) into a version registry.
+  `resolve_active_champion` / `default_strategy_factories` implement the
+  repeat leg: a promoted strategy becomes the next cycle's champion.
+- `scripts/run_learning_loop.py` — CLI over chunked day-batches; auto-starts the
+  registry baseline, runs one cycle per chunk, and writes JSON + HTML artifacts.
+- 18 focused tests in `tests/test_learning_loop.py`: capture pairing/outcome/
+  determinism/idempotence/open-trade exclusion/regime label, loop cycles with
+  and without store+registry, gate promotion of a twin and rejection of a
+  regime-suppressed candidate (never reaching the registry), the repeat leg
+  using the promoted champion, JSON/HTML serialization, and an AST import
+  boundary proving `capture.py`/`loop.py` never import broker/portfolio/risk/
+  services/execution code.
+- Full suite **769 passed** (751 + 18 new); no regressions. The loop is
+  implemented but WS 7.14 (alerting/operational hardening) remains PLANNED;
+  MA(5,21) is still the registered champion until a candidate clears the gate
+  on real data.
+
+---
+
 *Sources: `PROJECT_PLAN.md` (§17b–17d, DoD §25–28), `docs/trading/PAPER_TRADING_V1.md`, `ACTIVITY_LOG.md`, `git log`, repository tree, and `pytest` results.*

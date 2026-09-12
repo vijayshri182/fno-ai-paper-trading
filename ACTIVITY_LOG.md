@@ -1418,6 +1418,47 @@ adapters, and an end-to-end gate over a real `MultiPeriodComparison` all green.
 
 ---
 
+## 4ac. 2026-09-12 — WS 7.13 Continuous feedback / learning loop
+
+**Objective.** Turn the §17f.3 loop into a repeatable, evidence-only program:
+replay the champion (Paper Trading), capture completed trades as experience,
+analyze/generate candidate hypotheses, run champion vs challenger, gate any
+promotion, and let the promoted model lead the next cycle (Repeat). Remains
+paper-only — no orders, no risk changes, no live trading.
+
+**Decisions.**
+1. `learning/capture.py`: the missing wiring between the deterministic replay
+   machinery (WS 7.4/7.5/7.11) and the durable experience store (WS 7.9).
+   Champion replay per day-batch uses the same `HistoricalEvaluator`, round
+   trips are paired FIFO per instrument via `pair_round_trips`, and only
+   *closed* trades become `ExperienceRecord`s (open positions counted, never
+   recorded). Decision-time regime comes from `RegimeDetector.detect_prefix`
+   at the entry bar — no look-ahead. Deterministic IDs make store merges
+   idempotent across re-runs.
+2. `learning/loop.py`: `LearningLoop.run_cycle` composes the existing stages
+   (comparison -> capture -> store -> hypotheses -> gate -> registry.promote)
+   with zero execution imports (AST-verified). `resolve_active_champion` +
+   `default_strategy_factories` implement the repeat leg from the WS 7.12
+   registry; a rejected candidate never touches the registry.
+3. CLI `scripts/run_learning_loop.py`: chunks days into cycles, auto-starts the
+   registry baseline when empty, resolves the next champion after each cycle,
+   and writes per-cycle JSON + HTML artifacts.
+4. Safety boundary: the loop is bookkeeping over evidence; a promotion is only
+   a registry record consumed by later cycles as a reference. MA(5,21) stays
+   the champion until a candidate clears the gate on real data.
+
+**Files.** `src/fno_ai_paper_trading/learning/capture.py`, `learning/loop.py`,
+`learning/__init__.py` (+exports), `tests/test_learning_loop.py`,
+`scripts/run_learning_loop.py`.
+
+**Verification.** Full suite **769 passed** (751 + 18 new); capture
+determinism/idempotence, open-trade exclusion, promotion/rejection cycles, the
+repeat leg, serialization and the execution-import boundary all green.
+
+**Status.** Committed as `feat: WS 7.13 continuous feedback learning loop`, pushed.
+
+---
+
 ## 5. Open Topics / Risks
 
 - **10-Sep-2026 real-data paper replay loss (~₹194.68).** An evaluation
