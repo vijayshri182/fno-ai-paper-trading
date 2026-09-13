@@ -29,8 +29,8 @@
   ],
   "active_task": "17g five-year historical evaluation run + report COMPLETE (WS 7.5 on real NIFTY 50 5m data 2022-01-03..2026-09-11; 1165/1165 trading days COMPLETE, 0 invalid; frozen MA(5,21) nets -69.16 Rs (-0.069%) after 1622 round trips — a cost-dominated breakeven; docs/five_year_eval_report.md) — next human-gated steps: single real F&O experiment 2026-09-14; real-broker adapter",
   "last_completed_checkpoint": "17g five-year historical evaluation run + report (WS 7.5: 1165/1165 trading days COMPLETE over real 5m history 2022-01-03..2026-09-11 — ~4.7y honest maximum; 0 invalid; 87,193 bars; frozen MA(5,21) net -69.16 Rs (-0.069%), 1622 RT, win 5.12%, PF 0.038, costs 107,561.65 Rs, MDD 945.05 Rs; one-session-per-day per WS 7.5 spec; docs/five_year_eval_report.md; artifacts reports/five_year_replay.*) — evidence only, no promotion, protected OOS untouched, no source/test changes (1091 suite)",
-  "last_commit": "9ca3d35",
-  "last_pushed_commit": "9ca3d35",
+  "last_commit": "e29d6f5",
+  "last_pushed_commit": "e29d6f5",
   "tests": {
     "passed": 1091,
     "failed": 0,
