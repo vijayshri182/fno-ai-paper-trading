@@ -71,7 +71,7 @@ Statuses used throughout this document:
 | Curated instruments | `data/instrument_registry.py` | `RESEARCH_INSTRUMENTS` includes NIFTY 50 (`NSE_INDEX\|Nifty 50`, `lot_size=1`, `tick_size=0.05`, `multiplier=1`) |
 | Dataset persistence | `data/dataset_store.py` | `datasets/<name>.csv` + `.meta.json` with SHA-256 `data_hash`; `datasets/` git-ignored |
 | Validation/reporting | `data/validation.py` | Report-only dataset checks; never repairs data |
-| Acquisition/verification scripts | `scripts/acquire_dataset.py`, `scripts/upstox_smoke_test.py`, `scripts/research_real_data.py` | Opt-in, credential-gated, read-only; fail closed without `UPSTOX_ACCESS_TOKEN` |
+| Acquisition/verification scripts | `scripts/acquire_dataset.py`, `scripts/upstox_smoke_test.py`, `scripts/research_real_data.py` | Opt-in, credential-gated, read-only; fail closed without `FNO_UPSTOX_ACCESS_TOKEN` (analytics/data token) |
 
 ### 2.3 Paper-session configuration (CONFIGURED/SCAFFOLDED)
 
@@ -408,7 +408,7 @@ Non-negotiable, enforced by design (boundaries are **IMPLEMENTED** except where 
 | Historical backtesting vs. paper trading | `backtest/` and `research/` are offline; `PaperBroker` is the only broker in both paths | `BacktestBroker` extends `PaperBroker` (`is_live=False`); backtests need no credentials and make no network calls |
 | Paper trading vs. real-money trading | `PaperBroker.is_live = False` hard-coded; `TradingService` raises `RuntimeError` for any non-paper broker | `broker/base.py`, `broker/paper_broker.py`, `services/trading_service.py:83-86` |
 | No broker order placement in V1 | There is no order-capable broker surface; Upstox/Kite adapters are read-only market data only | `data/upstox_provider.py` (no order API), `data/kite_provider.py` |
-| Analytics/read-only market data vs. order-capable auth | The Upstox access token authenticates **historical-candle reads only**; `UpstoxSettings` documents client id/secret as SSO-token placeholders, not order credentials | `config/settings.py:108-141`, `upstox_provider.py` |
+| Analytics/read-only market data vs. order-capable auth | The analytics/data token (`FNO_UPSTOX_ACCESS_TOKEN`) authenticates **historical-candle reads only**; `UpstoxSettings` documents client id/secret as SSO-token placeholders, not order credentials. The WS 7.9 execution token (`UPSTOX_ACCESS_TOKEN`) lives only in the gate/adapter and is never read here — credentials never cross layers | `config/settings.py`, `upstox_provider.py`, `execution/upstox.py`, `tests/test_credential_separation.py` |
 
 The V1 session adds the following guards to this list (each **IMPLEMENTED** by
 WS 6.2–6.4b):

@@ -5,9 +5,9 @@
     "package_version": "0.1.0"
   },
   "project_version": "0.1.0",
-  "overall_progress": 92,
+  "overall_progress": 93,
   "current_phase": "Phase 7 — Post-V1 evolution, evaluation-first (paper-trading-only)",
-  "current_phase_version": "WS 7.17 Algorithm Research & Competition Layer + WS 7.7 dashboard + WS 7.8 Continuous Paper-Trading Agent (implemented)",
+  "current_phase_version": "WS 7.9 controlled live F&O execution integration test (implemented; dry-run only) + WS 7.17 + WS 7.7 dashboard + WS 7.8 continuous agent (implemented)",
   "phase_status": "IN_PROGRESS",
   "completed_phases": [
     "Phase 1 — Foundations & strategy evaluation framework",
@@ -19,25 +19,26 @@
     "Phase 7 — WS 7.1..7.5, 7.9..7.14, WS 7.15/7.16 champion evaluation + controlled research cycle (conclusion B)",
     "Phase 7 — WS 7.6 regime-aware strategy evaluation (recorded evidence; hypotheses inert, no promotion)",
     "Phase 7 — WS 7.17 Algorithm Research & Competition Layer + WS 7.7 GUI / monitoring dashboard (registry, family competition, daily attribution, scoreboard; 930 tests; no promotion)",
-    "Phase 7 — WS 7.8 Continuous Paper-Trading Agent (states, heartbeat, persistence, jobs, ContinuousPaperAgent, CLI runner; 976 tests; paper-only; watchdog-gated polling; dual checkpoint)"
+    "Phase 7 — WS 7.8 Continuous Paper-Trading Agent (states, heartbeat, persistence, jobs, ContinuousPaperAgent, CLI runner; 976 tests; paper-only; watchdog-gated polling; dual checkpoint)",
+    "Phase 7 — WS 7.9 Controlled Live F&O Execution Integration Test (execution layer: gate, state machine, risk preflight, upstox adapter, memory adapter, LiveExecutionTestManager, CLI runner; 67 tests; default closed, dry-run only; smoke verified PASS) + 18 credential-separation tests (analytics/data FNO_UPSTOX_* vs execution UPSTOX_ACCESS_TOKEN; 1061 test suite)"
   ],
   "pending_phases": [
     "Phase 7+ — 17g five-year historical evaluation run + report",
     "Phase 7+ — real-broker adapter (separate explicitly controlled capability; requires human approval — never silently enabled)"
   ],
-  "active_task": "WS 7.8 continuous paper-trading agent implemented and verified (976 tests) — next planned work stream is 17g five-year historical evaluation run + report (PLANNED, not started)",
-  "last_completed_checkpoint": "213cbf3 — WS 7.8 continuous paper-trading agent close-out (state 976 tests; dashboard CONTINUOUS AGENT section; docs DONE)",
+  "active_task": "WS 7.9 credential separation enforced + verified (1061 tests; data token FNO_UPSTOX_ACCESS_TOKEN, execution token UPSTOX_ACCESS_TOKEN disjoint; smoke PASS) — the single real F&O experiment is scheduled for tomorrow under explicit human-controlled enablement; no live order today",
+  "last_completed_checkpoint": "WS 7.9 credential separation (analytics/data vs execution tokens, no fallback, no leakage) + 18 tests + smoke re-verification (dry-run PASS; gate default-closed; Algorithm Health unchanged RED/NO)",
   "last_commit": "213cbf3",
   "last_pushed_commit": "213cbf3",
   "tests": {
-    "passed": 976,
+    "passed": 1061,
     "failed": 0,
     "skipped": 0,
-    "last_run_label": "976 suite (930 + 46 WS 7.8 agent states/heartbeat/persistence/jobs/behavior)"
+    "last_run_label": "1061 = 1043 prior + 18 credential-separation tests (data settings read FNO_UPSTOX_* only; execution adapter reads UPSTOX_* only; no fallback; no POST without token; token alone cannot open gate; no leakage in repr/reasons/redact/audit)"
   },
   "validation": {
     "status": "PASS",
-    "summary": "976 tests passed; ALGO READY monitor RED/NO/DETERIORATING on recorded champion; WS 7.17 competition: every family tier E, A BEST TESTED absent, no promotion; WS 7.8 agent verified via 46 behavior tests + dev-sandbox smoke (closed-state jobs + heartbeat); no live execution"
+    "summary": "1061 tests passed; WS 7.9 execution integration verified via 67 behavior tests + deterministic smoke run (outcome PASS, stage COMPLETE, mode PAPER, dry-run True, position flat; audit JSONL written). Credential separation enforced + tested (18 tests): analytics/data layer reads FNO_UPSTOX_* only, execution adapter reads UPSTOX_ACCESS_TOKEN only, no cross-layer fallback, no non-dry-run POST without token, token presence alone cannot open the gate, tokens redacted in every output. Algorithm Health monitor unchanged RED / ALGO READY=NO. No real order placed; live execution gate default-closed; single real F&O experiment deferred to operator-consented enablement."
   },
   "champion": {
     "name": "MA(5,21) moving-average cross (MovingAverageCrossStrategy)",
@@ -60,25 +61,46 @@
     "market_session": "n/a (evaluation run context)",
     "latest_paper_trade_note": "10-Sep-2026 real-data paper replay closed ~-194.68 INR single session; evaluated, not a trigger for changes"
   },
+  "live_execution_test": {
+    "status": "DRY-RUN READY (implementation complete; real send OFF by default)",
+    "last_run": {
+      "run_id": "LIVETEST_62d61673870d48dd9364599923c330ca",
+      "mode": "PAPER",
+      "dry_run": true,
+      "outcome": "PASS",
+      "stage": "COMPLETE",
+      "entry_fill_price": "242.25",
+      "exit_fill_price": "242.25",
+      "position_flat": true,
+      "summary_artifact": "reports/execution/last_run_summary.json (git-ignored)"
+    },
+    "enablement": {
+      "default_gate": "CLOSED (real send requires FNO_LIVE_EXECUTION_TEST_ENABLED=1 + consent-file sha256 fingerprint matching UPSTOX_ACCESS_TOKEN + expiry window + explicit --confirm-live-enablement)",
+      "single_real_experiment": "PLANNED for next session 2026-09-14 under explicit human-controlled enablement; not performed here"
+    },
+    "outcome_a": "execution integration PASS/FAIL (broker plumbing only)",
+    "outcome_b": "Algorithm Health UNCHANGED — RED / ALGO READY = NO"
+  },
   "blockers": [],
   "risks": [
     "MA(5,21) baseline has no long entries and deep negative net performance on continuous 5m replay — scientific finding recorded, no edge manufactured.",
     "WS 7.6: all recorded decision-time entry regimes are net-negative; regime-filter hypotheses are inert on recorded evidence (no promotion).",
     "WS 7.17: every family competition tier is E and A BEST TESTED is ABSENT — no family has a credible positive-OOS candidate; conclusion B stands.",
     "WS 7.8 agent is implemented and verified offline (tests + dev-sandbox smoke); continuous operation still requires an operator-scheduled run; the on-disk heartbeat is a synthetic smoke heartbeat, not a live-paper P&L claim.",
-    "2026 data OOS pool used once for WS 7.16 shortlist confirmation — further research must use a fresh untouched OOS period."
+    "2026 data OOS pool used once for WS 7.16 shortlist confirmation — further research must use a fresh untouched OOS period.",
+    "WS 7.9 implementation is dry-run verified only; the single REAL F&O order is scheduled for 2026-09-14 and requires explicit operator-controlled enablement (gate + consent fingerprint + confirm). No real order may be placed outside that consented window."
   ],
   "safety_status": {
     "real_money_trading": "DISABLED",
-    "broker_order_execution": "DISABLED",
-    "credentials_secrets": "NOT INTRODUCED",
+    "broker_order_execution": "DISABLED (default; WS 7.9 live gate CLOSED, dry-run only)",
+    "credentials_secrets": "NOT INTRODUCED (FNO_UPSTOX_* = analytics/data token, UPSTOX_ACCESS_TOKEN = execution-only for the gate/adapter; no cross-layer fallback; token passed via CLI arg, dropped from every persisted payload, redacted in reprs/reasons/audit)",
     "risk_controls": "PROTECTED",
     "stop_loss_controls": "PROTECTED",
     "position_sizing_controls": "PROTECTED",
     "max_loss_controls": "PROTECTED"
   },
-  "last_activity": "WS 7.8 continuous paper-trading agent implemented + verified (976 tests; dev-sandbox smoke heartbeat written)",
-  "next_action": "Next planned work stream: 17g five-year historical evaluation run + report (PLANNED, not started); or operator-scheduled continuous-agent deployment",
+  "last_activity": "WS 7.9 credential separation enforced + verified (18 tests; analytics/data FNO_UPSTOX_* vs execution UPSTOX_ACCESS_TOKEN disjoint; smoke rerun PASS in dry-run PAPER mode; Algorithm Health unchanged RED/NO)",
+  "next_action": "2026-09-14: single real F&O experiment under explicit human-controlled enablement (gate open + consent + confirm); after that, 17g five-year historical evaluation run + report (PLANNED)",
   "agent_status": "RUNNING",
   "heartbeat": "",
   "timestamp": "",

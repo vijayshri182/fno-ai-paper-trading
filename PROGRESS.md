@@ -5,9 +5,9 @@
 > the **actual repository state** (files, tests, commits). No progress is
 > reported from intent — only from code, tests and git.
 >
-> **State as of:** 2026-09-12 · Phase 6 **COMPLETE** · F&O Paper Trading V1
+> **State as of:** 2026-09-13 · Phase 7 **IN PROGRESS** · F&O Paper Trading V1
 > **IMPLEMENTATION COMPLETE** · V1 STATUS: **READY**. Latest committed checkpoint
-> `0cd2b38`; branch `master` == `origin/master`. Full committed suite: **843 passed**
+> `9943697`; branch `master` == `origin/master`. Full committed suite: **1043 passed**
 > (offline, deterministic, 0 skipped / 0 xfailed); paper-only boundary verified.
 > V1 baseline **MA(5,21) is FROZEN** —
 > Phase 7 strategy changes are evaluated empirically (historical replay +
@@ -19,6 +19,23 @@
 > benchmark +27.96% buy-and-hold; all splits/walk-forward negative). This is a
 > **clear negative result on real data**; MA(5,21) remains frozen pending any
 > challenger passing the §17d/§17e promotion gates.
+>
+> **2026-09-13 WS 7.9 close-out (execution layer, §17p):** the controlled live
+> F&O **execution integration test** is implemented, **default-closed** and
+> **dry-run verified** (67 new tests; full suite 1043). Deterministic smoke run:
+> outcome **PASS**, stage COMPLETE, mode PAPER, dry_run True, entry/exit 242.25,
+> position flat. Outcome A (broker plumbing) is rated; **Outcome B (Algorithm
+> Health) UNCHANGED — RED / ALGO READY = NO**. No real order placed; the single
+> real F&O experiment is scheduled for **2026-09-14 under explicit
+> operator-controlled enablement** (gate + consent fingerprint + confirm).
+>
+> **2026-09-13 credential separation enforced (WS 7.9 addendum):** the
+> analytics/data Upstox token moved to `FNO_UPSTOX_ACCESS_TOKEN` (data layer
+> only); `UPSTOX_ACCESS_TOKEN` is now consumed exclusively by the WS 7.9 gate/
+> adapter; neither layer falls back to the other; paper never needs the
+> execution token; token presence never opens the gate; every output path
+> redacts tokens. +18 tests (`tests/test_credential_separation.py`); full suite
+> now **1061 passed**.
 >
 > **2026-09-12 research cycle update (WS 7.16 / `docs/model_research_final_report.md`):**
 > the failure audit (`docs/champion_failure_audit.md`) plus the five pre-registered
@@ -174,7 +191,8 @@ Status legend: ✅ COMPLETE · 🟡 IN PROGRESS · ⬜ NOT STARTED · ⛔ BLOCKE
   fields — is deferred to Phase 7 (out of V1 scope), as are live/streaming
   quotes (out of V1 scope). No code blockers.
 - (Deferred, non-blocking) Real-data research/session runs need a valid
-  `UPSTOX_ACCESS_TOKEN`; offline smoke tests exist.
+  `FNO_UPSTOX_ACCESS_TOKEN` (analytics/data); offline smoke tests exist; the WS
+  7.9 execution token `UPSTOX_ACCESS_TOKEN` is separate and gate-scoped.
 - (Pre-existing, non-blocking) `services/__init__.py` has no trailing newline —
   cosmetic, pre-existing.
 
@@ -816,5 +834,55 @@ stay PLANNED behind the evaluation discipline.**
   Broker.is_live stays False; live data never implies live broker execution.
   Heartbeat on disk is a development-sandbox smoke run on synthetic data, not
   a P&L claim.
+
+---
+
+## 30. WS 7.9 — Controlled Live F&O Execution Integration Test (execution layer) (2026-09-13)
+
+> **Outcome A** = broker-plumbing integration PASS/FAIL only. **Outcome B** =
+> Algorithm Health — **UNCHANGED (RED / ALGO READY = NO)**. No real order was
+> placed; the single real F&O experiment is scheduled for **2026-09-14 under
+> explicit human-controlled enablement** (`PROJECT_PLAN.md` §17p).
+
+- New `src/fno_ai_paper_trading/execution/` package: `gate.py`
+  (`LiveExecutionTestGate` — env flag + consent-file sha256 fingerprint matching
+  the supplied token + expiry-window cap; refused otherwise), `state.py`
+  (per-run state machine IDLE→…→COMPLETE/FAILED/ABORTED; `ALLOWED_TRANSITIONS`
+  + runtime validation block post-terminal activity), `signal.py`
+  (`decide_call_put`: BUY→CALL, SELL→PUT, HOLD→no-trade), `instrument.py`
+  (F&O validation, future expiry, positive lot size, margin estimate),
+  `risk.py` (`RiskPreflight` = existing RiskManager caps + market-session clock
+  + Watchdog freshness + margin cap + `OvernightGuard` near-close block),
+  `upstox.py` (read/order V2 adapter, refuses `ExecutionMode.LIVE`, dry-run
+  flag, credential redaction, typed error mapping), `memory.py` (dry-run
+  `ExecutionAdapter`, `dry_run=True`), `manager.py`
+  (`LiveExecutionTestManager.run`: authenticate → instrument → signal → quote →
+  preflight → real-send gate → ONE entry → fill poll (timeout→cancel) → 5-min
+  hold → ONE exit → flat reconciliation → COMPLETE; emergency flatten),
+  `audit.py` (JSONL audit + `ExecutionAudit`).
+- `scripts/run_live_execution_test.py` — CLI: `--data-source smoke|upstox`,
+  `--live`, `--confirm-live-enablement`, `--underlying --expiry --strike
+  --side CALL|PUT|auto --instrument-key --lot-size`, `--token`,
+  `--interval --bars --hold-seconds`, `--out`. `--live` with a closed gate exits
+  2 ("REFUSING"). Smoke run verified: **PASS / COMPLETE / PAPER / dry_run True
+  / entry+exit 242.25 / flat**; audit at
+  `reports/execution/audit/<run_id>.jsonl`, summary at
+  `reports/execution/last_run_summary.json` (both git-ignored).
+- Config via `LiveExecutionTestSettings` + `FNO_LIVE_TEST_*` /
+  `FNO_LIVE_EXECUTION_TEST_ENABLED` env vars (documented in README).
+- **67 new tests** (`tests/test_live_execution_test.py`): gate (default closed,
+  open-with-consent/fingerprint/expiry, expired/mismatch/window/no-token
+  refusals, PAPER-not-LIVE, stable sha256), state machine, signal mapping,
+  instrument/margin, RiskPreflight, Upstox adapter (auth, NO write in dry-run,
+  POST/DELETE, LIVE refusal, status mapping, error mapping, redaction),
+  manager (happy path, HOLD no-trade, pinned-side refusals, real-adapter
+  refusals, open-gate real-send, REJECTED, fill timeout→cancel, non-flat
+  reconcile, audit redaction/PAPER label/run-id repoint), audit file sink,
+  CLI opt-in (smoke rc 0; closed-gate `--live` rc 2).
+- Full suite **1043 passed** (976 + 67). Fixes during the run: `expiry_hours`
+  timedelta Decimal coercion; `(AUTHENTICATING, ABORTED)` edge; HOLD refuses to
+  trade even with a pinned side; memory adapter `dry_run=True` field; timed-out
+  poll clock sequence. Dashboard adds a **LIVE EXECUTION INTEGRATION TEST**
+  section; `docs/project_state.json` updated (93%).
 
 ---

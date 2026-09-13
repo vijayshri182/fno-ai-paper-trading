@@ -300,7 +300,8 @@ neutral provider interface), while staying 100% offline by default.
 - `data/upstox_provider.py` — `UpstoxHistoricalDataProvider`, a **read-only**
   historical-candle client (`GET /v3/historical-candle/...` only — no order
   APIs, ever). Returns normalized `MarketPrice` bars; maps HTTP/transport errors
-  to the typed `data.errors` hierarchy; requires `UPSTOX_ACCESS_TOKEN`.
+  to the typed `data.errors` hierarchy; requires `FNO_UPSTOX_ACCESS_TOKEN` (the
+  analytics/data token — it never reads the execution token).
 - `data/instrument_registry.py` — curated research instruments (Nifty 50,
   Bank Nifty, Fin Nifty indices) with `instrument_from_upstox_key`, so the
   provider and scripts never hard-code Upstox segment strings.
@@ -315,21 +316,21 @@ neutral provider interface), while staying 100% offline by default.
   OHLC sanity, timezone hygiene, cadence gaps) that never repair data.
 - `scripts/acquire_dataset.py` — fetch → validate → store one real dataset:
   `python scripts/acquire_dataset.py --instrument "NIFTY 50" --interval 1d
-  --days 400 --token "$UPSTOX_ACCESS_TOKEN"`. Fails with exit code 2 when
+  --days 400 --token "$FNO_UPSTOX_ACCESS_TOKEN"`. Fails with exit code 2 when
   validation does not pass; `--no-save` keeps the fetch read-only.
 - `scripts/research_real_data.py` — run a full reproducible baseline study on
   NIFTY 50 daily data: acquisition, validation, in-sample/OOS split,
   buy-and-hold benchmark, parameter sensitivity, walk-forward OOS, regime
-  slices, and a labelled HTML report. Requires `UPSTOX_ACCESS_TOKEN`; use
+  slices, and a labelled HTML report. Requires `FNO_UPSTOX_ACCESS_TOKEN`; use
   `--smoke` for offline pipeline validation with deterministic synthetic data.
 - `research/experiment.run_dataset_experiment` — runs a backtest against a
   `StoredDataset`, re-validates it first (raises `ValueError` on bad data) and
   records the SHA-256 `data_hash` in the experiment provenance.
 - `scripts/upstox_smoke_test.py` — opt-in connectivity check (read-only). Exits
-  with code 2 unless `UPSTOX_ACCESS_TOKEN` is set; never writes market data.
+  with code 2 unless `FNO_UPSTOX_ACCESS_TOKEN` is set; never writes market data.
 
 ```bash
-# Optional, real-data pipeline (requires your own UPSTOX_ACCESS_TOKEN in the env)
+# Optional, real-data pipeline (requires your own FNO_UPSTOX_ACCESS_TOKEN in the env)
 python scripts/upstox_smoke_test.py --save
 python scripts/acquire_dataset.py --instrument "NIFTY 50" --interval 1d --days 400
 python scripts/acquire_dataset.py --instrument BANKNIFTY --interval 15m --days 60 --name banknifty_15m
@@ -429,14 +430,38 @@ Defaults are shown next to each variable in `.env.example`.
 | `FNO_KITE_BASE_URL` | `https://api.kite.trade` | Kite endpoint base URL |
 | `FNO_KITE_TIMEOUT_SECONDS` | `10` | HTTP timeout for Kite calls |
 | `FNO_KITE_MAX_RETRIES` | `3` | Retries on rate-limit/5xx/network errors |
-| `UPSTOX_CLIENT_ID` | *(empty)* | Upstox SSO client id (token-generation flow only, optional) |
-| `UPSTOX_CLIENT_SECRET` | *(empty)* | Upstox SSO client secret (token-generation flow only, optional)—**never commit it** |
-| `UPSTOX_ACCESS_TOKEN` | *(empty)* | Upstox access token used for API calls—**never commit a real token** |
-| `UPSTOX_BASE_URL` | `https://api.upstox.com` | Upstox V3 endpoint base URL |
-| `UPSTOX_TIMEOUT_SECONDS` | `10` | HTTP timeout for Upstox calls |
+| `FNO_UPSTOX_CLIENT_ID` | *(empty)* | Upstox analytics/data SSO client id (token-generation flow only, optional) |
+| `FNO_UPSTOX_CLIENT_SECRET` | *(empty)* | Upstox analytics/data SSO client secret (token-generation flow only, optional)—**never commit it** |
+| `FNO_UPSTOX_ACCESS_TOKEN` | *(empty)* | **Analytics/data-layer** Upstox token for read-only historical-candle calls—**never commit a real token**; never read by the execution path |
+| `FNO_UPSTOX_API_KEY` | *(empty)* | Upstox analytics/data API key (optional) |
+| `FNO_UPSTOX_BASE_URL` | `https://api.upstox.com` | Upstox analytics/data endpoint base URL |
+| `FNO_UPSTOX_TIMEOUT_SECONDS` | `10` | HTTP timeout for Upstox data calls |
+| `FNO_UPSTOX_MAX_RETRIES` | `3` | Retries on rate-limit/5xx/network errors |
+| `UPSTOX_ACCESS_TOKEN` | *(empty)* | **Execution-layer** Upstox token, consumed ONLY by the WS 7.9 gate/adapter. Not an enablement switch — a real send additionally needs `FNO_LIVE_EXECUTION_TEST_ENABLED=1`, a matching consent fingerprint and `--confirm-live-enablement`. The data layer never reads it |
+| `UPSTOX_API_KEY` | *(empty)* | Execution-layer Upstox API key (optional `x-api-key` header) |
+| `UPSTOX_BASE_URL` | `https://api.upstox.com` | Upstox execution endpoint base URL |
+| `UPSTOX_TIMEOUT_SECONDS` | `10` | HTTP timeout for execution calls |
 | `UPSTOX_MAX_RETRIES` | `3` | Retries on rate-limit/5xx/network errors |
+| `FNO_LIVE_EXECUTION_TEST_ENABLED` | `0` | WS 7.9 live-send gate master switch. `1` only *allows* gate evaluation; real send still needs consent fingerprint + `--confirm-live-enablement`. Default closed |
+| `FNO_LIVE_TEST_CONSENT_FILE` | `reports/execution/operator_consent.json` | Consent file (`{operator, purpose, created, expires, fingerprint}`) whose whole-body sha256 **fingerprint** must match the sha256 of the supplied `UPSTOX_ACCESS_TOKEN` |
+| `FNO_LIVE_TEST_HOLD_SECONDS` | `300` | Hold duration after the entry fill for the real experiment (exact 5-minute hold default) |
+| `FNO_LIVE_TEST_EXPIRY_HOURS` | `24` | Max allowed `created → expires` window of a consent |
+| `FNO_LIVE_TEST_DRY_RUN` | `1` | Force dry-run even if the gate opens (double-safe) |
+| `FNO_LIVE_TEST_MAX_MARGIN` | `100000` | Max estimated margin (lot × option premium) for the single real leg |
+| `FNO_LIVE_TEST_ORDER_TIMEOUT_SECONDS` | `30` | Fill-poll timeout before cancel + fail |
+| `FNO_LIVE_TEST_POLL_SECONDS` | `2` | Fill-poll cadence |
 
 Never commit real values to `.env` — the file is git-ignored.
+
+**Credential separation (mandatory).** Analytics/data credentials
+(`FNO_KITE_*`, `FNO_UPSTOX_*`) live exclusively in the analytics/data layer;
+the WS 7.9 execution token (`UPSTOX_ACCESS_TOKEN`) is consumed only by the
+execution gate/adapter. Neither layer falls back to the other's token: the
+data provider refuses a fetch without `FNO_UPSTOX_ACCESS_TOKEN`, and the
+execution adapter refuses a non-dry-run order without `UPSTOX_ACCESS_TOKEN`
+(before any HTTP write). Paper trading never requires the execution token, and
+presence of `UPSTOX_ACCESS_TOKEN` alone can **never** open the live gate.
+Enforced by `tests/test_credential_separation.py`.
 
 ---
 
@@ -445,7 +470,14 @@ Never commit real values to `.env` — the file is git-ignored.
 - **No live execution:** the `PaperBroker.is_live` property is hard-coded to
   `False`. No code path in the system contacts an external broker or API. The
   paper session (`PaperSession`), the strategy service and the backtest engine
-  submit paper orders only.
+  submit paper orders only. The WS 7.9 execution layer
+  (`src/fno_ai_paper_trading/execution/`) is a **separate, default-closed**
+  controlled integration test: the memory adapter is `dry_run=True` by
+  definition, and real broker sends additionally require the live gate
+  (`FNO_LIVE_EXECUTION_TEST_ENABLED=1` + consent-file sha256 fingerprint matching
+  the supplied `UPSTOX_ACCESS_TOKEN` + expiry window) **and** the same-run
+  `--confirm-live-enablement` flag. Any refusal leaves a FAIL result with **no**
+  order (`PROJECT_PLAN.md` §17p).
 - **No secrets in code:** all credentials belong in `.env` (git-ignored) or
   environment variables, never in source. The Kite and Upstox adapters refuse to
   send data without credentials and raise a typed `ProviderConfigurationError`
@@ -491,7 +523,7 @@ Never commit real values to `.env` — the file is git-ignored.
 |---|---|
 | **Phase 2 (done)** | Strategy engine, real market-data provider interface, moving-average crossover strategy, read-only Kite Connect adapter, deterministic backtest harness |
 | **Phase 3 (research, done)** | Deterministic research & robustness framework: Indian cost model, execution assumptions, regime datasets, in/out-of-sample splits, walk-forward, parameter sensitivity, benchmark, robust metrics, experiment records, HTML notebook |
-| **Phase 3 (historical, ready)** | Local dataset cache + read-only Upstox historical adapter + interval/validation tooling — enabled when the user configures `UPSTOX_ACCESS_TOKEN` |
+| **Phase 3 (historical, ready)** | Local dataset cache + read-only Upstox historical adapter + interval/validation tooling — enabled when the user configures `FNO_UPSTOX_ACCESS_TOKEN` |
 | **Phase 3 (upcoming)** | Historical-data CLI/download pipeline |
 | **Phase 6 (Paper Trading V1, done — READY)** | Live/current-data paper session: completed-5m-candle loop, 1% risk sizing, 2% stop-loss, long-only NIFTY 50, persistence under git-ignored `paper_state/`, monitoring/ops, 30 offline acceptance-replay tests — see `docs/trading/PAPER_TRADING_V1.md` |
 | **Phase 7 (post-V1, in progress — evaluation-first)** | AI decision-support foundation (advisory only), deterministic feature engineering, market regime detection, historical strategy evaluation, ~5-year replay capability, the durable experience store, outcome analysis / candidate generation, champion vs challenger evaluation, controlled promotion/rollback via an evidence-gated promotion gate + version registry, the continuous feedback/learning loop (paper-trade replay → experience capture → hypotheses → comparison → gate → promoted champion feeds the next cycle), and a pluggable alert engine + watchdog/health/fail-safe (all alerts labeled **PAPER TRADING — NO LIVE ORDER**) are implemented; MA(5,21) is the frozen baseline. The real-data **champion failure audit** (`docs/champion_failure_audit.md`) and the **pre-registered challenger cycle** (H1–H5, `docs/model_research_final_report.md`) concluded **B — no credible edge; no promotion** (protected single-use OOS 2026-01-01..2026-09-11; best challenger OOS per-trade t = -2.05). Future regime-aware/AI candidates require a fresh untouched OOS period — see `PROJECT_PLAN.md` §17d/§17e/§17g |

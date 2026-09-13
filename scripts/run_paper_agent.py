@@ -67,10 +67,10 @@ def _build_agent(args, settings) -> ContinuousPaperAgent:
     data_source = ""
 
     if args.upstox:
-        token = args.token or os.getenv("UPSTOX_ACCESS_TOKEN", "").strip()
+        token = args.token or os.getenv("FNO_UPSTOX_ACCESS_TOKEN", "").strip()
         if not token:
             raise ValueError(
-                "no Upstox access token; set UPSTOX_ACCESS_TOKEN (or pass --token)"
+                "no Upstox analytics/data access token; set FNO_UPSTOX_ACCESS_TOKEN (or pass --token)"
             )
         provider = UpstoxHistoricalDataProvider(access_token=token)
         data_source = "Upstox historical data"
@@ -169,7 +169,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--quantity", type=int, default=1)
     parser.add_argument("--name", default=None, help="session name (default <symbol>_<interval>)")
     parser.add_argument("--state-dir", default="paper_state", help="checkpoint directory")
-    parser.add_argument("--token", default="", help="Upstox access token (env: UPSTOX_ACCESS_TOKEN)")
+    parser.add_argument("--token", default="", help="Upstox analytics/data access token (env: FNO_UPSTOX_ACCESS_TOKEN)")
     parser.add_argument("--poll-seconds", type=float, default=60.0, help="seconds between cycles")
     parser.add_argument("--as-of", default=None, help="deterministic decision time ISO (offline modes)")
     parser.add_argument("--no-jobs", action="store_true", help="disable closed-market jobs")

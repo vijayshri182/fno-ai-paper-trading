@@ -634,11 +634,14 @@ class TestSmokeScriptOptIn:
     def test_smoke_script_exits_nonzero_without_token(self, tmp_path) -> None:
         script = Path(__file__).resolve().parents[1] / "scripts" / "upstox_smoke_test.py"
         env = dict(os.environ)
-        env["UPSTOX_ACCESS_TOKEN"] = ""
+        # The data script must ignore the execution token entirely: only the
+        # analytics/data token (FNO_UPSTOX_ACCESS_TOKEN) satisfies it.
+        env["FNO_UPSTOX_ACCESS_TOKEN"] = ""
+        env["UPSTOX_ACCESS_TOKEN"] = "EXECUTION-ONLY-TOKEN"
         env.pop("UPSTOX_TEST_INSTRUMENT_KEY", None)
         result = subprocess.run(
             [sys.executable, str(script), "--no-save", "--days", "1"],
             cwd=str(tmp_path), env=env, capture_output=True, text=True, timeout=60,
         )
         assert result.returncode == 2
-        assert "UPSTOX_ACCESS_TOKEN" in (result.stderr or result.stdout)
+        assert "FNO_UPSTOX_ACCESS_TOKEN" in (result.stderr or result.stdout)

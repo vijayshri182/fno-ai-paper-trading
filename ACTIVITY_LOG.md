@@ -1862,8 +1862,176 @@ suppression; checkpoint files round-trip with hash integrity.
 
 ---
 
+## 4al. 2026-09-13 — WS 7.9: Controlled Live F&O Execution Integration Test (execution layer)
+
+**Objective.** Implement the controlled, operator-consented end-to-end
+**broker-plumbing** integration test (`PROJECT_PLAN.md` §17p) for the single
+real F&O experiment: authenticate → validate the F&O instrument → derive the
+CALL/PUT leg from the existing frozen MA(5,21) trend signal → ONE entry → fill →
+hold → ONE exit → flat reconciliation → audit/report. **Outcome A** =
+execution-integration PASS/FAIL only; **Outcome B** = Algorithm Health,
+**UNCHANGED (RED / ALGO READY = NO)**. NO real order this session; real send is
+**default-closed**.
+
+**Decisions.**
+- **Layered safety (every layer must pass before a real order):** (1) the
+  memory adapter is `dry_run=True` by definition — simulated acks/fills, no
+  transport write; (2) `LiveExecutionTestGate` opens only when
+  `FNO_LIVE_EXECUTION_TEST_ENABLED=1` AND a consent file is current
+  (`created` ≤ now ≤ `expires`) with its whole-body sha256 fingerprint equal to
+  the sha256 of the supplied `UPSTOX_ACCESS_TOKEN` AND the consent window fits
+  `FNO_LIVE_TEST_EXPIRY_HOURS` (default 24); (3) the manager re-evaluates the
+  gate *after* preflight and additionally requires
+  `confirm_live_enablement=True` in the same run; (4) `UpstoxExecutionAdapter`
+  refuses `ExecutionMode.LIVE` (accepts only `LIVE_EXECUTION_TEST`/`PAPER`) and
+  drops the token from every persisted payload; (5) `RiskPreflight` re-applies
+  the existing RiskManager static caps, the market-session clock, Watchdog
+  freshness, a margin estimate (lot × quote ≤ $FNO_LIVE_TEST_MAX_MARGIN) and an
+  `OvernightGuard` near-close block. Any refusal → FAIL/ABORT with **no order**.
+- **Naming disambiguation:** the plan's original "WS 7.9 — experience /
+  trade-outcome store" is now "WS 7.9 **evidence layer**"; this capability is
+  WS 7.9 **execution layer**, documented at §17p and in the §17d roadmap.
+- **HOLD is never tradable:** `decide_call_put` maps BUY→CALL / SELL→PUT /
+  HOLD→no-trade, and the manager refuses to trade a HOLD even when an operator
+  pins a side (pinning can select CALL vs PUT only when the strategy is
+  directional).
+- **State machine is strict and terminal:** allowed edges only
+  (IDLE→AUTHENTICATING→INSTRUMENT_VALIDATED→ENTRY_REQUESTED→…→FLAT_RECONCILED
+  →COMPLETE, plus FAILED/ABORTED); runtime validation forbids post-terminal
+  transitions and the common illegal shortcuts; terminal→HALTED edges were
+  removed as unreachable (validation already blocks movement out of terminal
+  states).
+
+**Deliverables.**
+- `src/fno_ai_paper_trading/execution/` — `gate.py`, `state.py`, `signal.py`,
+  `instrument.py`, `risk.py` (RiskPreflight + OvernightGuard), `upstox.py`,
+  `memory.py`, `manager.py` (`LiveExecutionTestManager`), `audit.py`.
+- `config/settings.py` — `LiveExecutionTestSettings` +
+  `load_live_test_settings` (`FNO_LIVE_EXECUTION_TEST_ENABLED`,
+  `FNO_LIVE_TEST_CONSENT_FILE`, `FNO_LIVE_TEST_HOLD_SECONDS`,
+  `FNO_LIVE_TEST_EXPIRY_HOURS`, `FNO_LIVE_TEST_DRY_RUN`,
+  `FNO_LIVE_TEST_MAX_MARGIN`, `FNO_LIVE_TEST_ORDER_TIMEOUT_SECONDS`,
+  `FNO_LIVE_TEST_POLL_SECONDS`).
+- `scripts/run_live_execution_test.py` — CLI (`--data-source smoke|upstox`,
+  `--live`, `--confirm-live-enablement`, `--underlying/--expiry/--strike/
+  --side/--instrument-key/--lot-size`, `--token`, `--interval/--bars/
+  --hold-seconds`, `--out`). `--live` with a closed gate exits 2 (REFUSING).
+- `tests/test_live_execution_test.py` — 67 tests.
+- Dashboard: LIVE EXECUTION INTEGRATION TEST section; `docs/project_state.json`
+  `live_execution_test` block (93% overall).
+
+**Fixes found by the new suite.**
+- Gate: `timedelta(hours=Decimal)` TypeError with a Decimal `expiry_hours` →
+  `float()` coercion.
+- State machine: missing `(AUTHENTICATING, ABORTED)` edge that `abort()`
+  already implied.
+- Manager: HOLD refused to trade even with a pinned side (pins can no longer
+  override a no-trade); dead `_try_halt` removed.
+- Memory adapter: `dry_run=True` declared as a field so the manager's real-send
+  gate never misfires for simulated runs.
+- Test-harness fixes: bar timestamps constrained to the Watchdog freshness
+  window; last-bar crossover construction; scripted poll clock now monotonically
+  advances past the fill deadline (removes an infinite poll loop).
+- Upstox tests assert on the fake transport's recorded calls, not on the
+  adapter (which never recorded HTTP calls).
+
+**Verification.** Full suite **1043 passed** (976 + 67; 25s). Deterministic
+smoke run: outcome **PASS**, stage COMPLETE, mode PAPER, dry_run True, entry/
+exit fill 242.25, position flat; JSONL audit + summary written under
+`reports/execution/` (git-ignored). `py_compile` clean for the `execution`
+package and the CLI.
+
+**Honest status.** Implementation + dry-run verification complete. The single
+REAL F&O order is scheduled for **2026-09-14** under explicit
+operator-controlled enablement (gate + consent fingerprint + confirm) and was
+**not** performed in this session. `UpstoxExecutionAdapter` has never been run
+against the live service (dry-run only).
+
+**Status.** Committed as the WS 7.9 execution-layer work-stream commit and
+pushed. See `§17p`, `src/fno_ai_paper_trading/execution/`,
+`scripts/run_live_execution_test.py`, `reports/execution/`,
+`docs/project_status.html`, `docs/project_state.json`.
+
+---
+
+## 4am. 2026-09-13 — Credential separation: analytics/data vs execution Upstox tokens
+
+**Requirement (operator-mandated).** The Upstox analytics/data credential and
+the WS 7.9 execution credential must be fully disjoint. Rules: analytics
+credentials keep their existing names unless duplication was necessary;
+`UPSTOX_ACCESS_TOKEN` is consumed **exclusively** by the execution path; the
+execution adapter never falls back to an analytics token; the data layer never
+consumes `UPSTOX_ACCESS_TOKEN`; paper trading never requires it; a token's
+presence alone never opens the live gate; no token is ever printed, persisted
+or committed; PAPER/strategy behavior is unchanged.
+
+**What changed.**
+
+- `config/settings.py` — `UpstoxSettings` is now documented and loaded strictly
+  as the **analytics/data** credential; `load_upstox_settings()` reads only
+  `FNO_UPSTOX_*` (`FNO_UPSTOX_ACCESS_TOKEN`, plus client id/secret, api_key,
+  base_url, timeout, max_retries) and never reads `UPSTOX_ACCESS_TOKEN`.
+- `execution/upstox.py` — `UpstoxExecutionAdapter` no longer imports the data
+  settings object; it builds credentials via a new `UpstoxCredentials.from_env()`
+  that reads the **execution-scoped** `UPSTOX_*` variables only. `from_settings`
+  removed. Module docstring records: no fallback to the analytics token, no
+  logging/persisting of headers, no non-dry-run POST without `UPSTOX_ACCESS_TOKEN`.
+- `data/upstox_provider.py` — failure message and docstring now name
+  `FNO_UPSTOX_ACCESS_TOKEN`; the provider never reads `UPSTOX_ACCESS_TOKEN`.
+- `scripts/run_live_execution_test.py` — data fetch uses the data token
+  (`_env_data_token` → `FNO_UPSTOX_ACCESS_TOKEN`); adapter credentials come from
+  `UpstoxCredentials.from_env()` (execution token).
+- Data-side scripts renamed to `FNO_UPSTOX_ACCESS_TOKEN`: `acquire_dataset.py`,
+  `upstox_smoke_test.py`, `research_real_data.py`, `paper_demo_current_data.py`,
+  `acquire_model_performance_data.py`, `run_paper_agent.py`.
+- `.env.example` — new `FNO_UPSTOX_*` analytics/data section plus a WS 7.9
+  live-test section documenting `FNO_LIVE_*` (off by default) and
+  `UPSTOX_ACCESS_TOKEN`/`UPSTOX_API_KEY` as execution-only.
+- Tests — `test_upstox_provider.py` and `test_real_data_research.py` now prove
+  the data scripts ignore the execution token: they set
+  `UPSTOX_ACCESS_TOKEN="EXECUTION-ONLY-TOKEN"` (and empty `FNO_UPSTOX_*`) and
+  assert `FNO_UPSTOX_ACCESS_TOKEN` appears in stderr. New
+  `tests/test_credential_separation.py` (18 tests) covers: data settings read
+  FNO only, data provider never consumes the execution token, paper needs no
+  execution token, execution adapter reads UPSTOX only, no fallback to the
+  analytics token, non-dry-run with missing/invalid token fails **before any
+  HTTP write**, a token alone cannot open the gate (env flag + consent
+  fingerprint + confirm still required), and no token leakage through
+  reprs/reasons/redact/audit.
+
+**Verification.**
+
+- Focused run: 148 passed in 2.51s (credential separation + provider + research
+  + live-execution-test suites).
+- Full suite: **1061 passed** in 34.23s (1043 prior + 18 new; 0 skipped /
+  0 xfailed).
+- `py_compile` clean; no diffs in `broker/`, `services/`, `portfolio/`,
+  `strategies/`, or `risk/` (paper path untouched).
+- CLI smoke rerun: exit 0, outcome PASS, stage COMPLETE, mode PAPER, dry_run
+  True, flat. CLI `--live` with closed gate: exit 2, "REFUSING … master enable
+  flag FNO_LIVE_EXECUTION_TEST_ENABLED is not set".
+
+**Honest status.** The separation is enforced structurally and by tests; the
+execution adapter still has never touched the live service (dry-run only). The
+single REAL F&O experiment remains scheduled for **2026-09-14** under explicit
+operator-controlled enablement.
+
+**Status.** Documentation updated (README, PROJECT_PLAN §17p, ARCHITECTURE §9/§13/
+§20, PAPER_TRADING_V1, PROGRESS). Committed and pushed with the WS 7.9
+close-out checkpoint.
+
+---
+
 ## 5. Open Topics / Risks
 
+- **13-Sep-2026 WS 7.9 dry-run verified only; the single REAL F&O experiment is
+  scheduled for 2026-09-14 under explicit operator-controlled enablement.**
+  The `UpstoxExecutionAdapter` has never touched the live service; the
+  real-send path is gated (env flag + consent fingerprint + `--confirm-` in the
+  same run) and any refusal produces a FAIL with no order. No real order may be
+  placed outside that consented window, and Outcome A (broker plumbing) must
+  never be confused with Outcome B (Algorithm Health, still RED / ALGO READY =
+  NO).
 - **12-Sep-2026 research cycle concluded B (no credible edge; family closed).**
   The pre-registered challenger cycle (WS 7.16, `docs/model_research_final_report.md`)
   found every MA-cross-family rule net-negative on design, validation **and** the

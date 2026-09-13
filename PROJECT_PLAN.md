@@ -1107,11 +1107,34 @@ controlled capabilities:
   (`reports/algorithm_state/paper_agent.json`). Committed with the WS 7.8
   work-stream commit.
 
-*Work stream 7.9 — Experience / trade-outcome store* — **DONE**
+*Work stream 7.9 (evidence layer) — Experience / trade-outcome store* — **DONE**
 * Capture EVERY completed paper trade as an experience record (decision-time
   features, regime, recommendation/confidence/rationale, execution, realized
   outcome, transaction costs, drawdown/exposure context) — wins and losses alike
-  (§17f).
+  (§17f). (Renamed here to **WS 7.9 evidence layer** to keep it distinct from the
+  later *WS 7.9 execution layer* — the controlled live F&O execution integration
+  test in §17p.)
+
+*Work stream 7.9 (execution layer) — Controlled live F&O execution integration
+test* — **IMPLEMENTED — DRY-RUN ONLY / DEFAULT-CLOSED**
+* A separate `execution/` package (`gate.py`, `state.py`, `signal.py`,
+  `instrument.py`, `risk.py`, `upstox.py`, `memory.py`, `manager.py`, `audit.py`)
+  plus `scripts/run_live_execution_test.py` and
+  `tests/test_live_execution_test.py` (67 tests; full suite 1043) implements the
+  controlled end-to-end **broker-plumbing** integration test: authenticate →
+  validate F&O instrument → CALL/PUT leg from the MA(5,21) trend signal → ONE
+  entry → fill → hold → exit → flat reconciliation → audit/report. Real send is
+  **OFF by default**: `adapter.dry_run=True` synthesizes fills locally; reaching
+  a real broker additionally requires the live gate
+  (`FNO_LIVE_EXECUTION_TEST_ENABLED=1` + consent-file sha256 fingerprint matching
+  `UPSTOX_ACCESS_TOKEN` + expiry window) AND explicit `--confirm-live-enablement`
+  in the same run. Any refusal leaves a FAIL result and places **no** order. The
+  deterministic smoke run passes in PAPER mode (outcome PASS, stage COMPLETE,
+  entry/exit fill 242.25, position flat). **Outcome A** = execution integration
+  PASS/FAIL (broker plumbing only); **Outcome B** = Algorithm Health —
+  **UNCHANGED, RED / ALGO READY = NO**. The single REAL F&O experiment is
+  scheduled for 2026-09-14 under explicit human-controlled enablement and was
+  **not** performed during implementation. See §17p.
 
 *Work stream 7.10 — Adaptive learning & candidate generation* — **DONE**
 * Learn by outcome to produce candidate model/rule improvements. A single loss
@@ -1588,6 +1611,87 @@ and never trades.
 
 ---
 
+# 17p. Controlled Live F&O Execution Integration Test (WS 7.9 — EXECUTION LAYER)
+
+> **Numbering note.** The plan's original "WS 7.9 — Experience / trade-outcome
+> store" (§17d roadmap, under "7.9–7.14") stays as-is and is now called the
+> **WS 7.9 evidence layer**. This section is the **WS 7.9 execution layer** — a
+> separate, default-closed capability introduced later; it does not change any
+> evidence-layer work.
+
+**Purpose.** A controlled, operator-consented end-to-end test of the real-broker
+**plumbing** (Upstox read/order V2 endpoints, F&O instrument validation, order
+lifecycle, fill polling, cancellation, positions reconciliation) using **ONE**
+F&O entry whose CALL/PUT leg comes from the existing **frozen MA(5,21)** trend
+signal. It rates broker plumbing only (Outcome A) and never rates the algorithm
+(Outcome B — Algorithm Health stays RED / ALGO READY = NO).
+
+**Hard safety contract (layered — every layer must pass before a real order):**
+
+1. Default state: **closed**. `adapter.dry_run=True` (memory/paper adapter)
+   synthesizes acks and fills locally; the real-send path is never taken in
+   dry-run. The default CLI data-source is `smoke`.
+2. The **live-execution gate** opens only when `FNO_LIVE_EXECUTION_TEST_ENABLED=1`
+   AND a consent file provides `created` ≤ now ≤ `expires` with its whole-body
+   sha256 `fingerprint` matching the sha256 of the supplied
+   `UPSTOX_ACCESS_TOKEN`, AND the created→expires window stays within
+   `FNO_LIVE_TEST_EXPIRY_HOURS` (default 24). Missing/invalid/expired/tampered
+   consent, a mismatched fingerprint, or no token → **refused**.
+3. The manager re-checks the gate *after* preflight and additionally requires
+   the caller's explicit `confirm_live_enablement=True` **in the same run** — a
+   second, human-scoped confirmation distinct from the env flag.
+4. `UpstoxExecutionAdapter` refuses `ExecutionMode.LIVE` and accepts only
+   `LIVE_EXECUTION_TEST` / `PAPER`; credentials are never persisted (redacted in
+   every audit/alert payload); the token arrives on the CLI and is dropped.
+5. Preflight re-applies the **existing** RiskManager static caps, market-session
+   clock, Watchdog freshness, a margin estimate (lot × premium ≤
+   `FNO_LIVE_TEST_MAX_MARGIN`), and an overnight/near-close guard. Any decline →
+   ABORT/FAIL, **no order**.
+6. **Credential separation (mandatory).** Analytics/data credentials
+   (`FNO_UPSTOX_ACCESS_TOKEN`, `FNO_KITE_*`) live exclusively in the
+   analytics/data layer; `UPSTOX_ACCESS_TOKEN` is the execution credential and
+   is consumed only by the gate/adapter. Neither layer falls back to the
+   other's token. The data provider fails a fetch without its own token
+   (naming `FNO_UPSTOX_ACCESS_TOKEN`); the adapter fails a non-dry-run order
+   without `UPSTOX_ACCESS_TOKEN` **before any HTTP write**. Paper trading never
+   requires the execution token, the execution adapter never imports the data
+   settings object, and a token's mere presence can never open the gate.
+   Enforced by `tests/test_credential_separation.py`.
+
+**State machine** (one trade per run): IDLE → AUTHENTICATING →
+INSTRUMENT_VALIDATED → ENTRY_REQUESTED → ENTRY_ACKNOWLEDGED → ENTRY_FILLED →
+HOLDING → EXIT_ACKNOWLEDGED → EXIT_FILLED → FLAT_RECONCILED → COMPLETE;
+terminal FAILED/ABORTED anywhere. `ALLOWED_TRANSITIONS` plus runtime validation
+forbid post-terminal activity and most out-of-sequence edges.
+
+**Flow** (`execution/manager.py` `LiveExecutionTestManager.run`): authenticate →
+re-validate the instrument (F&O existence, future expiry, positive lot size) →
+`decide_call_put` on the signal bars (BUY→CALL, SELL→PUT, HOLD→refuse, even when
+a side is pinned) → quote → RiskPreflight → real-send gate → single entry → fill
+poll (status or synthetic) with timeout→cancel → exact 5-minute hold → single
+exit → positions reconciliation (must be flat) → COMPLETE. Emergency flatten if
+an exit fails while a position stays open. Every step is written to a JSONL
+audit (`reports/execution/audit/<run_id>.jsonl`, git-ignored) and the summary to
+`reports/execution/last_run_summary.json`.
+
+**CLI** (`scripts/run_live_execution_test.py`):
+`--data-source smoke|upstox`, `--live`, `--confirm-live-enablement`,
+`--underlying --expiry --strike --side CALL|PUT|auto`, `--instrument-key
+--lot-size`, `--token`, `--interval --bars --hold-seconds`, `--out`. `smoke`
+uses a deterministic BUY→CALL series and verifies the full lifecycle in PAPER
+mode. `--live` with a closed gate exits 2 ("REFUSING") without reaching a broker.
+Config via `LiveExecutionTestSettings` + `FNO_LIVE_TEST_*` env vars
+(`config/settings.py`).
+
+**Status.** IMPLEMENTED — DRY-RUN VERIFIED. Deterministic smoke run PASS
+(stage COMPLETE, mode PAPER, dry_run True, entry/exit 242.25, position flat). 67
+new tests; full suite 1043 green. **The single real F&O experiment is scheduled
+for 2026-09-14 under explicit human-controlled enablement and is NOT part of the
+implementation session.** Algorithm Health (Outcome B): UNCHANGED —
+RED / ALGO READY = NO.
+
+---
+
 # 17j. Alert Engine (IMPLEMENTED — WS 7.14)
 
 The **pluggable** alert layer described below is implemented as the `alerting/`
@@ -1903,13 +2007,14 @@ are implemented, committed and pushed (see §17d and the Change Log). WS 6.6
 (session operations / monitoring): logging, health checks, reports
 (`build_report`/`report_from_snapshot`, HTML output) and the operator CLI
 (`scripts/paper_session_report.py`) are implemented with 15 monitoring tests.
-Real-data execution is gated on `UPSTOX_ACCESS_TOKEN`; offline smoke tests are
-provided.
+Real-data execution is gated on `FNO_UPSTOX_ACCESS_TOKEN` (the analytics/data
+token; the WS 7.9 execution token is never consumed by the data layer); offline
+smoke tests are provided.
 
 Status: **PHASE 6 COMPLETE — F&O PAPER TRADING V1 IMPLEMENTATION COMPLETE — V1
 STATUS: READY** — see §17b, §17c–17d, the data-layer notes above, the Change Log,
 `ACTIVITY_LOG.md`, and `scripts/research_real_data.py`. Real historical research
-runs when the user supplies `UPSTOX_ACCESS_TOKEN` (read-only historical data
+runs when the user supplies `FNO_UPSTOX_ACCESS_TOKEN` (read-only historical data
 only). The live/current-data paper-session loop is implemented
 (`services/paper_session.py`, WS 6.4b) with stop-loss (WS 6.4), persistence
 (WS 6.5), monitoring/ops (WS 6.6), 30 offline acceptance-replay tests (WS 6.7)
@@ -2213,7 +2318,8 @@ The system should be capable of using **real market information while remaining 
     `MovingAverageCrossStrategy` with locked baseline parameters (fast=5,
     slow=21) and the existing illustrative cost/slippage schedules.
   * `scripts/research_real_data.py` — CLI that either fetches real NIFTY 50
-    daily data via the read-only Upstox adapter (requires `UPSTOX_ACCESS_TOKEN`)
+    daily data via the read-only Upstox adapter (requires
+    `FNO_UPSTOX_ACCESS_TOKEN`, the analytics/data token)
     or runs `--smoke` with deterministic synthetic data for offline validation.
     Produces a labelled HTML report under `reports/` and persists datasets under
     `datasets/` (both git-ignored). Exits with code 2 when no token is supplied,
@@ -2241,7 +2347,8 @@ The system should be capable of using **real market information while remaining 
   * `data/dataset_store.py` — local CSV+JSON dataset cache with SHA-256
     `data_hash`; `datasets/` git-ignored.
   * `data/validation.py` — report-only dataset quality checks.
-  * `config/settings.py` — `UpstoxSettings` (`UPSTOX_*`).
+  * `config/settings.py` — `UpstoxSettings` (`FNO_UPSTOX_*`, analytics/data
+    token; the execution token `UPSTOX_ACCESS_TOKEN` is the gate/adapter's only).
   * `scripts/upstox_smoke_test.py` — opt-in read-only connectivity check.
   * `.env.example` — Upstox section; tests added for all new modules.
   * Full suite: **298 tests pass** (201 + 97 new); reports regenerated.

@@ -304,6 +304,43 @@ def _continuous_agent_section() -> str:
     return _section("CONTINUOUS PAPER-TRADING AGENT", body)
 
 
+def _live_execution_section() -> str:
+    """WS 7.9: controlled live F&O execution integration test status.
+
+    Reads the last execution summary artifact. Displays broker-plumbing
+    integration results (Outcome A) ONLY; it never rates the algorithm
+    (Outcome B = Algorithm Health, unchanged)."""
+    summary = _read_json("reports/execution/last_run_summary.json")
+    if not isinstance(summary, dict) or not summary.get("run_id"):
+        return _section(
+            "LIVE EXECUTION INTEGRATION TEST (WS 7.9)",
+            "<p class='note'>No run artifact yet — run "
+            "<code>python scripts/run_live_execution_test.py --data-source smoke</code>.</p>",
+        )
+    rows: list[list[str]] = [
+        ["Run id", str(summary.get("run_id", "?"))],
+        ["Mode", _badge(str(summary.get("mode") or "?"))],
+        ["Dry run", str(summary.get("dry_run")) if summary.get("dry_run") is not None else "?"],
+        ["Outcome (A = execution integration)", _badge(str(summary.get("outcome") or "?"))],
+        ["Stage", str(summary.get("stage") or "?")],
+        ["Symbol / side", f"{summary.get('symbol') or '?'} / {summary.get('side') or '?'}"],
+        ["Entry / exit order", f"{summary.get('entry_order_id') or '-'} ({summary.get('entry_fill_price') or '-'}) / {summary.get('exit_order_id') or '-'} ({summary.get('exit_fill_price') or '-'})"],
+        ["Position flat after exit", str(summary.get("position_flat")) if summary.get("position_flat") is not None else "?"],
+        ["Reasons (if not PASS)", " ; ".join(str(r) for r in (summary.get("reasons") or []))],
+        ["Algorithm Health (Outcome B)", "UNCHANGED — RED / ALGO READY = NO (this test rates broker plumbing only)"],
+    ]
+    body = _kv_table(rows)
+    body += (
+        "<p class='note'><strong>NO REAL ORDER:</strong> dry-run intent is enforced by "
+        "the adapter <code>dry_run</code> flag (default True) plus the live-execution "
+        "gate (env flag + consent-file fingerprint matching the token) plus explicit "
+        "<code>--confirm-live-enablement</code>. Any refusal leaves a FAIL result and "
+        "places no order. Real-money trading remains DISABLED; the single real F&O "
+        "experiment runs tomorrow under explicit human-controlled enablement.</p>"
+    )
+    return _section("LIVE EXECUTION INTEGRATION TEST (WS 7.9)", body)
+
+
 def _ws77_view_sections(state: dict[str, Any]) -> str:
     """WS 7.7 read-only dashboard views (SYSTEM / TRADING / PERFORMANCE / HISTORICAL / LEARNING)."""
     git = _git_facts()
@@ -645,6 +682,7 @@ def render() -> str:
   {_laboratory_section()}
   {_daily_performance_section()}
   {_continuous_agent_section()}
+  {_live_execution_section()}
   {_ws77_view_sections(state)}
   {_section("PAPER TRADING", pt_body)}
   {_section("SAFETY", safety_body)}

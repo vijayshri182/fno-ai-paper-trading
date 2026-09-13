@@ -11,8 +11,9 @@ robustly navigates provider boundary artifacts (some early-2022 5m ranges return
 
 SAFETY: this script never places an order, never posts data, and never mutates a
 remote resource. The only HTTP method ever used is ``GET``. Like the other
-acquisition scripts it is opt-in: it exits non-zero unless ``UPSTOX_ACCESS_TOKEN``
-is set.
+acquisition scripts it is opt-in: it exits non-zero unless
+``FNO_UPSTOX_ACCESS_TOKEN`` is set (the analytics/data-layer token; the WS 7.9
+execution token is never consumed here).
 
 Usage::
 
@@ -84,9 +85,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     load_dotenv()
-    token = (args.token or os.getenv("UPSTOX_ACCESS_TOKEN", "") or "").strip()
+    token = (args.token or os.getenv("FNO_UPSTOX_ACCESS_TOKEN", "") or "").strip()
     if not token:
-        parser.error("no Upstox access token; set UPSTOX_ACCESS_TOKEN (or pass --token)")
+        parser.error("no Upstox analytics/data access token; set FNO_UPSTOX_ACCESS_TOKEN (or pass --token)")
 
     if args.window_days < 1:
         parser.error("--window-days must be >= 1")

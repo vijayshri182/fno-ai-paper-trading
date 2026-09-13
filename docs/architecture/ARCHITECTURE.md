@@ -22,9 +22,9 @@
 
 **Out of scope (by design).**
 
-- **No live order execution.** No code path places real-money orders or contacts a broker order API. `PaperBroker.is_live` is hard-coded to `False` and raising live construction is rejected (`broker/paper_broker.py`).
-- **AI/adaptive learning is advisory (Phase 7, in progress).** Advisory-only decision support behind an interface; it must never bypass the `RiskManager` and never place orders directly. The V1 baseline (MA 5/21) is frozen, and any regime-aware/AI candidate must clear the strategy-evaluation discipline (`PROJECT_PLAN.md` §17e). Implemented so far: AI decision-support contracts, deterministic features, market regime detection, historical strategy evaluation, five-year replay capability, the durable experience store (evidence-only, no execution path), adaptive learning's outcome analysis + gated candidate generation (inert hypotheses only), champion vs challenger evaluation (evidence-only comparison; the regime-filtered challenger never modifies the baseline), the promotion gate + model version registry with rollback (decisions over evidence only; champion stays frozen until a candidate clears the gate; no live-execution path), the continuous feedback/learning loop (WS 7.13: paper-trade replay → experience capture → hypotheses → comparison → gate → promoted champion feeds the next cycle), and a pluggable alert engine + watchdog/health/fail-safe (WS 7.14: every alert labeled `PAPER TRADING — NO LIVE ORDER`, STOP decisions are advisory data only). Future capabilities — continuous agent, GUI — are documented in `PROJECT_PLAN.md` §17d–§17l and are **not implemented**.
-- **No dashboard/UI.** Analytics/reporting produce flat HTML files (research reports and paper-session reports via `research/report.py` CSS); a live web dashboard is a future consideration.
+- **No live order execution in normal operation.** No code path in the strategy/paper/backtest layers places real-money orders or auto-contacts a broker order API. The only real-send-capable component is the WS 7.9 execution layer, which is **default-closed**: `UpstoxExecutionAdapter` refuses `ExecutionMode.LIVE`, the memory adapter is `dry_run=True` by construction, and a real order additionally requires an open consent gate (env flag + sha256-consent-fingerprint == token + expiry window) plus `--confirm-live-enablement` in the same run. Any refusal → FAIL with no order. `PaperBroker.is_live` remains hard-coded to `False`.
+- **AI/adaptive learning is advisory (Phase 7, in progress).** Advisory-only decision support behind an interface; it must never bypass the `RiskManager` and never place orders directly. The V1 baseline (MA 5/21) is frozen, and any regime-aware/AI candidate must clear the strategy-evaluation discipline (`PROJECT_PLAN.md` §17e). Implemented so far: AI decision-support contracts, deterministic features, market regime detection, historical strategy evaluation, five-year replay capability, the durable experience store (evidence-only, no execution path), adaptive learning's outcome analysis + gated candidate generation (inert hypotheses only), champion vs challenger evaluation (evidence-only comparison; the regime-filtered challenger never modifies the baseline), the promotion gate + model version registry with rollback (decisions over evidence only; champion stays frozen until a candidate clears the gate; no live-execution path), the continuous feedback/learning loop (WS 7.13: paper-trade replay → experience capture → hypotheses → comparison → gate → promoted champion feeds the next cycle), a pluggable alert engine + watchdog/health/fail-safe (WS 7.14: every alert labeled `PAPER TRADING — NO LIVE ORDER`, STOP decisions are advisory data only), the continuous paper-trading agent (WS 7.8, §17h), and the WS 7.9 controlled live F&O execution integration test (§17p, default-closed as above). GUI remains a future capability; a rendered project dashboard (`update_project_status.py` → `docs/project_status.html`) is implemented.
+- **No interactive dashboard/UI.** Analytics/reporting produce flat HTML files (research reports, paper-session reports via `research/report.py` CSS, and the project status dashboard via `scripts/update_project_status.py` → `docs/project_status.html`); a live web/GUI dashboard is a future consideration.
 - **No database / multi-session ledger.** Paper-session state persists as JSON snapshots under git-ignored `paper_state/` (WS 6.5); a durable database is out of scope.
 
 **Audience.** Engineers extending the codebase, reviewers validating claims, and operators running research. Every section references the concrete module that implements the described behavior.
@@ -183,6 +183,12 @@ fno-ai-paper-trading/
 |       |   |                           #   version registry & rollback (evidence only)
 |       |-- alerting/                   # WS 7.14 pluggable alert engine + watchdog /
 |       |   |                           #   health / fail-safe (delivery only)
+|       |-- agent/                      # WS 7.8 continuous paper agent: states,
+|       |   |                           #   heartbeat, persistence, jobs (paper-only)
+|       |-- execution/                  # WS 7.9 controlled live F&O execution
+|       |   |                           #   integration test (DEFAULT-CLOSED):
+|       |   |                           #   gate, state, signal, instrument, risk,
+|       |   |                           #   upstox, memory, manager, audit
 |       `-- utils/                       # functions, http, retry, logging
 |-- scripts/                 # acquire_dataset.py, research_real_data.py,
 |                            #   upstox_smoke_test.py, generate_research_report.py,
@@ -194,8 +200,10 @@ fno-ai-paper-trading/
 |                            #   run_watchdog.py (WS 7.14),
 |                            #   audit_champion_failure.py (WS 7.16),
 |                            #   evaluate_candidates.py (WS 7.16 selection),
-|                            #   finalize_oos_confirmation.py (WS 7.16 single OOS read)
-`-- tests/                  # 843 unit tests, no network, no external deps
+|                            #   finalize_oos_confirmation.py (WS 7.16 single OOS read),
+|                            #   run_paper_agent.py (WS 7.8),
+|                            #   run_live_execution_test.py (WS 7.9 execution layer)
+`-- tests/                  # 1061 unit tests, no network, no external deps
 ```
 
 Build/run facts: Python 3.13+; virtualenv `.venv`; `pip install -r requirements.txt`; `python src/main.py` for demos; `pytest` for the suite; both `python -m fno_ai_paper_trading.backtest` and `python -m fno_ai_paper_trading.research` run offline demos.
@@ -216,7 +224,7 @@ Build/run facts: Python 3.13+; virtualenv `.venv`; `pip install -r requirements.
 |---|---|---|---|
 | `InMemoryMarketDataProvider` | `data/mock_provider.py` | Deterministic sample instruments (a future + a CE + a PE, NIFTY1, lot size 75) and deterministic OHLCV/crossing series; used by the demo and the test suite. `_session_template()` always reports an OPEN session. | never |
 | `KiteHistoricalDataProvider` | `data/kite_provider.py` | Zerodha Kite Connect v3 read-only adapter: quote, LTP, instrument-master CSV, historical candles, market status. Auth header `Authorization: token <api_key>:<access_token>`, `X-Kite-Version: 3`. Interval buckets `{minute, 3minute, 5minute, 10minute, 15minute, 30minute, 60minute, day}`. | only when `FNO_KITE_API_KEY` + `FNO_KITE_ACCESS_TOKEN` set |
-| `UpstoxHistoricalDataProvider` | `data/upstox_provider.py` | Upstox V3 historical-candle client. **Read-only by construction** — `GET /v3/historical-candle` only; no order endpoint, no write surface. `Authorization: Bearer <token>`; instrument key `{SEGMENT}|{symbol}`; candle row `[iso_timestamp, open, high, low, close, volume, open_interest]`. Normalizes minutes/hours, days, weeks, months into `MarketPrice`. | only when `UPSTOX_ACCESS_TOKEN` set |
+| `UpstoxHistoricalDataProvider` | `data/upstox_provider.py` | Upstox V3 historical-candle client. **Read-only by construction** — `GET /v3/historical-candle` only; no order endpoint, no write surface. `Authorization: Bearer <token>`; instrument key `{SEGMENT}|{symbol}`; candle row `[iso_timestamp, open, high, low, close, volume, open_interest]`. Normalizes minutes/hours, days, weeks, months into `MarketPrice`. | only when `FNO_UPSTOX_ACCESS_TOKEN` set (analytics/data token; never reads the execution token) |
 
 **Read-only guarantee.** Both real adapters are historical/quoting clients only. The only HTTP method used by the acquisition scripts is `GET` against the historical-candle endpoint (`scripts/acquire_dataset.py` docstring). There is no order-routing surface in the data layer, making live executions impossible from it.
 
@@ -232,7 +240,7 @@ Build/run facts: Python 3.13+; virtualenv `.venv`; `pip install -r requirements.
 
 **Timeouts/retries.** Providers use `utils/retry.py` (`retry_call`, exponential backoff, injectable `sleep` for deterministic tests) and honor per-vendor `_TIMEOUT_SECONDS`/`_MAX_RETRIES`.
 
-**Real-data acquisition flow.** `scripts/acquire_dataset.py` (fetch → validate → store) and `scripts/upstox_smoke_test.py` (opt-in connectivity check) both exit code 2 unless `UPSTOX_ACCESS_TOKEN` is set. `scripts/research_real_data.py` runs the full NIFTY 50 baseline study; `--smoke` validates the pipeline offline with synthetic data.
+**Real-data acquisition flow.** `scripts/acquire_dataset.py` (fetch → validate → store) and `scripts/upstox_smoke_test.py` (opt-in connectivity check) both exit code 2 unless `FNO_UPSTOX_ACCESS_TOKEN` is set. `scripts/research_real_data.py` runs the full NIFTY 50 baseline study; `--smoke` validates the pipeline offline with synthetic data.
 
 ---
 
@@ -390,7 +398,7 @@ These current limits are **static caps**, not the V1 session rules. V1 risk-base
 - `Environment` enum (`development` / `test` / `paper`) — all paper-only; nothing about the environment can enable live execution.
 - `.env.example` documents `FNO_ENVIRONMENT`, `FNO_PAPER_INITIAL_CAPITAL` (100000), `FNO_PAPER_MAX_POSITION_QUANTITY` (75), `FNO_PAPER_MAX_ORDER_NOTIONAL` (250000), `FNO_PAPER_MAX_DAILY_LOSS` (10000), commission/slippage, log level, plus read-only Kite/Upstox credential stubs (empty). `.env` is git-ignored and never read by this repository's agents.
 
-**Deployment footprints.** A Python 3.13+ runtime with `.venv`; app/backtest/research run offline with zero credentials; real-data scripts require the user's own `UPSTOX_ACCESS_TOKEN`.
+**Deployment footprints.** A Python 3.13+ runtime with `.venv`; app/backtest/research run offline with zero credentials; real-data scripts require the user's own `FNO_UPSTOX_ACCESS_TOKEN` (analytics/data), and the WS 7.9 execution CLI additionally needs the gate-opened `UPSTOX_ACCESS_TOKEN`.
 
 ---
 
@@ -402,9 +410,9 @@ These current limits are **static caps**, not the V1 session rules. V1 risk-base
 |---|---|---|
 | `PaperSettings` | `FNO_` | Paper-run defaults: capital, risk caps, commission/slippage, log level, environment. **Plus five V1 paper-session fields**: `paper_interval` ("5m"), `paper_lookback_days` (3), `paper_risk_per_trade_pct` (0.01), `paper_stop_loss_pct` (0.02), `paper_state_dir` ("paper_state"). Three are consumed as `PaperSession` defaults (WS 6.4b); none are wired into `load_settings()` yet. |
 | `KiteSettings` | `FNO_KITE_*` | Read-only Kite client: api_key, access_token (empty by default), base_url, timeout, max_retries; `configured` is True only when both credentials present. |
-| `UpstoxSettings` | `UPSTOX_*` | Read-only Upstox client: client_id/secret (SSO flow placeholders), access_token, base_url, timeout, max_retries; `configured` True when a token is present. |
+| `UpstoxSettings` | `FNO_UPSTOX_*` (analytics/data) | Read-only Upstox client **for the data layer only**: client_id/secret (SSO flow placeholders), access_token (`FNO_UPSTOX_ACCESS_TOKEN`), api_key, base_url, timeout, max_retries; `configured` True when a token is present. Never passed to the execution path. |
 
-- `load_settings`, `load_kite_settings`, `load_upstox_settings` load `.env` (or an explicit file) then read process env; exported variables take precedence.
+- `load_settings`, `load_kite_settings`, `load_upstox_settings` load `.env` (or an explicit file) then read process env; exported variables take precedence. `load_upstox_settings` reads the **data-scoped** `FNO_UPSTOX_*`; the WS 7.9 execution adapter reads its own `UPSTOX_*` variables directly (credentials never cross layers, `tests/test_credential_separation.py`).
 - **Secrets:** all real credentials belong in git-ignored `.env` or the environment; `.env.example` contains only template/empty values; no module hard-codes credentials and no module logs them (`utils/logging.py` explicitly never emits environment values).
 - **Wiring note.** `PaperSettings` validates the five `paper_*` fields in `__post_init__`; `load_settings()` constructs `PaperSettings` without those fields (they keep their dataclass defaults). `PaperSession` consumes three of the five as defaults (`paper_interval`, `paper_risk_per_trade_pct`, `paper_stop_loss_pct`, WS 6.4b); `FNO_PAPER_*` env wiring for all five is still not implemented.
 
@@ -488,7 +496,7 @@ caps passes the gate as before.
 | Credential-less operation | The app, backtest engine, research demos, and test suite run 100% offline with zero credentials on the deterministic in-memory provider. |
 | Kite/Upstox activation | Only when the user supplies their own API key / access token in env or `.env`; providers raise `ProviderConfigurationError` on live call without credentials. |
 | Data locality | Acquired datasets live under `datasets/` (git-ignored), validated before use; `reports/` (git-ignored) holds HTML reports. Nothing is uploaded. |
-| Research scripts | Opt-in: `acquire_dataset.py`, `upstox_smoke_test.py`, `research_real_data.py` exit code 2 unless `UPSTOX_ACCESS_TOKEN` is set; `--smoke` runs offline. |
+| Research scripts | Opt-in: `acquire_dataset.py`, `upstox_smoke_test.py`, `research_real_data.py` exit code 2 unless `FNO_UPSTOX_ACCESS_TOKEN` is set; `--smoke` runs offline. |
 | Repository hygiene | Only `docs/architecture/ARCHITECTURE.md` is a tracked documentation artifact added in this change set; `datasets/`, `reports/`, `.env`, `.venv/` remain excluded from git. |
 
 ---
@@ -573,13 +581,15 @@ Legend: **IMPLEMENTED** = exists and exercised by tests/demos; **CONFIGURED-SCAF
 | Session monitoring: `SessionHealth` / `health()`, `SessionReport` / `build_report` / `report_from_snapshot`, `log_results` / `log_health`, `report_to_html` / `write_html_report` | IMPLEMENTED | `services/session_monitoring.py` (WS 6.6), 15 monitoring tests |
 | Operator CLI: offline report rendering from stored session payload | IMPLEMENTED | `scripts/paper_session_report.py` (WS 6.6) |
 | Architecture diagram (layered SVG) | IMPLEMENTED | `docs/architecture/architecture.svg` |
-| AI decision support / regime-aware evolution | IMPLEMENTED (evaluation-first) | `PROJECT_PLAN.md` §17d–§17f — frozen MA(5,21) baseline; WS 7.1–7.5 features/regime/evaluation/replay, WS 7.9 experience store, WS 7.10 gated candidate generation, WS 7.11 champion vs challenger (evidence only), WS 7.12 promotion gate + version registry/rollback, WS 7.13 continuous feedback/learning loop, WS 7.14 alerting + watchdog/health/fail-safe (paper-labelled, delivery-only) |
+| AI decision support / regime-aware evolution | IMPLEMENTED (evaluation-first) | `PROJECT_PLAN.md` §17d–§17f — frozen MA(5,21) baseline; WS 7.1–7.5 features/regime/evaluation/replay, WS 7.9 evidence layer (experience store), WS 7.10 gated candidate generation, WS 7.11 champion vs challenger (evidence only), WS 7.12 promotion gate + version registry/rollback, WS 7.13 continuous feedback/learning loop, WS 7.14 alerting + watchdog/health/fail-safe (paper-labelled, delivery-only) |
 | Real-data champion model-performance + failure audit | IMPLEMENTED | `evaluation/fast_signal.py`, `evaluation/model_performance.py`, `scripts/audit_champion_failure.py` — continuous 5m replay over 87,193 NIFTY bars; champion nets **-143.21%**; root cause: short-only churn (0/2601 long entries) |
 | WS 7.16 pre-registered challenger circuitry (H1–H5) | IMPLEMENTED — **concluded B** | `strategies/research_candidates.py`, `evaluation/candidates.py`, `scripts/evaluate_candidates.py` (selection, OOS withheld), `scripts/finalize_oos_confirmation.py` (single OOS read) — every rule net-negative on design/validation/OOS; shortlist OOS per-trade t = -2.05 / -2.95 (significantly **negative**); gate PROMOTE under defaults only (`require_positive_oos_pnl=False`); **REJECT** under credible-edge criteria; no promotion, registry untouched |
-| Real broker adapter | PLANNED | `PROJECT_PLAN.md` Phase 4; `Broker` ABC defined |
+| Real broker adapter | IMPLEMENTED — **default-closed (WS 7.9 execution layer)** | `execution/` package + `scripts/run_live_execution_test.py` — controlled integration test (§17p): adapter `dry_run=True` by default; real send needs gate (env flag + consent sha256 fingerprint == token + expiry window) AND same-run `--confirm-live-enablement`; `UpstoxExecutionAdapter` refuses `ExecutionMode.LIVE`; any refusal → FAIL, no order. Single real F&O experiment planned 2026-09-14 under operator enablement |
 | HTTP transport (curl.exe on Windows + urllib fallback) | IMPLEMENTED | `utils/http.py` |
 | Retry/backoff + structured logging | IMPLEMENTED | `utils/retry.py`, `utils/logging.py` |
-| Test suite | IMPLEMENTED | 843 tests pass offline (as of WS 7.16) |
+| Continuous paper-trading agent (WS 7.8) | IMPLEMENTED | `agent/` package + `scripts/run_paper_agent.py` — MARKET CLOSED/OPEN states, watchdog fail-safe STOP, dual checkpoint; paper-only (§17h) |
+| Controlled live F&O execution integration test (WS 7.9 execution layer) | IMPLEMENTED — dry-run verified | `execution/manager.py` → `scripts/run_live_execution_test.py` — smoke run PASS/COMPLETE/PAPER/flat; 67 tests (§17p); +18 credential-separation tests (`tests/test_credential_separation.py`) |
+| Test suite | IMPLEMENTED | 1061 tests pass offline (as of WS 7.9 execution layer + credential separation) |
 
 ---
 
@@ -597,7 +607,7 @@ Documented, intentional, or accepted gaps. Each is a deliberate boundary, not an
 8. **Research results are historical/synthetic evidence.** Costs are illustrative (`IndiaCostSchedule.nse_fo_illustrative`); the MA(5,21) full-period real-data result is negative net of costs. Nothing here is investment advice or a claim of future profitability.
 9. **Instrument universe is indices only.** The registry contains NIFTY 50 / BANKNIFTY / FINNIFTY index keys with lot size 1 and tick 0.05; no futures/options instrument master augmentation is automated (Kite master CSV support exists but is not scheduled).
 10. **Snapshot-based persistence only.** Recovery is via `save_session`/`load_session` (WS 6.5) for a single named session under `paper_state/`; snapshot schema migration and a searchable multi-session store are not supported.
-11. **AI and continuous learning are PLANNED, evaluation-first.** Phase 7 evaluation foundations (features, regime, historical/five-year replay, experience store, candidate generation, champion vs challenger comparison, promotion gate + version registry/rollback, the continuous feedback/learning loop, and a pluggable paper-labelled alert engine + watchdog/fail-safe) are implemented, but the continuous agent and GUI are not; any eventual mechanism will be decision support only, evaluated against the frozen MA(5,21) baseline (§17e–§17l), and must never bypass `RiskManager` or place orders.
+11. **Phase-7 evaluation-first discipline is delivered; real execution is dry-run-verified only.** Phase 7 evaluation foundations (features, regime, historical/five-year replay, experience store, candidate generation, champion vs challenger comparison, promotion gate + version registry/rollback, the continuous feedback/learning loop, a pluggable paper-labelled alert engine + watchdog/fail-safe, the WS 7.8 continuous paper-trading agent, and the WS 7.9 default-closed execution layer) are implemented. The WS 7.9 real-fill path has **never touched the live service**: all runs so far are dry-run/simulated, and the single real F&O experiment is scheduled for 2026-09-14 under operator-controlled enablement. Any eventual mechanism remains decision support only, evaluated against the frozen MA(5,21) baseline (§17e–§17p), and must never bypass `RiskManager`.
 12. **Single HTTP transport caveat.** Windows uses a `curl.exe` subprocess (needed to defeat Cloudflare WAF blocking stdlib `urllib`); this is a platform-specific dependency that should be revisited when the environment changes.
 
 ---
@@ -608,7 +618,7 @@ Derived from `README.md` "Future phases", `PROJECT_PLAN.md` §27/§28/§21, and 
 
 1. **Session operations / monitoring (WS 6.6 — delivered).** Logging (`log_results`/`log_health`), health checks (`health()`/`SessionHealth`), reporting (`build_report`/`report_from_snapshot`/`SessionReport` with HTML output consistent with `research/report.py`) and the operator CLI (`scripts/paper_session_report.py`) are implemented and tested. Remaining evolution: scheduled-run wiring is operator-level, and richer per-day dashboards would build on the existing flat-HTML reports (`research/report.py` CSS).
 2. **AI decision support / regime-aware evolution.** Advisory decision-support layer behind an interface; structured signals (action, confidence, rationale, regime/context, model/version, timestamp), logged safely; never executes orders, never bypasses `RiskManager`. Every candidate is evaluated against the frozen MA(5,21) baseline via historical replay + out-of-sample validation before adoption (`PROJECT_PLAN.md` §9, §17d, §17e).
-3. **Continuous adaptive paper-trading platform (PLANNED — see `PROJECT_PLAN.md` §17f–§17l).** The documented target architecture is:
+3. **Continuous adaptive paper-trading platform (partially delivered — WS 7.8, §17h; roadmap §17f–§17l, execution-layer §17p).** The documented target architecture is:
 
    ```text
    Market Data
@@ -657,14 +667,16 @@ Derived from `README.md` "Future phases", `PROJECT_PLAN.md` §27/§28/§21, and 
    ```
 
    Separate supporting services: Alert Engine (pluggable, WS 7.14 — IMPLEMENTED
-   in `alerting/`, all alerts paper-labelled) and Watchdog / Health Monitor
+   in `alerting/`, all alerts paper-labelled), Watchdog / Health Monitor
    (WS 7.14 — IMPLEMENTED in `alerting/health.py`, STOP decisions are advisory
-   only); still PLANNED: GUI Dashboard (read-only, "PAPER TRADING — NO LIVE
+   only), Continuous Paper Trading (WS 7.8 — IMPLEMENTED in `agent/`, paper-only
+   per §17h), and the WS 7.9 execution layer (IMPLEMENTED default-closed, §17p).
+   Still PLANNED: GUI Dashboard (read-only, "PAPER TRADING — NO LIVE
    ORDERS") and Agent Scheduler. Everything in this pipeline beyond
-   today's implemented deterministic path is **PLANNED** — nothing here is claimed
+   today's implemented deterministic path is labelled accordingly — nothing here is claimed
    as implemented, and "live" market data never implies live broker execution.
 4. **Historical-data CLI pipeline.** Breadth and convenience around `scripts/acquire_dataset.py`: multi-instrument schedules, incremental updates, cache validation, health reports.
-5. **Real broker adapter (Phase 4).** A separate `RealBroker` implementation satisfying the `Broker` ABC, explicitly configured and activated, enforced through `RiskManager`, independently tested, with audit logs — never silently enabled.
+5. **Real broker adapter (Phase 4).** A separate `RealBroker` implementation satisfying the `Broker` ABC, explicitly configured and activated, enforced through `RiskManager`, independently tested, with audit logs — never silently enabled. (The WS 7.9 execution layer is the controlled, default-closed first slice of this; a general always-on adapter remains future.)
 6. **Snapshot schema migration / multi-session store.** `save_session`/`load_session` (WS 6.5) supports a single named snapshot layout under `paper_state/`; versioned schema migration and a searchable multi-session store would extend it.
 7. **Extended instrument universe & calendar.** Futures/options contracts with real lot sizes/expiries; sourced, maintainable trading calendar.
 8. **Analytics upgrades.** Dashboard/UI (future consideration) and richer attribution on top of the existing `PerformanceMetrics` and HTML notebook.
@@ -677,6 +689,7 @@ The system's design makes safety structural rather than behavioral. Reproduced a
 
 - **Paper-only toggle is impossible to flip at runtime.** `Broker.is_live` is a class attribute default `False`; `PaperBroker` hard-codes it and rejects live construction. No environment, config key, or code path can turn live execution on.
 - **No write endpoints exist in the data layer.** Upstox/Kite adapters perform reads (quotes, candles, master, status) only; scripts use `GET` only. Therefore a malfunction cannot place real orders through the data layer.
+- **Credential separation is structural.** The analytics/data credential (`FNO_UPSTOX_ACCESS_TOKEN`) exists only in the data-layer settings/provider and the data scripts; the execution credential (`UPSTOX_ACCESS_TOKEN`) is read only by the WS 7.9 gate and `execution/upstox.py`. The adapter no longer imports the data settings object, the data provider fails a fetch without its own token (it never reads `UPSTOX_ACCESS_TOKEN`), the adapter fails a non-dry-run order without `UPSTOX_ACCESS_TOKEN` before any HTTP write, paper trading never requires the execution token, a token's presence never opens the gate, and every output path (reprs, reasons, audit) redacts token values. Enforced by `tests/test_credential_separation.py`.
 - **Single mandatory risk gate.** Strategies, services, and backtests all route through `RiskManager`; a rejection stops execution. Strategies cannot place broker orders directly.
 - **Determinism = auditable.** `Decimal` math, no randomness, bar-timestamped backtest fills, and hand-verified datasets let any result be reproduced and reviewed.
 - **Credentials stay out of code and logs.** `.env` git-ignored; `.env.example` safe; logging never emits environment values; providers fail with typed configuration errors when credentials are absent.
@@ -685,4 +698,4 @@ The system's design makes safety structural rather than behavioral. Reproduced a
 
 ---
 
-*End of architecture document. Facts verified against the repository at commit `02c18f3`; committed test suite: 563 passing (offline). This document describes existing behavior and clearly labels planned features as PLANNED — it does not claim planned features as implemented.*
+*End of architecture document. Facts verified against the repository ahead of the WS 7.9 close-out checkpoint (execution layer + credential separation); committed test suite: **1061 passing** (offline). This document describes existing behavior and clearly labels planned features as PLANNED — it does not claim planned features as implemented.*

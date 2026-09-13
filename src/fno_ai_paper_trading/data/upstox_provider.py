@@ -123,7 +123,9 @@ class UpstoxHistoricalDataProvider(MarketDataProvider):
     """Read-only adapter for the Upstox REST V3 historical-candle API.
 
     Args:
-        access_token: Upstox access token (env-driven, never hard-coded).
+        access_token: Upstox **analytics/data** access token (env-driven via
+            ``FNO_UPSTOX_ACCESS_TOKEN``, never hard-coded). The WS 7.9
+            execution token (``UPSTOX_ACCESS_TOKEN``) is never consumed here.
         base_url: API base; overridable for testing.
         timeout_seconds: per-request timeout.
         max_retries: additional attempts after the first (0 = no retries).
@@ -174,7 +176,7 @@ class UpstoxHistoricalDataProvider(MarketDataProvider):
         if not self.access_token:
             raise ProviderConfigurationError(
                 "Upstox provider requires an access token "
-                "(set UPSTOX_ACCESS_TOKEN in .env)"
+                "(set FNO_UPSTOX_ACCESS_TOKEN in .env)"
             )
         return {
             "Authorization": f"Bearer {self.access_token}",

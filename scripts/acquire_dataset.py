@@ -9,7 +9,8 @@ via the standard dataset store (CSV + ``.meta.json`` with a SHA-256
 SAFETY: this script never places an order, never posts data, and never mutates
 a remote resource. The only HTTP method ever used is ``GET`` against the
 historical-candle endpoint. Like the smoke test it is opt-in: it exits non-zero
-unless ``UPSTOX_ACCESS_TOKEN`` is set.
+unless ``FNO_UPSTOX_ACCESS_TOKEN`` is set (the analytics/data-layer token; the
+WS 7.9 execution token ``UPSTOX_ACCESS_TOKEN`` is never consumed here).
 """
 from __future__ import annotations
 
@@ -73,7 +74,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--token",
         default="",
-        help="Upstox access token (default: UPSTOX_ACCESS_TOKEN env var)",
+        help="Upstox analytics/data access token (default: FNO_UPSTOX_ACCESS_TOKEN env var)",
     )
     parser.add_argument(
         "--outdir", default="datasets", help="directory for the saved dataset (default: datasets)"
@@ -86,10 +87,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     load_dotenv()
-    token = (args.token or os.getenv("UPSTOX_ACCESS_TOKEN", "") or "").strip()
+    token = (args.token or os.getenv("FNO_UPSTOX_ACCESS_TOKEN", "") or "").strip()
     if not token:
         parser.error(
-            "no Upstox access token; set UPSTOX_ACCESS_TOKEN (or pass --token). "
+            "no Upstox analytics/data access token; set FNO_UPSTOX_ACCESS_TOKEN (or pass --token). "
             "This script is opt-in — it never runs without credentials."
         )
 

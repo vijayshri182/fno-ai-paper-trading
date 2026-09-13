@@ -126,8 +126,10 @@ class TestRealDataResearchPipeline:
 class TestResearchRealDataCli:
     def test_cli_blocks_without_token(self, tmp_path: Path) -> None:
         env = dict(os.environ)
-        # Explicitly clear the token so load_dotenv() cannot supply one either.
-        env["UPSTOX_ACCESS_TOKEN"] = ""
+        # Clear the analytics/data token; keep the WS 7.9 execution token set to
+        # prove the research CLI never falls back to it.
+        env["FNO_UPSTOX_ACCESS_TOKEN"] = ""
+        env["UPSTOX_ACCESS_TOKEN"] = "EXECUTION-ONLY-TOKEN"
         script = str(Path(__file__).resolve().parents[1] / "scripts" / "research_real_data.py")
         cmd = [sys.executable, script, "--outdir", str(tmp_path / "ds")]
         proc = subprocess.run(
@@ -138,7 +140,7 @@ class TestResearchRealDataCli:
             cwd=str(tmp_path),
         )
         assert proc.returncode == 2
-        assert "UPSTOX_ACCESS_TOKEN" in proc.stderr
+        assert "FNO_UPSTOX_ACCESS_TOKEN" in proc.stderr
 
     def test_cli_smoke_runs_and_writes_report(self, tmp_path: Path) -> None:
         outdir = tmp_path / "datasets"

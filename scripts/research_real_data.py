@@ -1,6 +1,6 @@
 """Run a reproducible real-data research study on NIFTY 50 daily bars.
 
-Usage (requires UPSTOX_ACCESS_TOKEN in env or via --token)::
+Usage (requires FNO_UPSTOX_ACCESS_TOKEN in env or via --token)::
 
     python scripts/research_real_data.py
 
@@ -327,7 +327,7 @@ def main(argv: list[str] | None = None) -> int:
         description="Run a reproducible NIFTY 50 real-data research study (read-only).",
         epilog="Use --smoke for offline pipeline validation with deterministic synthetic data.",
     )
-    parser.add_argument("--token", default="", help="Upstox access token (or set UPSTOX_ACCESS_TOKEN)")
+    parser.add_argument("--token", default="", help="Upstox analytics/data access token (or set FNO_UPSTOX_ACCESS_TOKEN)")
     parser.add_argument(
         "--start",
         type=_parse_date,
@@ -366,10 +366,10 @@ def main(argv: list[str] | None = None) -> int:
         )
     else:
         load_dotenv()
-        token = (args.token or os.getenv("UPSTOX_ACCESS_TOKEN", "") or "").strip()
+        token = (args.token or os.getenv("FNO_UPSTOX_ACCESS_TOKEN", "") or "").strip()
         if not token:
             return _error(
-                "Real-data research requires UPSTOX_ACCESS_TOKEN. "
+                "Real-data research requires FNO_UPSTOX_ACCESS_TOKEN. "
                 "Set it in the environment or pass --token, or run --smoke for offline validation."
             )
         try:

@@ -107,7 +107,13 @@ class KiteSettings:
 
 @dataclass(frozen=True)
 class UpstoxSettings:
-    """Read-only Upstox market-data configuration.
+    """Read-only Upstox market-data configuration (**analytics/data credential**).
+
+    This object belongs exclusively to the analytics / market-data layer: it is
+    loaded from the ``FNO_UPSTOX_*`` environment variables and is never passed
+    to the WS 7.9 execution adapter. The execution path consumes its own
+    ``UPSTOX_ACCESS_TOKEN`` directly and must **never** fall back to this value;
+    equally, this layer never reads ``UPSTOX_ACCESS_TOKEN`` as a fallback.
 
     Only ``access_token`` is required to call the historical-data API. The
     client id/secret are placeholders for the token-generation flow (SSO), not
@@ -118,6 +124,7 @@ class UpstoxSettings:
     client_id: str = ""
     client_secret: str = ""
     access_token: str = ""
+    api_key: str = ""
     base_url: str = "https://api.upstox.com"
     timeout_seconds: float = 10.0
     max_retries: int = 3
@@ -133,12 +140,58 @@ class UpstoxSettings:
         object.__setattr__(self, "client_id", self.client_id.strip())
         object.__setattr__(self, "client_secret", self.client_secret.strip())
         object.__setattr__(self, "access_token", self.access_token.strip())
+        object.__setattr__(self, "api_key", self.api_key.strip())
         object.__setattr__(self, "base_url", base_url)
 
     @property
     def configured(self) -> bool:
         """True when an access token is present."""
         return bool(self.access_token)
+
+
+@dataclass(frozen=True)
+class LiveExecutionTestSettings:
+    """Configuration for the controlled Upstox live F&O execution integration
+    test (WS 7.9 — execution layer).
+
+    This capability is **off by default**. Nothing here authorizes a real
+    order: the manager additionally requires an operator-authored consent file
+    and a matching in-memory access token before any order write (see
+    :mod:`fno_ai_paper_trading.execution.gate`). Secrets are never stored in
+    this dataclass — tokens stay in the process environment only.
+
+    Fields:
+
+    * ``enabled``               -- master enable flag (env, default ``0``).
+    * ``consent_file``          -- operator-authored consent file path.
+    * ``hold_seconds``          -- mandatory hold between entry fill and exit.
+    * ``expiry_hours``          -- how long a signed consent file is valid.
+    * ``dry_run``               -- default True: the adapter never POSTs orders.
+    * ``max_margin_notional``   -- client-side margin sanity cap (rupees).
+    * ``order_timeout_seconds`` -- how long to poll an order for a status.
+    * ``poll_seconds``          -- pause between order-status polls.
+    """
+
+    enabled: bool = False
+    consent_file: str = "reports/execution/operator_consent.json"
+    hold_seconds: int = 300
+    expiry_hours: float = 24.0
+    dry_run: bool = True
+    max_margin_notional: Decimal = Decimal("100000")
+    order_timeout_seconds: float = 30.0
+    poll_seconds: float = 2.0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "consent_file", (self.consent_file or "").strip())
+        if not self.consent_file:
+            raise ValueError("consent_file must not be empty")
+        object.__setattr__(self, "hold_seconds", positive_int(self.hold_seconds, "hold_seconds"))
+        object.__setattr__(self, "expiry_hours", positive_decimal(str(self.expiry_hours), "expiry_hours"))
+        object.__setattr__(self, "max_margin_notional", positive_decimal(self.max_margin_notional, "max_margin_notional"))
+        if self.order_timeout_seconds <= 0:
+            raise ValueError("order_timeout_seconds must be > 0")
+        if self.poll_seconds < 0:
+            raise ValueError("poll_seconds must be >= 0")
 
 
 def _env_decimal(name: str, default: str) -> Decimal:
@@ -151,6 +204,15 @@ def _env_int(name: str, default: str) -> int:
 
 def _env_float(name: str, default: str) -> float:
     return float(os.getenv(name, default).strip())
+
+
+def _env_bool(name: str, default: str) -> bool:
+    value = os.getenv(name, default).strip().lower()
+    if value in ("1", "true", "yes", "on"):
+        return True
+    if value in ("0", "false", "no", "off"):
+        return False
+    raise ValueError(f"expected a boolean for {name}, got {value!r}")
 
 
 def load_settings(env_file: str | Path | None = None) -> PaperSettings:
@@ -202,9 +264,16 @@ def load_kite_settings(env_file: str | Path | None = None) -> KiteSettings:
 
 
 def load_upstox_settings(env_file: str | Path | None = None) -> UpstoxSettings:
-    """Load Upstox settings from the environment.
+    """Load Upstox analytics/data settings from the environment.
 
     Follows the same ``.env`` precedence rules as :func:`load_settings`.
+
+    Reads the **analytics/data-scoped** ``FNO_UPSTOX_*`` variables only. The
+    WS 7.9 execution token (``UPSTOX_ACCESS_TOKEN``) is deliberately not read
+    here: keeping the two credential streams separate means paper trading and
+    research never require the execution token, and the execution adapter never
+    reuses this object.
+
     Returns an unconfigured ``UpstoxSettings`` when no access token is present;
     the provider raises ``ProviderConfigurationError`` only if a live call is
     attempted without one.
@@ -215,10 +284,36 @@ def load_upstox_settings(env_file: str | Path | None = None) -> UpstoxSettings:
         load_dotenv()
 
     return UpstoxSettings(
-        client_id=os.getenv("UPSTOX_CLIENT_ID", ""),
-        client_secret=os.getenv("UPSTOX_CLIENT_SECRET", ""),
-        access_token=os.getenv("UPSTOX_ACCESS_TOKEN", ""),
-        base_url=os.getenv("UPSTOX_BASE_URL", "https://api.upstox.com"),
-        timeout_seconds=_env_float("UPSTOX_TIMEOUT_SECONDS", "10"),
-        max_retries=_env_int("UPSTOX_MAX_RETRIES", "3"),
+        client_id=os.getenv("FNO_UPSTOX_CLIENT_ID", ""),
+        client_secret=os.getenv("FNO_UPSTOX_CLIENT_SECRET", ""),
+        access_token=os.getenv("FNO_UPSTOX_ACCESS_TOKEN", ""),
+        api_key=os.getenv("FNO_UPSTOX_API_KEY", ""),
+        base_url=os.getenv("FNO_UPSTOX_BASE_URL", "https://api.upstox.com"),
+        timeout_seconds=_env_float("FNO_UPSTOX_TIMEOUT_SECONDS", "10"),
+        max_retries=_env_int("FNO_UPSTOX_MAX_RETRIES", "3"),
+    )
+
+
+def load_live_test_settings(env_file: str | Path | None = None) -> LiveExecutionTestSettings:
+    """Load the live-execution-test settings from the environment.
+
+    Follows the same ``.env`` precedence rules as :func:`load_settings`. The
+    access token is deliberately **not** read here — it is fetched from the
+    environment at the point of use by the gate/adapter so it is never stored.
+    All live-execution-test knobs default to safe/off values.
+    """
+    if env_file is not None:
+        load_dotenv(dotenv_path=env_file)
+    else:
+        load_dotenv()
+
+    return LiveExecutionTestSettings(
+        enabled=_env_bool("FNO_LIVE_EXECUTION_TEST_ENABLED", "0"),
+        consent_file=os.getenv("FNO_LIVE_TEST_CONSENT_FILE", "reports/execution/operator_consent.json"),
+        hold_seconds=_env_int("FNO_LIVE_TEST_HOLD_SECONDS", "300"),
+        expiry_hours=_env_float("FNO_LIVE_TEST_EXPIRY_HOURS", "24"),
+        dry_run=_env_bool("FNO_LIVE_TEST_DRY_RUN", "1"),
+        max_margin_notional=_env_decimal("FNO_LIVE_TEST_MAX_MARGIN", "100000"),
+        order_timeout_seconds=_env_float("FNO_LIVE_TEST_ORDER_TIMEOUT_SECONDS", "30"),
+        poll_seconds=_env_float("FNO_LIVE_TEST_POLL_SECONDS", "2"),
     )

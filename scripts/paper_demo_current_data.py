@@ -20,7 +20,9 @@ Safety
 ------
 * READ-ONLY: only ``GET /v3/historical-candle`` is issued; the Upstox provider
   has no order path and every order executes through ``PaperBroker`` only.
-* Fail-closed: real ingestion refuses to run without ``UPSTOX_ACCESS_TOKEN``.
+* Fail-closed: real ingestion refuses to run without
+  ``FNO_UPSTOX_ACCESS_TOKEN`` (the analytics/data-layer token; the WS 7.9
+  execution token ``UPSTOX_ACCESS_TOKEN`` is never consumed by this script).
 * The demo never writes ``paper_state/`` (no ``save_session`` call), so the
   test suite's "no persistence artefacts" assertions are untouched.
 * Outputs go to ``datasets/`` and ``reports/`` (both git-ignored). This script
@@ -219,7 +221,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--token",
         default="",
-        help="Upstox access token (default: UPSTOX_ACCESS_TOKEN env var)",
+        help="Upstox analytics/data access token (default: FNO_UPSTOX_ACCESS_TOKEN env var)",
     )
     parser.add_argument(
         "--outdir", default="datasets", help="directory for saved datasets (default: datasets)"
@@ -256,10 +258,10 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             parser.error(f"invalid --day {args.day!r}; expected YYYY-MM-DD")
 
-        token = args.token or os.getenv("UPSTOX_ACCESS_TOKEN", "").strip()
+        token = args.token or os.getenv("FNO_UPSTOX_ACCESS_TOKEN", "").strip()
         if not token:
             parser.error(
-                "no Upstox access token; set UPSTOX_ACCESS_TOKEN (or pass --token). "
+                "no Upstox analytics/data access token; set FNO_UPSTOX_ACCESS_TOKEN (or pass --token). "
                 "The current-data demo never runs without credentials."
             )
 

@@ -11,8 +11,9 @@ never mutates any remote resource. The small fetched window is saved to
 It exits non-zero when the access token is missing or a live call fails, so it
 can be wired into CI as an explicit, opt-in connectivity check.
 
-Prerequisites: ``UPSTOX_ACCESS_TOKEN`` in the environment (or ``--token``) and
-network access to ``api.upstox.com``.
+Prerequisites: ``FNO_UPSTOX_ACCESS_TOKEN`` in the environment (or ``--token``) and
+network access to ``api.upstox.com``. This is the analytics/data-layer token;
+the WS 7.9 execution token is never consumed here.
 """
 from __future__ import annotations
 
@@ -62,7 +63,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--token",
         default="",
-        help="Upstox access token (default: UPSTOX_ACCESS_TOKEN env var)",
+        help="Upstox analytics/data access token (default: FNO_UPSTOX_ACCESS_TOKEN env var)",
     )
     parser.add_argument(
         "--outdir",
@@ -73,10 +74,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     load_dotenv()
-    token = args.token or os_env("UPSTOX_ACCESS_TOKEN", "")
+    token = args.token or os_env("FNO_UPSTOX_ACCESS_TOKEN", "")
     if not token:
         parser.error(
-            "no Upstox access token; set UPSTOX_ACCESS_TOKEN (or pass --token). "
+            "no Upstox analytics/data access token; set FNO_UPSTOX_ACCESS_TOKEN (or pass --token). "
             "This script is opt-in — it never runs without credentials."
         )
 
