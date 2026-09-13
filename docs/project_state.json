@@ -26,9 +26,9 @@
     "Phase 7+ — real-broker adapter (separate explicitly controlled capability; requires human approval — never silently enabled)"
   ],
   "active_task": "WS 7.8 continuous paper-trading agent implemented and verified (976 tests) — next planned work stream is 17g five-year historical evaluation run + report (PLANNED, not started)",
-  "last_completed_checkpoint": "57e4ed1 — WS 7.8 continuous paper-trading agent (states/heartbeat/persistence/jobs/ContinuousPaperAgent + CLI runner; watchdog-gated polling; dual checkpoint + hash sidecar; 976 tests; paper-only)",
-  "last_commit": "57e4ed1",
-  "last_pushed_commit": "57e4ed1",
+  "last_completed_checkpoint": "213cbf3 — WS 7.8 continuous paper-trading agent close-out (state 976 tests; dashboard CONTINUOUS AGENT section; docs DONE)",
+  "last_commit": "213cbf3",
+  "last_pushed_commit": "213cbf3",
   "tests": {
     "passed": 976,
     "failed": 0,
