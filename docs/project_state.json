@@ -5,9 +5,9 @@
     "package_version": "0.1.0"
   },
   "project_version": "0.1.0",
-  "overall_progress": 88,
+  "overall_progress": 91,
   "current_phase": "Phase 7 — Post-V1 evolution, evaluation-first (paper-trading-only)",
-  "current_phase_version": "WS 7.7 — GUI / monitoring dashboard",
+  "current_phase_version": "WS 7.17 Algorithm Research & Competition Layer + WS 7.7 dashboard (implemented, no promotion)",
   "phase_status": "IN_PROGRESS",
   "completed_phases": [
     "Phase 1 — Foundations & strategy evaluation framework",
@@ -17,27 +17,27 @@
     "Phase 5 — AI decision-support foundation",
     "Phase 6 — Paper Trading V1 (all work streams 6.1-6.7)",
     "Phase 7 — WS 7.1..7.5, 7.9..7.14, WS 7.15/7.16 champion evaluation + controlled research cycle (conclusion B)",
-    "Phase 7 — WS 7.6 regime-aware strategy evaluation (recorded evidence; hypotheses inert, no promotion)"
+    "Phase 7 — WS 7.6 regime-aware strategy evaluation (recorded evidence; hypotheses inert, no promotion)",
+    "Phase 7 — WS 7.17 Algorithm Research & Competition Layer + WS 7.7 GUI / monitoring dashboard (registry, family competition, daily attribution, scoreboard; 930 tests; no promotion)"
   ],
   "pending_phases": [
-    "Phase 7 — WS 7.7 GUI / monitoring dashboard",
     "Phase 7 — WS 7.8 continuous paper-trading agent",
     "Phase 7+ — 17g five-year historical evaluation run + report",
     "Phase 7+ — real-broker adapter (separate explicitly controlled capability; requires human approval — never silently enabled)"
   ],
-  "active_task": "Execute WS 7.7 — read-only-first GUI / monitoring dashboard (integrated with the live dashboard mechanism)",
-  "last_completed_checkpoint": "c6f5dca — WS 7.6 regime-aware evaluation committed (module + CLI + 14 tests + report; 880 passing)",
-  "last_commit": "c6f5dca",
+  "active_task": "Execute WS 7.8 — continuous paper-trading agent (MARKET CLOSED replay/evaluation <-> MARKET OPEN completed-candle paper trading; safety unchanged)",
+  "last_completed_checkpoint": "446063e — WS 7.17 algorithm research & competition layer + WS 7.7 dashboard views (registry + family competition + daily attribution + scoreboard; 930 passing; no promotion)",
+  "last_commit": "446063e",
   "last_pushed_commit": "b2e7762",
   "tests": {
-    "passed": 880,
+    "passed": 930,
     "failed": 0,
     "skipped": 0,
-    "last_run_label": "880 suite (843 baseline + 23 ALGO READY + 14 WS 7.6 regime-eval)"
+    "last_run_label": "930 suite (880 baseline + 14 WS 7.6 regime-eval + 50 WS 7.17 registry/competition/scoreboard/daily/paper-trades)"
   },
   "validation": {
     "status": "PASS",
-    "summary": "880 tests passed; ALGO READY monitor RED/NO/DETERIORATING on recorded champion; WS 7.6 regime-filter hypotheses found inert on recorded evidence (no promotion)"
+    "summary": "930 tests passed; ALGO READY monitor RED/NO/DETERIORATING on recorded champion; WS 7.17 competition: every family tier E, A BEST TESTED absent, no promotion; WS 7.6 regime-filter hypotheses inert on recorded evidence"
   },
   "champion": {
     "name": "MA(5,21) moving-average cross (MovingAverageCrossStrategy)",
@@ -64,6 +64,7 @@
   "risks": [
     "MA(5,21) baseline has no long entries and deep negative net performance on continuous 5m replay — scientific finding recorded, no edge manufactured.",
     "WS 7.6: all recorded decision-time entry regimes are net-negative; regime-filter hypotheses are inert on recorded evidence (no promotion).",
+    "WS 7.17: every family competition tier is E and A BEST TESTED is ABSENT — no family has a credible positive-OOS candidate; conclusion B stands.",
     "Upstox live candles require operator-scheduled runs; no always-on server until WS 7.8.",
     "2026 data OOS pool used once for WS 7.16 shortlist confirmation — further research must use a fresh untouched OOS period."
   ],
@@ -76,8 +77,8 @@
     "position_sizing_controls": "PROTECTED",
     "max_loss_controls": "PROTECTED"
   },
-  "last_activity": "WS 7.6 regime-aware evaluation on recorded champion: hypotheses R1 no-op, R2/R3 rejected, R4/R5 untestable on recorded evidence; no promotion",
-  "next_action": "Execute WS 7.7 (GUI / monitoring dashboard), then WS 7.8 continuous paper-trading agent",
+  "last_activity": "Algorithm Research & Competition scoreboard rebuilt (best tested present=False)",
+  "next_action": "Execute WS 7.8 continuous paper-trading agent (safety unchanged; live data != live execution)",
   "agent_status": "RUNNING",
   "heartbeat": "",
   "timestamp": "",
@@ -102,10 +103,30 @@
     "performance_trend": "DETERIORATING",
     "algorithm_version": "v1-baseline-ma521",
     "configuration_version": "v1-paper-defaults",
+    "strategy_id": "moving_average_cross",
+    "strategy_family": "TREND_FOLLOWING",
+    "strategy_version": "1.0.0",
+    "attribution_note": "Algorithm Health is attested to the frozen MA(5,21) champion (family TREND_FOLLOWING). Cross-family competition lives in the Algorithm Laboratory scoreboard; the champion is NOT promotable under current recorded evidence.",
     "readiness_reason": "paper readiness is NO because the health assessment is RED (backtest net expectancy -54.75311039689981949458483755/trade is not positive over 2216 trades)",
     "health_reason": "backtest net expectancy -54.75311039689981949458483755/trade is not positive over 2216 trades",
-    "last_updated": "2026-09-13T08:41:43+05:30",
+    "last_updated": "2026-09-13T09:11:05+05:30",
     "headline_note": "headline figures above are the historical/backtest bucket (MA(5,21) recorded replay); per-bucket details are in the dashboard.",
     "paper_trades_recorded": 0
+  },
+  "algorithm_laboratory": {
+    "current_champion": "moving_average_cross",
+    "champion_family": "TREND_FOLLOWING",
+    "best_tested": null,
+    "best_tested_present": false,
+    "headline": "No family produced a credible positive-OOS candidate: A BEST TESTED is ABSENT. All recorded evidence remains net-negative, per-trade t < +2.0, or OOS not consumed. Family competition continues with a fresh untouched OOS period. The frozen MA(5,21) champion is NOT promotable and stays the current champion.",
+    "families": [
+      "BREAKOUT",
+      "MOMENTUM",
+      "REGIME_SWITCHING",
+      "TREND_FOLLOWING"
+    ],
+    "research_allocation": true,
+    "ensemble_status": "ARCHITECTURE_ONLY_NOT_DEPLOYED",
+    "scoreboard_artifact": "reports/algorithm_state/research_scoreboard.json"
   }
 }

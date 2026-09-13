@@ -777,4 +777,22 @@ stay PLANNED behind the evaluation discipline.**
 
 ---
 
-*Sources: `PROJECT_PLAN.md` (§17b–17d, DoD §25–28), `docs/trading/PAPER_TRADING_V1.md`, `ACTIVITY_LOG.md`, `git log`, repository tree, and `pytest` results.*
+## 28. WS 7.6 champion-regime evaluation + ALGO READY + WS 7.17 Algorithm Research & Competition Layer (2026-09-13)
+
+- **WS 7.6** regime-aware evaluation (implementation and findings recorded in
+  `ACTIVITY_LOG.md` `## 4ai`): hypotheses inert on recorded champion evidence;
+  R1 `structural_no_op` (0/2,601 long entries), R2/R3 `rejected`, R4/R5
+  `not_testable_recorded`; no promotion (`docs/regime_eval_report.md`).
+- **ALGO READY / Algorithm Health** monitor (`docs/algorithm_ready_spec.md`);
+  current verdict **RED / NO / DETERIORATING** on the recorded backtest bucket.
+- **WS 7.17 Algorithm Research & Competition Layer + WS 7.7 dashboard views**
+  (`ACTIVITY_LOG.md` `## 4aj`): strategy registry over seven families,
+  unified recorded-evidence family competition (A–E tiers; the least-negative
+  strategy is never the winner), champion vs challenger discipline unchanged,
+  daily strategy/family attribution, machine-readable scoreboard
+  (`reports/algorithm_state/research_scoreboard.json`, `daily_performance.json`),
+  Algorithm Laboratory + SYSTEM/TRADING/PERFORMANCE/HISTORICAL/LEARNING
+  dashboard sections. **930 tests pass offline**; no promotion executed;
+  protected OOS remains single-use; MA(5,21) unchanged.
+
+---

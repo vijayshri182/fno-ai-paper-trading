@@ -309,6 +309,22 @@ These are **historical/synthetic research results** into `reports/real_data_rese
 
 **Services.** `services/strategy_service.py` is the only place strategy signals become orders: it evaluates the strategy on a bar window, passes the resulting signal through `RiskManager` (risk-gated), then submits a **paper order through `PaperBroker` only** via `TradingService`. `OrderResult` (or `SignalDecision`) reports the outcome; a `SignalDecision` optionally carries its `SizingResult`. With no sizer injected, orders use the fixed `quantity` (default 1). When a `RiskBasedPositionSizer` is injected, a BUY entry is sized first from explicit decision-time inputs (equity marked to the bar close, available cash, entry price, instrument, current quantity) per the V1 formula — 1% of equity over a 2% stop distance, lot-rounded down, cash-bounded; a rejected sizing submits **no order** and records a `skip_reason` on the `SignalDecision`. SELL orders are never sized (V1 is long-only). Strategies never call the broker directly and never bypass `RiskManager` (project safety rule §3.11–13).
 
+### 9.1 Research & Competition layer (WS 7.17)
+
+`strategies/spec.py` (`StrategySpec`, seven-family enum, deterministic
+`configuration_version`) + `strategies/registry.py` (`StrategyRegistry`)
+register the frozen champion and c1..c5 **unmodified** through the same signal
+providers the recorded evaluation used. `evaluation/family_competition.py`
+scores every registered spec from recorded artifacts (21 criteria; tiers
+C/B/D/E; leaderboard `A BEST TESTED` only when a member is B or C — the
+least-negative is never the winner). `evaluation/scoreboard.py` assembles the
+machine-readable `reports/algorithm_state/research_scoreboard.json`;
+`evaluation/paper_trades.py` + `evaluation/daily_performance.py` attribute
+closed trades to (date, strategy, family, version). The whole layer is
+**read-only w.r.t. protected OOS**: it consumes recorded numbers only. The
+dashboard renders the Algorithm Laboratory + daily attribution sections
+(`scripts/update_project_status.py`). See `PROJECT_PLAN.md` §17o.
+
 ---
 
 ## 10. Paper Trading Architecture

@@ -1071,9 +1071,27 @@ controlled capabilities:
   `scripts/eval_regime_hypotheses.py`, `tests/test_regime_eval.py`). Committed
   `c6f5dca`.
 
-*Work stream 7.7 — GUI / monitoring dashboard* — **PLANNED**
+*Work stream 7.7 — GUI / monitoring dashboard* — **DONE**
 * Read-only-first web GUI exposing system/trading/performance/historical/learning
-  views, always marked **PAPER TRADING — NO LIVE ORDERS** (§17i).
+  views, always marked **PAPER TRADING — NO LIVE ORDERS** (§17i). Implemented as
+  the stdlib-only dashboard generator plus the ALGORITHM LABORATORY /
+  RESEARCH COMPETITION and DAILY STRATEGY / FAMILY ATTRIBUTION sections
+  (§17o, WS 7.17): `scripts/update_project_status.py` →
+  `docs/project_status.html`.
+
+*Work stream 7.17 — Algorithm Research & Competition Layer* — **DONE**
+* Multi-family strategy registry, unified recorded-evidence competition scoring
+  across families, champion-vs-challenger discipline kept intact, daily
+  strategy/family attribution, machine-readable scoreboard, and dashboard
+  integration (§17o). No strategy behavior changed; MA(5,21) stays frozen;
+  c1..c5 keep working; no promotion executed (every family tier E / no A);
+  protected OOS remains single-use. See `strategies/spec.py`,
+  `strategies/registry.py`, `evaluation/family_competition.py`,
+  `evaluation/scoreboard.py`, `evaluation/paper_trades.py`,
+  `evaluation/daily_performance.py`, `scripts/build_research_scoreboard.py`,
+  `scripts/build_daily_performance.py`.
+  Committed alongside WS 7.7 in the Algorithm Research & Competition layer
+  commit.
 
 *Work stream 7.8 — Continuous paper-trading agent* — **PLANNED**
 * Always-running agent that safely transitions between MARKET CLOSED (replay,
@@ -1464,6 +1482,89 @@ A future simple, read-only-first **monitoring** web GUI (no order entry) exposin
   promotion/rollback history.
 
 The GUI must prominently display **"PAPER TRADING — NO LIVE ORDERS"**.
+
+---
+
+# 17o. Algorithm Research & Competition Layer (WS 7.17)
+
+Extends the existing F&O AI Paper Trading system with a **multi-family research
+& competition layer** without forking or rewriting anything. PROJECT_PLAN.md
+remains the single source of truth; existing safety, evaluation-first and
+protected-OOS rules are unchanged.
+
+## 17o.1 Strategy plugin / adapter contract
+* `strategies/spec.py` — `StrategySpec` (immutable): `strategy_id`,
+  `strategy_family`, `strategy_name`, `version`, `parameters`,
+  `configuration_version` (deterministic fingerprint), `entry_semantics`,
+  `exit_semantics`, `supports_confidence`, `reproducibility`, `metadata`.
+* `strategies/registry.py` — `StrategyRegistry`: registers the frozen champion
+  (MA(5,21), family TREND_FOLLOWING, v1.0.0) and candidates c1..c5 into the
+  seven research families via the same providers the recorded evaluation used;
+  every strategy stays stateless/deterministic; `create()` returns fresh
+  provider callables, never shared objects.
+
+## 17o.2 Families & preregistered membership
+Families: TREND_FOLLOWING, MOMENTUM, BREAKOUT, MEAN_REVERSION,
+VOLATILITY_REGIME, MULTI_TIMEFRAME, REGIME_SWITCHING. Initial membership:
+* TREND_FOLLOWING: `moving_average_cross` (champion), `c1_long_only_ma_cross`,
+  `c2_slow_long_only_ma_cross`.
+* MOMENTUM: `c3_momentum_gated_ma_cross`.  BREAKOUT: `c5_donchian_breakout`.
+* REGIME_SWITCHING: `c4_trend_gated_ma_cross`.
+Empty families are legal but never ranked until they hold a registered spec.
+A family competition ends only when some member is tier B or C; the least
+negative strategy is NEVER called the winner (§17o.4).
+
+## 17o.3 Unified research pipeline (one path for everyone)
+`evaluation/family_competition.py` + `evaluation/scoreboard.py` compute the
+same 21-criteria scorecard for every registered strategy from **recorded**
+artifacts only (`candidates_eval.json`, `oos_confirmation.json`,
+`trade_ledger.json` cross-checks). No strategy gets an easier path; no code
+recomputes, re-trains, or re-reads protected OOS. Cost/slippage, risk, metrics
+and promotion criteria are fixed project-wide.
+
+## 17o.4 Classification (no false winners)
+Per-entry tiers: **C PROMOTABLE** (recorded OOS net P&L > 0, enough trades,
+per-trade t >= +2.0), **B CREDIBLE CANDIDATE** (positive OOS, not robust yet),
+**D INSUFFICIENT DATA** (OOS not consumed), **E REJECTED** (recorded evidence
+plainly negative, including the frozen champion and the preregistered drops
+c1/c3/c5). **A BEST TESTED** exists only when some member is B or C. Today:
+every family is E / no A — conclusion B stands, nothing promoted.
+
+## 17o.5 Versioning & reproducibility
+Independent versions everywhere: project/phase (state file), algorithm
+(v1-baseline-ma521), family (registry catalog), strategy (`1.0.0` champion /
+`2.0.0` candidates), strategy version + `configuration_version` fingerprint,
+paper configuration. Scoreboard carries `generated_at`; artifacts are
+self-describing JSON.
+
+## 17o.6 Research allocation, ensembles, and attribution
+* Allocation is EQUAL across families by default; `research_priority` is an
+  evidence-based hint for the nightly research loop, **never** capital.
+* Ensembles/meta-decision: architecture-only contract (`ensemble_status =
+  ARCHITECTURE_ONLY_NOT_DEPLOYED`); any real ensemble must pass the same
+  discipline, and no weights are invented.
+* Algorithm Health now carries family/strategy/version attribution
+  (champion = moving_average_cross / TREND_FOLLOWING / 1.0.0).
+* `evaluation/paper_trades.py` records every closed paper trade with
+  `strategy_id/family/version/configuration_version/signal/regime`.
+* `evaluation/daily_performance.py` aggregates closed trades by
+  (date, strategy) into `reports/algorithm_state/daily_performance.json`
+  (win rate, daily/cumulative P&L, drawdown, active version).
+
+## 17o.7 Scoreboard & dashboard
+`scripts/build_research_scoreboard.py` writes
+`reports/algorithm_state/research_scoreboard.json` (registry catalog, familes,
+champion, competition leaderboards, 21-criteria diagnostics, health
+attribution, research allocation, ensemble status, insufficient-data list).
+`scripts/update_project_status.py` renders the ALGORITHM LABORATORY /
+RESEARCH COMPETITION and DAILY STRATEGY / FAMILY ATTRIBUTION sections into
+`docs/project_status.html` (PAPER banner always on top).
+
+## 17o.8 Nightly loop & live-day behavior
+Nightly: rebuild scoreboard + daily attribution from recorded artifacts, run
+tests, regen dashboard/state, commit+push. During market hours the layer only
+observes/records/diagnoses; it never changes the live paper server mid-session
+and never trades.
 
 ---
 

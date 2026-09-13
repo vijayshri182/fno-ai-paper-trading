@@ -1727,6 +1727,76 @@ pushed.
 
 ---
 
+## 4aj. 2026-09-13 — WS 7.17: Algorithm Research & Competition Layer (+ WS 7.7 dashboard views)
+
+**Objective.** Add a multi-family research & competition layer on top of the
+existing system — no fork, no rewrite; register the frozen champion + c1..c5
+without behavior change; one unified recorded-evidence evaluation path; family
+competition (A/B/C/D/E) that never calls the least-negative strategy the
+winner; champion-vs-challenger discipline kept; daily strategy/family
+attribution; machine-readable scoreboard; dashboard integration. PAPER ONLY.
+
+**Deliverables.**
+- `strategies/spec.py` — `StrategySpec` contract + deterministic
+  `configuration_version` fingerprints; `champion_spec()`, `spec_for_candidate()`.
+- `strategies/registry.py` — `StrategyRegistry` over the seven families
+  (TREND_FOLLOWING, MOMENTUM, BREAKOUT, MEAN_REVERSION, VOLATILITY_REGIME,
+  MULTI_TIMEFRAME, REGIME_SWITCHING); champion (TREND_FOLLOWING, v1.0.0) +
+  c1..c5 via the same providers the recorded evaluation used; JSON catalog
+  round-trip; fresh provider instances on `create()`.
+- `evaluation/family_competition.py` — 21-criteria scorecard, per-entry tiers
+  (C PROMOTABLE / B CREDIBLE CANDIDATE / D INSUFFICIENT DATA / E REJECTED),
+  leaderboard-level `A BEST TESTED` only when some member is B/C, preregistered
+  drops (c1/c3/c5) locked to E; merges recorded protected-OOS metrics from the
+  OOS confirmation (never recomputes).
+- `evaluation/paper_trades.py` — attributed paper-trade ledger (strategy_id,
+  family, strategy version, configuration_version, signal, regime) that stays
+  backward-compatible with `seed_algorithm_ledger.py`.
+- `evaluation/daily_performance.py` — daily (date, strategy) aggregation:
+  trades/wins/losses/win rate, daily + cumulative P&L, drawdown, active version.
+  Champion replay attribution uses the recorded `trades.csv` (bucket
+  `research_replay`), paper bucket empty until real paper trades close.
+- `evaluation/scoreboard.py` + `scripts/build_research_scoreboard.py` →
+  `reports/algorithm_state/research_scoreboard.json` (registry catalog,
+  families, champion, competition leaderboards + diagnostics, algo-health
+  attribution, equal research allocation, ensemble
+  ARCHITECTURE_ONLY_NOT_DEPLOYED, insufficient-data list).
+- `scripts/build_daily_performance.py` →
+  `reports/algorithm_state/daily_performance.json`.
+- Dashboard (`scripts/update_project_status.py`) now renders ALGORITHM
+  LABORATORY / RESEARCH COMPETITION and DAILY STRATEGY / FAMILY ATTRIBUTION
+  sections plus the WS 7.7 SYSTEM/TRADING/PERFORMANCE/HISTORICAL/LEARNING
+  views; badge HTML de-duplicated via `_cell()`; regime-eval evidence shown.
+- Algorithm Health attribution: `assess_algorithm_health.py` state section now
+  carries `strategy_id = moving_average_cross`, `strategy_family =
+  TREND_FOLLOWING`, `strategy_version = 1.0.0` + `attribution_note`.
+- `PROJECT_PLAN.md` §17o + WS 7.17 work-stream entry (WS 7.7 → DONE).
+- Tests: `test_strategy_spec.py` (14), `test_strategy_registry.py` (8),
+  `test_family_competition.py` (15), `test_paper_trades.py` (5),
+  `test_daily_performance.py` (8), `test_scoreboard.py` (8) — 50 new.
+
+**Headline findings (honest, recorded evidence).**
+- Registry: 6 specs / 4 populated families (BREAKOUT, MOMENTUM, REGIME_SWITCHING,
+  TREND_FOLLOWING); MEAN_REVERSION / VOLATILITY_REGIME / MULTI_TIMEFRAME stay
+  empty until a real candidate is registered.
+- Leaderboard: champion (moving_average_cross) E — OOS net −21,759.37 / 384
+  trades / t ∉ recorded; c1/c3/c5 E (preregistered drops); c2 E (OOS −6,509.55,
+  t −2.05); c4 E (OOS −3,594.48, t −2.95). **A BEST TESTED: ABSENT.** Conclusion
+  B stands; nothing promoted; MA(5,21) unchanged; protected OOS untouched.
+- Daily attribution: 1,128 recorded champion-replay days (2022-01-03..2026-09-11),
+  0 paper trades as of this checkpoint.
+
+**Verification.** Full suite **930 passed** (880 + 50 new; 41s). Both build
+scripts run clean; scoreboard reproduces recorded evidence; dashboard renders
+(badges, leaderboards, regime table, AAP-only banner).
+
+**Status.** Committed as `446063e` (`feat: WS 7.17 algorithm research & competition layer + WS 7.7 dashboard views (registry, family competition, daily attribution, scoreboard; no promotion; 930 tests)`) and pushed. See
+`reports/algorithm_state/research_scoreboard.json`,
+`reports/algorithm_state/daily_performance.json`,
+`docs/project_status.html`.
+
+---
+
 ## 5. Open Topics / Risks
 
 - **12-Sep-2026 research cycle concluded B (no credible edge; family closed).**
