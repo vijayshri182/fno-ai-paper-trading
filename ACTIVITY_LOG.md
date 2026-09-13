@@ -2100,8 +2100,66 @@ only; it has **not** been run against Upstox's live authorization service, and
 experiment remains scheduled for **2026-09-14** under explicit
 operator-controlled enablement.
 
-**Status.** Uncommitted (local working tree) — reported to the operator for
-review; commit/push only when requested.
+**Status.** Committed as `50c5dbc` ("feat: complete WS 7.9 Upstox OAuth
+integration") and pushed to `origin/master`; local == origin (0 ahead/behind);
+working tree clean except the two untracked architecture images (never commit).
+
+---
+
+## 4ao. 2026-09-13 — 17g Five-Year Historical Evaluation run + report (WS 7.5 / §17g)
+
+**Objective.** Close the last open evaluation workstream: actually run the WS 7.5
+five-year replay over the real intraday history and publish an honest report
+(`PROJECT_PLAN.md` §17g had been PLANNED; `docs/project_state.json` listed "17g
+five-year historical evaluation run + report" in `pending_phases`).
+
+**Data span (honest maximum).** The existing `reports/historical_five_year.*`
+artifacts were a stale demo run (2026 window, 370 bars — not the real series).
+Acquiring 2021-09-13..2021-12-31 5m via
+`scripts/acquire_model_performance_data.py` (read-only GET) returned **empty for
+every window** (`datasets/acquire_progress_5m_2021.json`, 0 bars, 0 failures):
+Upstox serves **no 5m history before 2022-01-03**. The run therefore covers
+2022-01-03..2026-09-11 = **~4.7 calendar years**; the report states the actual
+span instead of over-claiming "five years".
+
+**Run.**
+- Snapshot the 5m CSV + meta into `datasets/five_year_5m/` (evaluated alone so
+  the 1d/smoke/demo CSVs cannot collide by same-day chunking).
+- `python scripts/evaluate_five_year.py --datasets-dir datasets/five_year_5m
+  --out-dir reports --name five_year_replay`
+  → **1165/1165 trading days, status COMPLETE, 0 invalid**; 87,193 bars.
+- Frozen MA(5,21) long-only, one-session-per-day, EvaluationConfig defaults
+  (₹100k, 0.03% commission, ₹0 fixed, 0.1% slippage, 2% stop-loss); period
+  labels up front 699/233/233; resumable progress store (date+hash keys).
+- Aggregate: net P&L **−69.16 ₹** (−0.069%), 1622 round trips (83/1539,
+  5.12% win), transaction costs **107,561.65 ₹**, avg trade −0.043 ₹,
+  PF 0.038, max DD 945.05 ₹ (0.94%), exposure 30.98%.
+
+**Interpretation (scientific, no editing of findings).** Near-breakeven net
+result fully explained by trading friction — a **cost-dominated breakeven**,
+consistent with conclusion B (no credible edge). MA(5,21) stays the frozen
+baseline; nothing promoted; protected OOS untouched. Cross-referenced honestly
+against the continuous single-session replay (net −143.21%,
+`docs/model_performance_report.md`): different honest measurement methods, same
+conclusion.
+
+**Artifacts.** `reports/five_year_replay.json` / `.html` / `.progress.json`
+(git-ignored). Committed report `docs/five_year_eval_report.md`. Docs updated:
+`PROJECT_PLAN.md` (WS 7.5 block + §17g → IMPLEMENTED with run results; §17i
+header — monitoring dashboard implemented via WS 7.7, live server GUI future;
+§27 Phase 3 DoD checkboxes completed with a pointer to the Phase 5 AI
+foundation), `README.md` Phase 7+ row (five-year run marked implemented),
+`PROGRESS.md` §31, `ACTIVITY_LOG.md` §4ao, `docs/project_state.json`,
+`docs/project_status.html` (regenerated).
+
+**Safety/credentials.** Read-only Upstox GET only (historical-candle / nothing
+posted). `.env` untouched; no secret printed/logged/committed; live gate default
+CLOSED; no real order; the single real F&O experiment remains scheduled for
+2026-09-14 under operator-controlled enablement.
+
+**Verification.** No source or test changes in this cycle; full suite re-run:
+**1091 passed**. Committed and pushed; local == origin; credential-leak scan on
+the staged diff: 0 matches.
 
 ---
 

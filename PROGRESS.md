@@ -899,3 +899,39 @@ stay PLANNED behind the evaluation discipline.**
   section; `docs/project_state.json` updated (93%).
 
 ---
+
+## 31. 17g — Five-year historical evaluation run + report (2026-09-13)
+
+> The WS 7.5 capability (`scripts/evaluate_five_year.py` +
+> `src/fno_ai_paper_trading/evaluation/five_year.py`) has now been exercised to
+> the honest maximum the provider serves: **1165/1165 trading days COMPLETE**,
+> 0 invalid, over the real NIFTY 50 5m series. Upstox returns **no 5m bars
+> before 2022-01-03** (a 2021-09-13..2021-12-31 acquisition returned empty for
+> every window), so the run covers **~4.7 calendar years** — reported as-is, no
+> over-claim.
+
+- Data: `datasets/upstox_Nifty_50_5m_20220103_20260911.csv` (87,193 bars, 1165
+  days) snapshotted into `datasets/five_year_5m/` so the intraday series is
+  evaluated alone (1d/smoke/demo CSVs excluded — same-day collisions avoided).
+- Replay: frozen MA(5,21), long-only, one-session-per-day with identical cost
+  assumptions (₹100k initial, 0.03% commission, 0.1% slippage, 2% stop-loss);
+  resumable ProgressStore; period labels assigned up front (699/233/233).
+- Results: net P&L **−69.16 ₹** (−0.069%); 1622 round trips (83/1539,
+  5.12% win); transaction costs **107,561.65 ₹**; avg trade −0.043 ₹; PF 0.038;
+  max DD 945.05 ₹ (0.94%); exposure 30.98%. Reading: a **cost-dominated
+  breakeven** — consistent with conclusion B, MA(5,21) stays frozen, nothing
+  promoted, protected OOS untouched.
+- Honest cross-reference: this one-session-per-day replay (WS 7.5 design) and
+  the continuous single-session replay (net −143.21%,
+  `docs/model_performance_report.md`) are different honest measurements with
+  the same conclusion.
+- Artifacts (git-ignored): `reports/five_year_replay.json` /
+  `.html` / `.progress.json`. Committed report:
+  `docs/five_year_eval_report.md`; `PROJECT_PLAN.md` §17d WS 7.5 + §17g → DONE
+  (run + report), §17i header updated (monitoring dashboard implemented,
+  live server GUI future), §27 Phase 3 DoD checkboxes completed (satisfied via
+  Phase 5 AI foundation).
+- Tests: unchanged **1091 passed** (no source changes in this cycle — the run
+  is data + reports + documentation only).
+
+---

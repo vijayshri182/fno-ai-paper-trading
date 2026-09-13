@@ -1059,6 +1059,12 @@ controlled capabilities:
   aggregate performance, analyze trades/outcomes/regimes, and build a historical
   experience dataset used for strategy/model evaluation (§17g). No look-ahead,
   no leakage, reproducible, consistent cost assumptions.
+  **Run + report (2026-09-13): 1165/1165 trading days COMPLETE over the real
+  5m history 2022-01-03..2026-09-11 (Upstox serves no earlier 5m bars — ~4.7
+  calendar years is the honest maximum); frozen MA(5,21) long-only nets −69.16 ₹
+  (−0.069%) after 1622 round trips with ₹107,561.65 transaction costs — a
+  cost-dominated breakeven, consistent with conclusion B (no edge).
+  `docs/five_year_eval_report.md`; artifacts `reports/five_year_replay.*`.
 
 *Work stream 7.6 — Regime-aware strategy evaluation* — **DONE**
 * Investigate MA(5,21) + regime-filter hypotheses (§17e.5). Hypotheses only;
@@ -1447,15 +1453,15 @@ improve P&L. The deterministic safety layer remains authoritative.
 
 ---
 
-# 17g. Five-Year Historical Evaluation (PLANNED)
+# 17g. Five-Year Historical Evaluation (IMPLEMENTED — WS 7.5; run + report 2026-09-13)
 
-A future capability to process approximately the previous **five years** of
-NIFTY 50 historical **intraday** data. **PLANNED — the run has NOT been
-completed.** Intended behaviour:
+Processes approximately the previous **five years** of NIFTY 50 historical
+**intraday** data. **The run IS completed** over the maximum data the read-only
+provider serves (5m history starts 2022-01-03; earlier windows return empty):
 
-* obtain validated historical data (`data/dataset_store.py`, `data/validation.py`);
+* validated historical data (`data/dataset_store.py`, `data/validation.py`);
 * process trading days and replay sessions deterministically;
-* evaluate every available trading day;
+* evaluate every available trading day — **1165/1165 COMPLETE**;
 * calculate daily and aggregate performance;
 * analyze trades, outcomes and market regimes;
 * build a historical experience dataset used for strategy/model evaluation.
@@ -1471,6 +1477,20 @@ and eventually **walk-forward evaluation**. Require: no look-ahead bias; no
 future-data leakage; reproducible replay; consistent transaction costs/slippage
 assumptions. Do not simply train/tune on all five years and report performance on
 the same data.
+
+**Run results (frozen MA(5,21), long-only, one-session-per-day replay).**
+Span 2022-01-03..2026-09-11; 1165 days; 0 invalid; 1622 round trips (83 win /
+1539 loss, 5.12%); net P&L **−69.16 ₹** (−0.069%); transaction costs
+**107,561.65 ₹**; avg trade −0.043 ₹; profit factor 0.038; max DD 945.05 ₹
+(0.94%); exposure 30.98%. Period split 699/233/233. Reading: near-breakeven net
+result driven entirely by friction — consistent with conclusion B (no credible
+edge), so the frozen champion is NOT promotable. This replay is one-session-per-
+day (per WS 7.5 spec); the continuous single-session replay over the same bars
+nets −143.21% (`docs/model_performance_report.md`) — different honest
+measurements, same conclusion. Reproduce with
+`python scripts/evaluate_five_year.py --datasets-dir datasets/five_year_5m
+--out-dir reports`; see `docs/five_year_eval_report.md`. To reach a *full* five
+calendar years the provider must first serve 5m bars before 2022-01-03.
 
 ---
 
@@ -1507,9 +1527,9 @@ surfaces on the dashboard.
 
 ---
 
-# 17i. GUI / Monitoring Dashboard (PLANNED)
+# 17i. GUI / Monitoring Dashboard (monitoring dashboard IMPLEMENTED — WS 7.7; live server GUI future)
 
-A future simple, read-only-first **monitoring** web GUI (no order entry) exposing:
+A simple, read-only-first **monitoring** web GUI (no order entry) exposing:
 
 * **SYSTEM:** agent status; market status; data-feed health; last processed
   candle; model/version; agent heartbeat; errors.
@@ -2100,14 +2120,19 @@ Phase 2 is complete when:
 
 Phase 3 is complete when:
 
-* [ ] AI service abstraction exists
-* [ ] AI provider can be configured securely
-* [ ] AI analysis is structured
-* [ ] AI output is logged safely
-* [ ] AI cannot bypass RiskManager
-* [ ] AI cannot directly place broker orders
-* [ ] AI-assisted signals are testable
-* [ ] Documentation is updated
+* [x] AI service abstraction exists
+* [x] AI provider can be configured securely
+* [x] AI analysis is structured
+* [x] AI output is logged safely
+* [x] AI cannot bypass RiskManager
+* [x] AI cannot directly place broker orders
+* [x] AI-assisted signals are testable
+* [x] Documentation is updated
+
+> Note: these AI items were satisfied by the Phase 5 AI decision-support
+> foundation (advisory-only contracts/providers behind an interface; features
+> and structured signals; safe logging; AST/test boundaries proving AI never
+> imports broker/execution paths; no order surface).
 
 ---
 
