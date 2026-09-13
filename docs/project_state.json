@@ -1,0 +1,83 @@
+{
+  "project": {
+    "name": "fno-ai-paper-trading",
+    "path": "C:\\Vijay_GitHub\\fno-ai-paper-trading",
+    "package_version": "0.1.0"
+  },
+  "project_version": "0.1.0",
+  "overall_progress": 86,
+  "current_phase": "Phase 7 — Post-V1 evolution, evaluation-first (paper-trading-only)",
+  "current_phase_version": "WS 7.6 — Regime-aware strategy evaluation",
+  "phase_status": "IN_PROGRESS",
+  "completed_phases": [
+    "Phase 1 — Foundations & strategy evaluation framework",
+    "Phase 2 — Data engineering & validation",
+    "Phase 3 — Evaluation-first research discipline",
+    "Phase 4 — Historical research & five-year replay capability (engine)",
+    "Phase 5 — AI decision-support foundation",
+    "Phase 6 — Paper Trading V1 (all work streams 6.1-6.7)",
+    "Phase 7 — WS 7.1..7.5, 7.9..7.14, WS 7.15/7.16 champion evaluation + controlled research cycle (conclusion B)"
+  ],
+  "pending_phases": [
+    "Phase 7 — WS 7.6 regime-aware strategy evaluation",
+    "Phase 7 — WS 7.7 GUI / monitoring dashboard",
+    "Phase 7 — WS 7.8 continuous paper-trading agent",
+    "Phase 7+ — 17g five-year historical evaluation run + report",
+    "Phase 7+ — real-broker adapter (separate explicitly controlled capability; requires human approval — never silently enabled)"
+  ],
+  "active_task": "Bootstrap live project dashboard (docs/project_status.html + docs/project_state.json) then start WS 7.6",
+  "last_completed_checkpoint": "547aa33 — docs checkpoint WS 7.16 (0cd2b38)",
+  "last_commit": "547aa33",
+  "last_pushed_commit": "547aa33",
+  "tests": {
+    "passed": 843,
+    "failed": 0,
+    "skipped": 0,
+    "last_run_label": "WS 7.16 closing suite (813 baseline + 30 candidates)"
+  },
+  "validation": {
+    "status": "PASS",
+    "summary": "843 tests passed; champion failure audit reconciliation True; OOS single-read confirmation conclusion B"
+  },
+  "champion": {
+    "name": "MA(5,21) moving-average cross (MovingAverageCrossStrategy)",
+    "status": "FROZEN baseline",
+    "full_window_net_return_pct": "-143.21",
+    "oos_net_return_pct": "-21.76",
+    "per_trade_oos_t": "-6.76",
+    "note": "Frozen. A candidate must demonstrate credible improvement before any promotion."
+  },
+  "challenger": {
+    "status": "None promoted",
+    "decision": "REJECT",
+    "reason": "No challenger demonstrated a credible robust OOS edge (WS 7.16 conclusion B; per-trade OOS t-stats significantly negative)."
+  },
+  "paper_trading_status": {
+    "readiness": "READY (V1 paper server implemented)",
+    "server_status": "not-running (operator-scheduled; WS 7.8 continuous agent is PLANNED)",
+    "version": "Paper Session V1",
+    "config_version": "paper_settings defaults",
+    "market_session": "n/a (evaluation run context)",
+    "latest_paper_trade_note": "10-Sep-2026 real-data paper replay closed ~-194.68 INR single session; evaluated, not a trigger for changes"
+  },
+  "blockers": [],
+  "risks": [
+    "MA(5,21) baseline has no long entries and deep negative net performance on continuous 5m replay — scientific finding recorded, no edge manufactured.",
+    "Upstox live candles require operator-scheduled runs; no always-on server until WS 7.8.",
+    "2026 data OOS pool used once for WS 7.16 shortlist confirmation — further research must use a fresh untouched OOS period."
+  ],
+  "safety_status": {
+    "real_money_trading": "DISABLED",
+    "broker_order_execution": "DISABLED",
+    "credentials_secrets": "NOT INTRODUCED",
+    "risk_controls": "PROTECTED",
+    "stop_loss_controls": "PROTECTED",
+    "position_sizing_controls": "PROTECTED",
+    "max_loss_controls": "PROTECTED"
+  },
+  "last_activity": "Started autonomous execution of remaining Phase 7 plan: dashboard bootstrap + WS 7.6",
+  "next_action": "Create dashboard generator, commit checkpoint, then execute WS 7.6",
+  "agent_status": "RUNNING",
+  "heartbeat": "",
+  "timestamp": ""
+}
