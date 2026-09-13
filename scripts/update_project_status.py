@@ -74,10 +74,45 @@ def _esc(value: object) -> str:
     return html.escape(str(value))
 
 
+def _render_leaderboard(rows: list[list[str]], head: list[str]) -> str:
+    """HTML table where index-3 cell is a tier badge, numeric cells are right-aligned."""
+    rendered = []
+    for row in rows:
+        cells = []
+        for i, cell in enumerate(row):
+            if i == 3:
+                cells.append(f"<td>{_badge(cell)}</td>")
+            elif i <= 2:
+                cells.append(f"<td>{_esc(cell)}</td>")
+            else:
+                cells.append(f"<td class=num>{_esc(cell)}</td>")
+        rendered.append("<tr>" + "".join(cells) + "</tr>")
+    return (
+        f"<table><thead><tr>{''.join(f'<th>{_esc(h)}</th>' for h in head)}</tr></thead>"
+        f"<tbody>{''.join(rendered)}</tbody></table>"
+    )
+
+
+def _simple_table(rows: list[list[str]], head: list[str]) -> str:
+    return (
+        f"<table><thead><tr>{''.join(f'<th>{_esc(h)}</th>' for h in head)}</tr></thead><tbody>"
+        + "".join("<tr>" + "".join(f"<td>{_esc(c)}</td>" for c in row) + "</tr>" for row in rows)
+        + "</tbody></table>"
+    )
+
+
 def _kv_table(rows: list[list[str]]) -> str:
     return "".join(
-        f"<tr><th>{_esc(k)}</th><td>{_esc(v)}</td></tr>" for k, v in rows
+        f"<tr><th>{_esc(k)}</th><td>{_cell(v)}</td></tr>" for k, v in rows
     )
+
+
+def _cell(value: str) -> str:
+    """Render a table value; values already produced by :func:`_badge` are
+    trusted HTML (from our own generator), everything else is escaped."""
+    if isinstance(value, str) and value.startswith("<span class='badge"):
+        return value
+    return _esc(value)
 
 
 def _badge(status: str) -> str:
@@ -108,6 +143,220 @@ def _assessment_rows() -> list[dict[str, object]]:
     return list(payload.get("buckets", {}).values())
 
 
+def _read_json(relative: str) -> dict[str, object] | list[object]:
+    path = REPO_ROOT / relative
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        return payload if isinstance(payload, dict) else payload
+    except (OSError, ValueError):
+        return {}
+
+
+def _laboratory_section() -> str:
+    """ALGORITHM LABORATORY: family competition + research scoreboard."""
+    sb = _read_json("reports/algorithm_state/research_scoreboard.json")
+    comp = sb.get("competition") or {}
+    champion = sb.get("champion") or {}
+    leaderboard = comp.get("leaderboard") or {}
+    criteria = comp.get("criteria") or {}
+
+    rows: list[list[str]] = [
+        ["Current champion", f"{champion.get('strategy_id','?')} ({champion.get('strategy_family','?')} fam) v{champion.get('version','?')}"],
+        ["Champion status", str(champion.get("status", "?"))],
+        ["A BEST TESTED present?", "no" if not comp.get("best_tested_present") else "yes"],
+        ["Best tested entry", (comp.get("best_tested") or {}).get("strategy_id") or "NONE (no credible positive-OOS candidate)"],
+        ["Conclusion", f"WS 7.16 conclusion {comp.get('conclusion','?')} — no family currently promotable"],
+        ["Registered families", ", ".join(sorted(sb.get("families") or {}))],
+        ["Registered specs", str(len(sb.get("registry_catalog") or {}))],
+        ["Research allocation", "EQUAL across families (never capital)"],
+        ["Ensemble / meta-decision", str((sb.get("ensemble_status") or {}).get("status", "?"))],
+    ]
+    body = _kv_table(rows)
+
+    body += "<h3>Family leaderboard (recorded evidence)</h3>"
+    table_rows = []
+    for family, members in sorted(leaderboard.items()):
+        for member in members:
+            table_rows.append([
+                family,
+                member.get("strategy_id", "?"),
+                member.get("version", "?"),
+                member.get("tier_label", "?"),
+                str(member.get("oos_net_pnl") or "no OOS read"),
+                str(member.get("oos_return_pct") or "-"),
+                str(member.get("oos_trades") or "-"),
+                str(member.get("oos_per_trade_t") or "-"),
+            ])
+    head = ["Family", "Strategy", "Version", "Tier", "OOS net P&L", "OOS ret %", "OOS trades", "per-trade t"]
+    body += _render_leaderboard(table_rows, head)
+
+    body += "<h3>Why no winner today</h3><p class='note'>" + _esc(comp.get("headline", "?")) + "</p>"
+
+    body += "<h3>Diagnostic criteria (per strategy)</h3>"
+    crit_rows = []
+    for strategy_id in sorted(criteria):
+        row = criteria[strategy_id]
+        crit_rows.append([
+            strategy_id,
+            str(row.get("oos_net_pnl") or "no OOS"),
+            str(row.get("oos_return_pct") or "-"),
+            str(row.get("trade_count") or "-"),
+            str(row.get("per_trade_t") or "-"),
+            str(row.get("profit_factor") or "-"),
+            str(row.get("win_rate_pct") or "-"),
+            str(row.get("max_drawdown_pct") or "-"),
+            str(row.get("perturbation_robustness") or "-"),
+        ])
+    crit_head = ["Strategy", "OOS net", "OOS ret%", "trades", "t", "PF", "Win%", "MaxDD%", "Robustness"]
+    body += (
+        f"<table><thead><tr>{''.join(f'<th>{_esc(h)}</th>' for h in crit_head)}</tr></thead><tbody>"
+        + "".join("<tr>" + "".join(f"<td class=num>{_esc(c)}</td>" for c in r) + "</tr>" for r in crit_rows)
+        + "</tbody></table>"
+    )
+
+    body += (
+        "<p class='note'><strong>PAPER-ONLY & OOS PROTECTION:</strong> every figure above "
+        "comes from recorded artifacts. Protected OOS was read exactly once; nothing here "
+        "re-runs, re-trains or tunes on OOS. A least-negative strategy is never called a winner.</p>"
+    )
+    return _section("ALGORITHM LABORATORY / RESEARCH COMPETITION", body)
+
+
+def _daily_performance_section() -> str:
+    """STRATEGY/FAMILY DAILY ATTRIBUTION from the recorded daily report."""
+    report = _read_json("reports/algorithm_state/daily_performance.json")
+    rows = report.get("rows") if isinstance(report, dict) else []
+    if not rows:
+        return _section("DAILY STRATEGY / FAMILY ATTRIBUTION",
+                        "<p class='note'>No recorded daily rows yet (champion replay appears once scripts/build_daily_performance.py runs).</p>")
+    latest_row = rows[-1] if rows else {}
+    buckets = sorted({str(r.get("bucket")) for r in rows})
+    families = sorted({str(r.get("strategy_family")) for r in rows})
+    head = ["Date", "Strategy", "Bucket", "Trades", "Wins/Loss", "Win%", "Daily P&L", "Cumulative", "MaxDD"]
+    table_rows = [[
+        str(r.get("trading_date", "?")),
+        str(r.get("strategy_id", "?")),
+        str(r.get("bucket", "?")),
+        str(r.get("trades", 0)),
+        f"{r.get('wins',0)}/{r.get('losses',0)}",
+        str(r.get("win_rate_pct") or "-"),
+        str(r.get("daily_pnl") or "0"),
+        str(r.get("cumulative_pnl") or "0"),
+        str(r.get("max_drawdown") or "0"),
+    ] for r in rows[-25:]]
+    body = _kv_table([
+        ["Bucket sources", ", ".join(buckets)],
+        ["Families represented", ", ".join(families)],
+        ["Daily rows (total)", str(len(rows))],
+        ["Latest trading day", str(latest_row.get("trading_date", "-"))],
+        ["Latest day net P&L", str(latest_row.get("daily_pnl", "-"))],
+    ])
+    body += "<h3>Last 25 daily strategy rows</h3>"
+    body += (
+        f"<table><thead><tr>{''.join(f'<th>{_esc(h)}</th>' for h in head)}</tr></thead><tbody>"
+        + "".join("<tr>" + "".join(f"<td class=num>{_esc(c)}</td>" for c in r) + "</tr>" for r in table_rows)
+        + "</tbody></table>"
+    )
+    body += (
+        "<p class='note'>Champion rows are the recorded replay (bucket research_replay) - a "
+        "recorded account series, not a performance claim. Paper bucket is empty until live "
+        "paper trades close. This table attributes P&L; it never selects algorithms.</p>"
+    )
+    return _section("DAILY STRATEGY / FAMILY ATTRIBUTION", body)
+
+
+def _ws77_view_sections(state: dict[str, Any]) -> str:
+    """WS 7.7 read-only dashboard views (SYSTEM / TRADING / PERFORMANCE / HISTORICAL / LEARNING)."""
+    git = _git_facts()
+    project = state.get("project", {})
+    tests = state.get("tests", {})
+    safety = state.get("safety_status", {})
+    regime_eval = _read_json("reports/regime_eval/regime_eval.json")
+
+    system_rows: list[list[str]] = [
+        ["Environment", project.get("path", "?")],
+        ["Runtime", "Python 3 (stdlib rendering)"],
+        ["Git branch / HEAD", f"{git['branch']} / {git['head']} — {git['subject']}"],
+        ["Upstream", git["upstream"]],
+        ["Tests passed / failed", f"{tests.get('passed','?')} / {tests.get('failed',0)}"],
+        ["Datasets", "real NIFTY 50 5m history; reports/datasets git-ignored"],
+        ["Config", "config/settings.py; paper defaults v1-paper-defaults"],
+    ]
+    system = _section("SYSTEM", _kv_table(system_rows))
+
+    trading_rows: list[list[str]] = [
+        ["Algorithm", (state.get("algorithm") or {}).get("algorithm_version", "?")],
+        ["Strategy", (state.get("algorithm_laboratory") or {}).get("current_champion", "moving_average_cross")],
+        ["Paper server", (state.get("paper_trading_status") or {}).get("server_status", "not running")],
+        ["Market session", (state.get("paper_trading_status") or {}).get("market_session", "?")],
+        ["Orders placed", "PAPER ONLY — no broker/order execution"],
+        ["Closed paper trades", str((state.get("algorithm") or {}).get("paper_trades_recorded", 0))],
+    ]
+    trading = _section("TRADING", _kv_table(trading_rows))
+
+    perf = (state.get("algorithm") or {})
+    perf_rows: list[list[str]] = [
+        ["Health", _badge(perf.get("algorithm_health", "?"))],
+        ["Net P&L (backtest bucket)", perf.get("net_pnl", "?")],
+        ["Expectancy / trade", perf.get("expectancy", "?")],
+        ["Profit factor", perf.get("profit_factor", "?")],
+        ["Max drawdown", perf.get("max_drawdown", "?")],
+        ["Trend", _badge(perf.get("performance_trend", "?"))],
+    ]
+    performance = _section("PERFORMANCE", _kv_table(perf_rows))
+
+    hist = regime_eval.get("evaluation") if isinstance(regime_eval, dict) else {}
+    regime_rows: list[list[str]] = []
+    for item in hist.get("by_regime") or []:
+        regime_rows.append([
+            str(item.get("label", "?")),
+            str(item.get("count", "-")),
+            str(item.get("win_rate_pct") or "-"),
+            str(item.get("net_pnl") or "-"),
+            str(item.get("expectancy") or "-"),
+        ])
+    historical_head = ["Regime", "Trades (safe slice)", "Win %", "Net P&L", "Expectancy"]
+    historical_body = "".join("N/A")
+    if regime_rows:
+        historical_body = (
+            f"<table><thead><tr>{''.join(f'<th>{_esc(h)}</th>' for h in historical_head)}</tr></thead><tbody>"
+            + "".join("<tr>" + "".join(f"<td class=num>{_esc(c)}</td>" for c in r) + "</tr>" for r in regime_rows)
+            + "</tbody></table>"
+        )
+    hypo_rows = []
+    for item in hist.get("hypotheses") or []:
+        hypo_rows.append([
+            str(item.get("hypothesis_id", "?")),
+            str(item.get("name", "?")),
+            str(item.get("status", "?")),
+            str(item.get("observation", ""))[:120],
+        ])
+    if hypo_rows:
+        historical_body += "<h3>Regime hypotheses</h3>" + _simple_table(
+            hypo_rows, ["ID", "Hypothesis", "Status", "Observation"]
+        )
+    historical = _section(
+        "HISTORICAL / REGIME",
+        historical_body if regime_rows or hypo_rows else
+        "<p class='note'>no regime_eval artifact on disk yet.</p>",
+    )
+
+    lab = state.get("algorithm_laboratory") or {}
+    learn_rows: list[list[str]] = [
+        ["Best tested present", str(lab.get("best_tested_present", False))],
+        ["Best tested", (lab.get("best_tested") or {}).get("strategy_id") or "none"],
+        ["Families", ", ".join(lab.get("families") or [])],
+        ["Research allocation", "EQUAL"],
+        ["Ensemble status", str(lab.get("ensemble_status", "?"))],
+        ["Scoreboard artifact", str(lab.get("scoreboard_artifact", "?"))],
+    ]
+    learning = _section("LEARNING / RESEARCH", _kv_table(learn_rows))
+
+    return system + trading + performance + historical + learning
+
+
 def _algorithm_section(state: dict[str, Any]) -> str:
     algo = state.get("algorithm") or {}
     headline = [
@@ -130,6 +379,7 @@ def _algorithm_section(state: dict[str, Any]) -> str:
         ["Performance trend", _badge(algo.get("performance_trend", "INSUFFICIENT DATA"))],
         ["Algorithm version", algo.get("algorithm_version") or "n/a"],
         ["Configuration version", algo.get("configuration_version") or "n/a"],
+        ["Strategy id / family", f"{algo.get('strategy_id') or 'moving_average_cross'} / {algo.get('strategy_family') or 'TREND_FOLLOWING'}"],
         ["Paper trades recorded", algo.get("paper_trades_recorded") or 0],
     ]
     body = _kv_table(headline)
@@ -354,8 +604,11 @@ def render() -> str:
   {_section("PHASES — Progress", _build_hierarchy(state) + "<p>After each checkpoint: rerun <code>python scripts/update_project_status.py</code>, commit, push.</p>")}
   {_section("ENGINEERING", eng_body)}
   {_section("MODEL / STRATEGY", model_body)}
-  {_section("PAPER TRADING", pt_body)}
   {_algorithm_section(state)}
+  {_laboratory_section()}
+  {_daily_performance_section()}
+  {_ws77_view_sections(state)}
+  {_section("PAPER TRADING", pt_body)}
   {_section("SAFETY", safety_body)}
   {_section("BLOCKERS / RISKS", br_body)}
   {_section("AGENT", agent_body)}

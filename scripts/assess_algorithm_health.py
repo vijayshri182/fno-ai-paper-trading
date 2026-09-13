@@ -118,6 +118,15 @@ def _headline(assessment) -> dict[str, object]:
         "performance_trend": assessment.performance_trend,
         "algorithm_version": assessment.version,
         "configuration_version": assessment.configuration_version,
+        "strategy_id": "moving_average_cross",
+        "strategy_family": "TREND_FOLLOWING",
+        "strategy_version": "1.0.0",
+        "attribution_note": (
+            "Algorithm Health is attested to the frozen MA(5,21) champion "
+            "(family TREND_FOLLOWING). Cross-family competition lives in the "
+            "Algorithm Laboratory scoreboard; the champion is NOT promotable "
+            "under current recorded evidence."
+        ),
         "readiness_reason": assessment.readiness_reason,
         "health_reason": assessment.health_reason,
         "last_updated": assessment.generated_at,
