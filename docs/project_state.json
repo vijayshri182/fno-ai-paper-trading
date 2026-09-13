@@ -30,8 +30,8 @@
   ],
   "active_task": "WS 7.18 walk-forward adaptive research & learning engine COMPLETE (walkforward package implemented + tested [18 tests]; verified on real NIFTY 50 5m: 932/932 research days walked 2022-01-03..2025-10-03, protected OOS 2025-10-06 truncated out and never loaded; champion model_0 net -80,269.64 Rs over 1293 RT; 5 challengers spawned 2023..2025, future-only 20-day validated, all gated INSUFFICIENT EVIDENCE; 0 promotions; deterministic byte-identical ledger across two runs; full suite 1109 passed; docs/PROGRESS/ACTIVITY updated) — next human-gated steps: single real F&O experiment 2026-09-14; real-broker adapter",
   "last_completed_checkpoint": "WS 7.18 walk-forward adaptive research & learning engine (walkforward/config|records|catalog|learning|gate|engine|reports + __init__; script scripts/run_walkforward.py; reports/walkforward/summary.json|versions.json|promotions.jsonl|evolution_timeline.html|.md|walkforward.ledger.jsonl|walkforward.state.json; real run walked 932/932 research days with deterministic byte-identical ledgers; 5 challengers gated INSUFFICIENT_EVIDENCE, 0 promotions; protected OOS untouched; full suite 1109 passed)",
-  "last_commit": "16f37fc",
-  "last_pushed_commit": "16f37fc",
+  "last_commit": "d081db0",
+  "last_pushed_commit": "d081db0",
   "tests": {
     "passed": 1109,
     "failed": 0,
@@ -86,11 +86,36 @@
     "challengers_gated": 5,
     "promotions": 0,
     "gate_decisions": [
-      { "day": "2023-03-16", "challenger_id": "wfc-suppress_sells_not_down-r014", "decision": "INSUFFICIENT_EVIDENCE", "reason": "validation trades 0 below minimum 10" },
-      { "day": "2024-07-03", "challenger_id": "wfc-suppress_buys_not_up-r030", "decision": "INSUFFICIENT_EVIDENCE", "reason": "validation trades 1 below minimum 10" },
-      { "day": "2024-12-26", "challenger_id": "wfc-suppress_sells_not_down-r036", "decision": "INSUFFICIENT_EVIDENCE", "reason": "validation trades 0 below minimum 10" },
-      { "day": "2025-01-23", "challenger_id": "wfc-suppress_buys_not_up-r037", "decision": "INSUFFICIENT_EVIDENCE", "reason": "validation trades 1 below minimum 10" },
-      { "day": "2025-08-18", "challenger_id": "wfc-suppress_sells_not_down-r044", "decision": "INSUFFICIENT_EVIDENCE", "reason": "validation trades 0 below minimum 10" }
+      {
+        "day": "2023-03-16",
+        "challenger_id": "wfc-suppress_sells_not_down-r014",
+        "decision": "INSUFFICIENT_EVIDENCE",
+        "reason": "validation trades 0 below minimum 10"
+      },
+      {
+        "day": "2024-07-03",
+        "challenger_id": "wfc-suppress_buys_not_up-r030",
+        "decision": "INSUFFICIENT_EVIDENCE",
+        "reason": "validation trades 1 below minimum 10"
+      },
+      {
+        "day": "2024-12-26",
+        "challenger_id": "wfc-suppress_sells_not_down-r036",
+        "decision": "INSUFFICIENT_EVIDENCE",
+        "reason": "validation trades 0 below minimum 10"
+      },
+      {
+        "day": "2025-01-23",
+        "challenger_id": "wfc-suppress_buys_not_up-r037",
+        "decision": "INSUFFICIENT_EVIDENCE",
+        "reason": "validation trades 1 below minimum 10"
+      },
+      {
+        "day": "2025-08-18",
+        "challenger_id": "wfc-suppress_sells_not_down-r044",
+        "decision": "INSUFFICIENT_EVIDENCE",
+        "reason": "validation trades 0 below minimum 10"
+      }
     ],
     "determinism": "two independent full runs produced byte-identical ledgers (sha256 equal)",
     "artifacts": "reports/walkforward/{summary.json,versions.json,promotions.jsonl,evolution_timeline.html,evolution_timeline.md,walkforward.ledger.jsonl,walkforward.state.json} (git-ignored)"
