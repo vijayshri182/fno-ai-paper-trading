@@ -1807,13 +1807,19 @@ Future analytics should include:
 
 Additional metrics can be added later.
 
-### Standardized Phase 7+ evaluation set (PLANNED)
+### Standardized Phase 7+ evaluation set (IMPLEMENTED — WS 7.4/7.5 evaluation records)
 
 Future strategy/model evaluation (historical replay, champion/challenger
 comparison) standardizes on at least: total P&L; return %; win rate; round
 trips; average trade; transaction costs; maximum drawdown; maximum drawdown %;
 exposure; losing streak; regime-specific performance; confidence calibration
 where applicable. Risk-adjusted metrics can be added later.
+
+> The standardized set above is already produced by the implemented evaluation
+> records (`evaluation/records.py` `EvaluationAggregate`/`SessionEvaluation`
+> plus `evaluation/five_year.py` per-day/period breakdown and regime labels) and
+> is what the WS 7.11 champion/challenger comparison and the 17g five-year
+> report consume; risk-adjusted metrics remain an opt-in extension.
 
 ---
 
