@@ -1625,8 +1625,8 @@ no-look-ahead, determinism, param validation, engine replay equality;
 monotone cost scan, bounded robustness, gate key views). Plus a latent
 invariant added: Donchian requires `entry_channel > exit_channel`.
 
-**Status.** Committed as `docs: WS 7.16 final model research report (conclusion B)`
-and pushed to `origin/master`.
+**Status.** Committed as `0cd2b38` (`feat: WS 7.16 controlled challenger
+research cycle - conclusion B (no credible edge)`) and pushed to `origin/master`.
 
 ---
 

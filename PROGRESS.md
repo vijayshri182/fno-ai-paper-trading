@@ -7,7 +7,7 @@
 >
 > **State as of:** 2026-09-12 · Phase 6 **COMPLETE** · F&O Paper Trading V1
 > **IMPLEMENTATION COMPLETE** · V1 STATUS: **READY**. Latest committed checkpoint
-> `550b5c8`; branch `master` == `origin/master`. Full committed suite: **813 passed**
+> `0cd2b38`; branch `master` == `origin/master`. Full committed suite: **843 passed**
 > (offline, deterministic, 0 skipped / 0 xfailed); paper-only boundary verified.
 > V1 baseline **MA(5,21) is FROZEN** —
 > Phase 7 strategy changes are evaluated empirically (historical replay +
