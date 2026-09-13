@@ -5,9 +5,9 @@
     "package_version": "0.1.0"
   },
   "project_version": "0.1.0",
-  "overall_progress": 91,
+  "overall_progress": 92,
   "current_phase": "Phase 7 — Post-V1 evolution, evaluation-first (paper-trading-only)",
-  "current_phase_version": "WS 7.17 Algorithm Research & Competition Layer + WS 7.7 dashboard (implemented, no promotion)",
+  "current_phase_version": "WS 7.17 Algorithm Research & Competition Layer + WS 7.7 dashboard + WS 7.8 Continuous Paper-Trading Agent (implemented)",
   "phase_status": "IN_PROGRESS",
   "completed_phases": [
     "Phase 1 — Foundations & strategy evaluation framework",
@@ -18,26 +18,26 @@
     "Phase 6 — Paper Trading V1 (all work streams 6.1-6.7)",
     "Phase 7 — WS 7.1..7.5, 7.9..7.14, WS 7.15/7.16 champion evaluation + controlled research cycle (conclusion B)",
     "Phase 7 — WS 7.6 regime-aware strategy evaluation (recorded evidence; hypotheses inert, no promotion)",
-    "Phase 7 — WS 7.17 Algorithm Research & Competition Layer + WS 7.7 GUI / monitoring dashboard (registry, family competition, daily attribution, scoreboard; 930 tests; no promotion)"
+    "Phase 7 — WS 7.17 Algorithm Research & Competition Layer + WS 7.7 GUI / monitoring dashboard (registry, family competition, daily attribution, scoreboard; 930 tests; no promotion)",
+    "Phase 7 — WS 7.8 Continuous Paper-Trading Agent (states, heartbeat, persistence, jobs, ContinuousPaperAgent, CLI runner; 976 tests; paper-only; watchdog-gated polling; dual checkpoint)"
   ],
   "pending_phases": [
-    "Phase 7 — WS 7.8 continuous paper-trading agent",
     "Phase 7+ — 17g five-year historical evaluation run + report",
     "Phase 7+ — real-broker adapter (separate explicitly controlled capability; requires human approval — never silently enabled)"
   ],
-  "active_task": "Execute WS 7.8 — continuous paper-trading agent (MARKET CLOSED replay/evaluation <-> MARKET OPEN completed-candle paper trading; safety unchanged)",
-  "last_completed_checkpoint": "6296e59 — WS 7.17 algorithm research & competition layer + WS 7.7 dashboard views + docs close-out (registry + family competition + daily attribution + scoreboard; 930 passing; no promotion)",
-  "last_commit": "6296e59",
-  "last_pushed_commit": "6296e59",
+  "active_task": "WS 7.8 continuous paper-trading agent implemented and verified (976 tests) — next planned work stream is 17g five-year historical evaluation run + report (PLANNED, not started)",
+  "last_completed_checkpoint": "57e4ed1 — WS 7.8 continuous paper-trading agent (states/heartbeat/persistence/jobs/ContinuousPaperAgent + CLI runner; watchdog-gated polling; dual checkpoint + hash sidecar; 976 tests; paper-only)",
+  "last_commit": "57e4ed1",
+  "last_pushed_commit": "57e4ed1",
   "tests": {
-    "passed": 930,
+    "passed": 976,
     "failed": 0,
     "skipped": 0,
-    "last_run_label": "930 suite (880 baseline + 14 WS 7.6 regime-eval + 50 WS 7.17 registry/competition/scoreboard/daily/paper-trades)"
+    "last_run_label": "976 suite (930 + 46 WS 7.8 agent states/heartbeat/persistence/jobs/behavior)"
   },
   "validation": {
     "status": "PASS",
-    "summary": "930 tests passed; ALGO READY monitor RED/NO/DETERIORATING on recorded champion; WS 7.17 competition: every family tier E, A BEST TESTED absent, no promotion; WS 7.6 regime-filter hypotheses inert on recorded evidence"
+    "summary": "976 tests passed; ALGO READY monitor RED/NO/DETERIORATING on recorded champion; WS 7.17 competition: every family tier E, A BEST TESTED absent, no promotion; WS 7.8 agent verified via 46 behavior tests + dev-sandbox smoke (closed-state jobs + heartbeat); no live execution"
   },
   "champion": {
     "name": "MA(5,21) moving-average cross (MovingAverageCrossStrategy)",
@@ -54,7 +54,7 @@
   },
   "paper_trading_status": {
     "readiness": "READY (V1 paper server implemented)",
-    "server_status": "not-running (operator-scheduled; WS 7.8 continuous agent is PLANNED)",
+    "server_status": "not-running (operator-scheduled; WS 7.8 continuous agent implemented — run scripts/run_paper_agent.py)",
     "version": "Paper Session V1",
     "config_version": "paper_settings defaults",
     "market_session": "n/a (evaluation run context)",
@@ -65,7 +65,7 @@
     "MA(5,21) baseline has no long entries and deep negative net performance on continuous 5m replay — scientific finding recorded, no edge manufactured.",
     "WS 7.6: all recorded decision-time entry regimes are net-negative; regime-filter hypotheses are inert on recorded evidence (no promotion).",
     "WS 7.17: every family competition tier is E and A BEST TESTED is ABSENT — no family has a credible positive-OOS candidate; conclusion B stands.",
-    "Upstox live candles require operator-scheduled runs; no always-on server until WS 7.8.",
+    "WS 7.8 agent is implemented and verified offline (tests + dev-sandbox smoke); continuous operation still requires an operator-scheduled run; the on-disk heartbeat is a synthetic smoke heartbeat, not a live-paper P&L claim.",
     "2026 data OOS pool used once for WS 7.16 shortlist confirmation — further research must use a fresh untouched OOS period."
   ],
   "safety_status": {
@@ -77,8 +77,8 @@
     "position_sizing_controls": "PROTECTED",
     "max_loss_controls": "PROTECTED"
   },
-  "last_activity": "Algorithm Research & Competition scoreboard rebuilt (best tested present=False)",
-  "next_action": "Execute WS 7.8 continuous paper-trading agent (safety unchanged; live data != live execution)",
+  "last_activity": "WS 7.8 continuous paper-trading agent implemented + verified (976 tests; dev-sandbox smoke heartbeat written)",
+  "next_action": "Next planned work stream: 17g five-year historical evaluation run + report (PLANNED, not started); or operator-scheduled continuous-agent deployment",
   "agent_status": "RUNNING",
   "heartbeat": "",
   "timestamp": "",

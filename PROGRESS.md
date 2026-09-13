@@ -796,3 +796,25 @@ stay PLANNED behind the evaluation discipline.**
   protected OOS remains single-use; MA(5,21) unchanged.
 
 ---
+
+## 29. WS 7.8 Continuous Paper-Trading Agent (2026-09-13)
+
+- `src/fno_ai_paper_trading/agent/` implements `§17h`: `states.py`,
+  `heartbeat.py`, `persistence.py`, `jobs.py`, `agent.py`
+  (`ContinuousPaperAgent`). MARKET CLOSED runs booked offline jobs
+  (learning-cycle / replay-capture tickets, soft-fail); MARKET OPEN polls a
+  `PaperSession` over completed candles behind the watchdog fail-safe
+  (STOP blocks new cycle activity — no guessing, §17k). Environment gate:
+  `Environment.PAPER` only (approved TEST/DEVELOPMENT sandbox allowed with
+  `allow_sandbox`). Every `cycle()` dual-checkpoints (session snapshot +
+  hash-authenticated agent record) for crash recovery.
+- `scripts/run_paper_agent.py` — offline smoke / CSV replay / upstox modes,
+  poll loop, heartbeat written to
+  `reports/algorithm_state/paper_agent.json` (surfaces on the dashboard's
+  CONTINUOUS PAPER-TRADING AGENT section).
+- **976 tests pass offline** (930 + 46 new). No live execution — PAPER ONLY;
+  Broker.is_live stays False; live data never implies live broker execution.
+  Heartbeat on disk is a development-sandbox smoke run on synthetic data, not
+  a P&L claim.
+
+---

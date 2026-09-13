@@ -1093,10 +1093,19 @@ controlled capabilities:
   Committed alongside WS 7.7 in the Algorithm Research & Competition layer
   commit.
 
-*Work stream 7.8 — Continuous paper-trading agent* — **PLANNED**
+*Work stream 7.8 — Continuous paper-trading agent* — **DONE**
 * Always-running agent that safely transitions between MARKET CLOSED (replay,
   evaluation, learning jobs) and MARKET OPEN (completed-candle paper trading)
   states without changing safety rules (§17h). Live data ≠ live execution.
+  Implemented as the `agent/` package (`states`, `heartbeat`, `persistence`,
+  `jobs`, `agent.ContinuousPaperAgent`) plus `scripts/run_paper_agent.py`; the
+  paper-only boundary is absolute (only `PaperBroker`; `Broker.is_live` stays
+  False); the watchdog fail-safe STOP gates new cycle activity rather than
+  guessing (§17k); every cycle checkpoints session snapshot + agent record
+  (hash-authenticated) so restarts resume mid-loop. 46 new tests; full suite
+  976 passing. Dashboard adds a CONTINUOUS PAPER-TRADING AGENT heartbeat section
+  (`reports/algorithm_state/paper_agent.json`). Committed with the WS 7.8
+  work-stream commit.
 
 *Work stream 7.9 — Experience / trade-outcome store* — **DONE**
 * Capture EVERY completed paper trade as an experience record (decision-time
@@ -1442,9 +1451,9 @@ the same data.
 
 ---
 
-# 17h. Continuous Paper-Trading Agent (PLANNED)
+# 17h. Continuous Paper-Trading Agent (IMPLEMENTED — WS 7.8)
 
-A future always-running server/agent with two safe states that it can transition
+An always-running server/agent with two safe states that it can transition
 between without changing safety rules:
 
 * **MARKET CLOSED:** process historical/missing data; run scheduled
@@ -1461,6 +1470,17 @@ The agent must clearly distinguish: **historical replay** (offline),
 paper-only safety boundary is absolute: no real broker orders; no automatic live
 trading; no risk-control bypass; no weakening safety limits to improve P&L; no
 AI-direct execution.
+
+**Implementation (WS 7.8):** the agent lives in `src/fno_ai_paper_trading/agent/`
+(`states.py`, `heartbeat.py`, `persistence.py`, `jobs.py`, `agent.py`) with the
+CLI runner `scripts/run_paper_agent.py`. `ContinuousPaperAgent.cycle()` picks a
+state from the NSE market phase (`agent_state_for`), polls a
+`PaperSession` only in MARKET_OPEN (watchdog-gated, fail-safe STOP blocks new
+cycle activity), runs booked `ClosedJob`s in MARKET_CLOSED (soft-fail, never
+aborts a cycle), and ends with a dual checkpoint (session snapshot +
+hash-authenticated agent record) for crash recovery. A heartbeat record
+(`AgentHeartbeat`) is written to `reports/algorithm_state/paper_agent.json` and
+surfaces on the dashboard.
 
 ---
 

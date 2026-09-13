@@ -1797,6 +1797,71 @@ scripts run clean; scoreboard reproduces recorded evidence; dashboard renders
 
 ---
 
+## 4ak. 2026-09-13 — WS 7.8: Continuous Paper-Trading Agent
+
+**Objective.** Implement the always-running, paper-only agent from `§17h`: it
+transitions between **MARKET CLOSED** (booked offline replay / learning /
+evaluation jobs) and **MARKET OPEN** (watchdog-gated completed-candle paper
+polling) without changing any safety rule. Live data ≠ live execution; the only
+execution path stays `PaperBroker`; a fail-safe STOP gates new cycle activity
+rather than guessing; every cycle checkpoints so a restart resumes mid-loop.
+
+**Deliverables.**
+- `src/fno_ai_paper_trading/agent/states.py` — `AgentState`
+  (INIT/MARKET_CLOSED/MARKET_OPEN/HALTED), `ALLOWED_TRANSITIONS`,
+  `phase_to_agent_state` (PRE_OPEN + CLOSED → MARKET_CLOSED), `agent_state_for`,
+  `session_snapshot_for`, `validate_transition`.
+- `src/fno_ai_paper_trading/agent/heartbeat.py` — `AgentHeartbeat` (frozen,
+  `AGENT_VERSION = 1.0.0`, `HEARTBEAT_DISCLAIMER`), `to_dict/from_dict`,
+  `heartbeat_from_session`, `is_safe`.
+- `src/fno_ai_paper_trading/agent/persistence.py` — `AgentStateRecord`,
+  `save_agent_state` / `load_agent_state` with SHA-256 `state_hash` sidecar
+  (`agent_state.json` + `agent_state.meta.json`); tamper detection.
+- `src/fno_ai_paper_trading/agent/jobs.py` — `ClosedJob`, `RunPolicy`
+  (`once_daily`, `minimum_interval` default 23h), `run_closed_jobs`,
+  `build_learning_cycle_job`, `build_replay_capture_job`; failures are soft.
+- `src/fno_ai_paper_trading/agent/agent.py` — `AgentConfig`, `CycleResult`,
+  `ContinuousPaperAgent`: environment gate (PAPER, or approved
+  TEST/DEVELOPMENT sandbox), `_open_cycle` (watchdog evaluate → SAFE/WATCH
+  proceeds, STOP blocks polling + critical alert; per-step fill/round-trip
+  alerts with PAPER label), `_closed_cycle` (due jobs run once per window,
+  failure alerts, never aborts a cycle), dual checkpoint (session snapshot +
+  agent record), `_restore_agent_state` / `_restore_session` continuity,
+  heartbeat property.
+- `scripts/run_paper_agent.py` — CLI (`--smoke | --csv FILE | --upstox`,
+  `--once/--cycles/--forever`, `--interval`, `--quantity`, `--name`,
+  `--state-dir`, `--token`, `--poll-seconds`, `--as-of`, `--no-jobs`,
+  `--note-sandbox`); writes the heartbeat to
+  `reports/algorithm_state/paper_agent.json`.
+- Dashboard: new CONTINUOUS PAPER-TRADING AGENT section
+  (`update_project_status.py` → `docs/project_status.html`).
+- Docs: PROJECT_PLAN §17h → IMPLEMENTED + WS 7.8 work-stream entry → DONE;
+  README Phase 7+ row; PROGRESS.md; ACTIVITY_LOG 4ak.
+- Tests: `test_agent_states.py`, `test_agent_heartbeat.py`,
+  `test_agent_persistence.py`, `test_agent_jobs.py`, `test_agent.py` — 46 new.
+
+**Honest status (no manufactured results).** The agent was verified against a
+synthetic smoke provider end-to-end (closed-state jobs + heartbeat) and via 46
+behavior tests (state mapping, env gating, open-cycle polling incl. the lazy
+default risk sizer rejection, watchdog STOP, checkpoint/restore continuity,
+fill alert path, alert PAPER stamping). The heartbeat currently on disk
+(`paper_agent.json`) is a development-sandbox smoke run on synthetic data
+(state=CLOSED, jobs_run=2, cash=0); it is not a live-paper P&L claim. The
+work-stream is **implementation + verification complete**; continuous operation
+is started/run manually and records only paper activity.
+
+**Verification.** Full suite **976 passed** (930 + 46 new; 21s). Smoke run
+executes closed-cycle learning/replay jobs deterministically with duplicate
+suppression; checkpoint files round-trip with hash integrity.
+
+**Status.** Committed as the WS 7.8 work-stream commit and pushed. See
+`src/fno_ai_paper_trading/agent/`,
+`scripts/run_paper_agent.py`,
+`reports/algorithm_state/paper_agent.json`,
+`docs/project_status.html`.
+
+---
+
 ## 5. Open Topics / Risks
 
 - **12-Sep-2026 research cycle concluded B (no credible edge; family closed).**

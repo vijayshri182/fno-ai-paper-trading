@@ -267,6 +267,43 @@ def _daily_performance_section() -> str:
     return _section("DAILY STRATEGY / FAMILY ATTRIBUTION", body)
 
 
+def _continuous_agent_section() -> str:
+    """WS 7.8: live continuous paper-trading agent status from the heartbeat."""
+    hb = _read_json("reports/algorithm_state/paper_agent.json")
+    if not isinstance(hb, dict) or not hb.get("run_id"):
+        return _section(
+            "CONTINUOUS PAPER-TRADING AGENT",
+            "<p class='note'>No heartbeat yet — run <code>python scripts/run_paper_agent.py</code>.</p>",
+        )
+    decision = str(hb.get("safety_decision", "N/A"))
+    decision_badge = _badge(decision)
+    rows: list[list[str]] = [
+        ["Run id", str(hb.get("run_id", "?"))],
+        ["Agent state", _badge(str(hb.get("state", "?")))],
+        ["Market phase", str(hb.get("market_phase", "?"))],
+        ["Environment", str(hb.get("environment", "?"))],
+        ["Safety decision", decision_badge],
+        ["Safety instruction", str(hb.get("safety_instruction") or "-")],
+        ["Polls", str(hb.get("polls", 0))],
+        ["Jobs run (successful)", str(hb.get("jobs_run", 0))],
+        ["Consumed bars", str(hb.get("consumed_bars", 0))],
+        ["Paper orders / fills / trades", f"{hb.get('orders_submitted', 0)} / {hb.get('fills', 0)} / {hb.get('trades', 0)}"],
+        ["Open quantity", str(hb.get("open_quantity", 0))],
+        ["Cash / Equity", f"{hb.get('cash', '?')} / {hb.get('equity', '?')}"],
+        ["Latest bar time", str(hb.get("latest_bar_time") or "-")],
+        ["Checkpointed at", str(hb.get("checkpointed_at") or "-")],
+        ["Last error", str(hb.get("last_error") or "-")],
+    ]
+    body = _kv_table(rows)
+    body += (
+        "<p class='note'>The continuous agent is paper-only: the only execution "
+        "path is <code>PaperBroker</code>; live market data never implies live "
+        "broker execution. A fail-safe STOP gates new cycle activity until "
+        "investigation (§17h / §17k).</p>"
+    )
+    return _section("CONTINUOUS PAPER-TRADING AGENT", body)
+
+
 def _ws77_view_sections(state: dict[str, Any]) -> str:
     """WS 7.7 read-only dashboard views (SYSTEM / TRADING / PERFORMANCE / HISTORICAL / LEARNING)."""
     git = _git_facts()
@@ -607,6 +644,7 @@ def render() -> str:
   {_algorithm_section(state)}
   {_laboratory_section()}
   {_daily_performance_section()}
+  {_continuous_agent_section()}
   {_ws77_view_sections(state)}
   {_section("PAPER TRADING", pt_body)}
   {_section("SAFETY", safety_body)}

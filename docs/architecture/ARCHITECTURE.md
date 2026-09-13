@@ -325,6 +325,36 @@ closed trades to (date, strategy, family, version). The whole layer is
 dashboard renders the Algorithm Laboratory + daily attribution sections
 (`scripts/update_project_status.py`). See `PROJECT_PLAN.md` §17o.
 
+### 9.2 Continuous paper-trading agent (WS 7.8)
+
+`agent/` implements the always-running, paper-only orchestrator from §17h:
+
+- `agent/states.py` — `AgentState` (INIT / MARKET_CLOSED / MARKET_OPEN /
+  HALTED), `ALLOWED_TRANSITIONS`, phase→state mapping (PRE_OPEN and CLOSED both
+  map to MARKET_CLOSED for open-window-only paper polling).
+- `agent/heartbeat.py` — `AgentHeartbeat` frozen record + `heartbeat_from_session`
+  → `reports/algorithm_state/paper_agent.json` (dashboard heartbeat section).
+- `agent/persistence.py` — `save_agent_state` / `load_agent_state` with a
+  SHA-256 `state_hash` sidecar (tamper detection) alongside the re-used
+  `persistence.session_store` snapshot for crash recovery.
+- `agent/jobs.py` — `ClosedJob` + `RunPolicy` (once-daily / minimum-interval),
+  `run_closed_jobs` (soft-fail), `build_learning_cycle_job`,
+  `build_replay_capture_job`.
+- `agent/agent.py` — `ContinuousPaperAgent.cycle()` picks the state from the
+  NSE market phase; MARKET_OPEN polls a `PaperSession` over completed candles
+  behind the watchdog (`alerting/health.py`): SAFE/WATCH proceed, **STOP blocks
+  new cycle activity** (§17k) and raises a critical alert; MARKET_CLOSED runs
+  due jobs. Environment gate: `Environment.PAPER` only (approved
+  TEST/DEVELOPMENT sandbox with `allow_sandbox`). Every cycle dual-checkpoints
+  session + agent record; restarts resume mid-loop (HALTED is preserved across
+  restarts). Alerts carry the PAPER-TRADING label; fills / round-trip closes
+  emit trading alerts. `scripts/run_paper_agent.py` drives it (smoke / CSV
+  replay / upstox modes).
+
+The agent never changes safety rules: only `PaperBroker` executes,
+`Broker.is_live` stays `False`, and live market data never implies live broker
+execution. See `PROJECT_PLAN.md` §17h.
+
 ---
 
 ## 10. Paper Trading Architecture
