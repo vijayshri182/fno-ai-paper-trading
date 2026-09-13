@@ -28,8 +28,8 @@
   ],
   "active_task": "WS 7.9 credential separation enforced + verified (1061 tests; data token FNO_UPSTOX_ACCESS_TOKEN, execution token UPSTOX_ACCESS_TOKEN disjoint; smoke PASS) — the single real F&O experiment is scheduled for tomorrow under explicit human-controlled enablement; no live order today",
   "last_completed_checkpoint": "WS 7.9 credential separation (analytics/data vs execution tokens, no fallback, no leakage) + 18 tests + smoke re-verification (dry-run PASS; gate default-closed; Algorithm Health unchanged RED/NO)",
-  "last_commit": "213cbf3",
-  "last_pushed_commit": "213cbf3",
+  "last_commit": "65fd839",
+  "last_pushed_commit": "65fd839",
   "tests": {
     "passed": 1061,
     "failed": 0,
