@@ -1630,6 +1630,57 @@ research cycle - conclusion B (no credible edge)`) and pushed to `origin/master`
 
 ---
 
+## 4ah. 2026-09-13 — Additional requirement: ALGO READY / ALGORITHM HEALTH monitor (+ live dashboard)
+
+**Objective.** Add a continuously maintained ALGORITHM READY / ALGORITHM HEALTH
+capability to the autonomous project workflow (no replacement of the existing
+plan): an objective, evidence-only monitor over **recorded closed trades**, a
+live human-readable dashboard, a machine-readable state file, and automated
+tests for every calculation. PAPER ONLY; real-money trading stays disabled.
+
+**Deliverables.**
+- `docs/project_status.html` + `docs/project_state.json` + generator
+  (`scripts/update_project_status.py`) — live dashboard with PROJECT / PHASES /
+  ENGINEERING / MODEL / PAPER TRADING / SAFETY / BLOCKERS / AGENT sections and a
+  prominent PAPER TRADING banner (state file is the machine-readable resume
+  point; HTML is the rendered view). Dashboard bootstrap committed `4419932`.
+- `evaluation/algorithm_health.py` — bucket-separated metrics (`backtest`,
+  `protected_oos`, `paper`, `today`, `rolling_recent`), objective health/trend/
+  readiness decision rules with **documented thresholds** (`docs/algorithm_ready_spec.md`),
+  never a win-rate shortcut.
+- `scripts/seed_algorithm_ledger.py` — reads the recorded champion replay
+  (`reports/model_performance/trades.csv`, 2,601 round trips), splits backtest
+  (2,216) vs protected OOS (384), applies the documented fresh-OOS warm-up
+  exclusion so the OOS slice reconciles **exactly** to the recorded OOS
+  confirmation (−21,759.37), and cross-checks full replay vs the recorded
+  summary (−143,210.37, 2,601 trades; win 404/loss 2,197). Fails loudly on any
+  mismatch > ₹0.01.
+- `scripts/assess_algorithm_health.py` — computes the assessment, writes
+  `reports/algorithm_state/assessment.json`, updates the `algorithm` section of
+  `docs/project_state.json`, re-renders the dashboard.
+- `tests/test_algorithm_health.py` — 23 tests (win rate, profit factor,
+  expectancy, drawdown, streaks, rolling windows, today window, t-stat,
+  health/readiness/trend rules, integrity-alert coupling, no-dataset-mixing and
+  no-win-rate-shortcut guardrails). **Full suite 866 passed** (843 + 23).
+- `docs/algorithm_ready_spec.md` — the documented threshold contract
+  (min 500 backtest / 30 OOS trades for GREEN; expectancy > 0; PF ≥ 1.0;
+  trend tolerance ±10%; ALGO READY YES requires ≥ 10 closed paper trades).
+
+**Verdict from real recorded data (honest).** ALGORITHM HEALTH **RED**, ALGO
+READY **NO**, performance trend **DETERIORATING** (newer-half expectancy worse
+than older half; 2022 ≈ −38.8/trade → 2025 ≈ −66.0/trade → 2026 ≈ −56.7/trade).
+Headline backtest figures: win rate 12.64%, profitability factor 0.184,
+expectancy −54.75/trade, net P&L −121,332.89 (280 wins / 1,936 losses over
+2,216 trades); protected OOS: net −21,759.37 over 384 trades, expectancy
+−56.67/trade; paper trades recorded: **0**. The monitor can never turn GREEN/YES
+from win rate alone — a high win rate with negative expectancy stays RED.
+
+**Status.** Committed and pushed as the ALGO READY / algorithm-health checkpoint
+(generator + dashboard bootstrap in `4419932`; health/ledger/assess/tests/spec
+in the follow-up commit of this session).
+
+---
+
 ## 5. Open Topics / Risks
 
 - **12-Sep-2026 research cycle concluded B (no credible edge; family closed).**

@@ -75,9 +75,36 @@
     "position_sizing_controls": "PROTECTED",
     "max_loss_controls": "PROTECTED"
   },
-  "last_activity": "Started autonomous execution of remaining Phase 7 plan: dashboard bootstrap + WS 7.6",
+  "last_activity": "ALGO READY assessed: health=RED ready=NO trend=DETERIORATING",
   "next_action": "Create dashboard generator, commit checkpoint, then execute WS 7.6",
   "agent_status": "RUNNING",
   "heartbeat": "",
-  "timestamp": ""
+  "timestamp": "",
+  "algorithm": {
+    "algorithm_health": "RED",
+    "algo_ready": "NO",
+    "win_rate": "12.63537906137184115523465704",
+    "winning_trades": 280,
+    "losing_trades": 1936,
+    "total_closed_trades": 2216,
+    "profit_factor": "0.1843496189567142965423787338",
+    "net_pnl": "-121332.892639530",
+    "expectancy": "-54.75311039689981949458483755",
+    "max_drawdown": "121332.892639530",
+    "current_drawdown": "0",
+    "consecutive_wins": 0,
+    "consecutive_losses": 6,
+    "average_confidence": null,
+    "last_10_win_rate": "20.0",
+    "last_20_win_rate": "10.0",
+    "today_win_rate": null,
+    "performance_trend": "DETERIORATING",
+    "algorithm_version": "v1-baseline-ma521",
+    "configuration_version": "v1-paper-defaults",
+    "readiness_reason": "paper readiness is NO because the health assessment is RED (backtest net expectancy -54.75311039689981949458483755/trade is not positive over 2216 trades)",
+    "health_reason": "backtest net expectancy -54.75311039689981949458483755/trade is not positive over 2216 trades",
+    "last_updated": "2026-09-13T08:41:43+05:30",
+    "headline_note": "headline figures above are the historical/backtest bucket (MA(5,21) recorded replay); per-bucket details are in the dashboard.",
+    "paper_trades_recorded": 0
+  }
 }

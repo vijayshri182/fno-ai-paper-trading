@@ -82,18 +82,93 @@ def _kv_table(rows: list[list[str]]) -> str:
 
 def _badge(status: str) -> str:
     tone = "neutral"
-    lowered = status.lower()
-    if "run" in lowered or "pass" in lowered or "ready" in lowered or "ok" in lowered:
+    lowered = str(status).lower()
+    if "run" in lowered or "pass" in lowered or "ready" in lowered or "ok" in lowered or lowered == "yes":
         tone = "ok"
-    elif "block" in lowered or "fail" in lowered or "stop" in lowered or "disabled" in lowered:
+    elif "block" in lowered or "fail" in lowered or "stop" in lowered or "disabled" in lowered or lowered == "no":
         tone = "bad"
-    elif "wait" in lowered or "warn" in lowered or "risk" in lowered or "plan" in lowered:
+    elif "wait" in lowered or "warn" in lowered or "risk" in lowered or "plan" in lowered or lowered == "monitor":
         tone = "warn"
     return f"<span class='badge {tone}'>{_esc(status)}</span>"
 
 
 def _section(title: str, body: str) -> str:
     return f"<section><h2>{_esc(title)}</h2>{body}</section>"
+
+
+def _assessment_rows() -> list[dict[str, object]]:
+    """Per-bucket detail from the assessment artifact when present."""
+    assessment_file = REPO_ROOT / "reports" / "algorithm_state" / "assessment.json"
+    if not assessment_file.exists():
+        return []
+    try:
+        payload = json.loads(assessment_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    return list(payload.get("buckets", {}).values())
+
+
+def _algorithm_section(state: dict[str, Any]) -> str:
+    algo = state.get("algorithm") or {}
+    headline = [
+        ["Algorithm status", _badge(algo.get("algorithm_health", "n/a"))],
+        ["ALGO READY (paper-trading readiness)", _badge(algo.get("algo_ready", "n/a"))],
+        ["Win rate", f"{algo.get('win_rate') or 'n/a'}%"],
+        ["Wins / Losses",
+         f"{algo.get('winning_trades') or 0} / {algo.get('losing_trades') or 0} "
+         f"(closed {algo.get('total_closed_trades') or 0})"],
+        ["Profit factor", algo.get("profit_factor") or "n/a"],
+        ["Net P&L", algo.get("net_pnl") or "n/a"],
+        ["Expectancy / trade", algo.get("expectancy") or "n/a"],
+        ["Max drawdown", algo.get("max_drawdown") or "n/a"],
+        ["Current drawdown", algo.get("current_drawdown") or "n/a"],
+        ["Consecutive wins / losses", f"{algo.get('consecutive_wins') or 0} / {algo.get('consecutive_losses') or 0}"],
+        ["Average signal confidence", algo.get("average_confidence") or "n/a (baseline emits none)"],
+        ["Last 10 win rate", f"{algo.get('last_10_win_rate') or 'n/a'}%"],
+        ["Last 20 win rate", f"{algo.get('last_20_win_rate') or 'n/a'}%"],
+        ["Today's win rate", f"{algo.get('today_win_rate') or 'n/a'}%"],
+        ["Performance trend", _badge(algo.get("performance_trend", "INSUFFICIENT DATA"))],
+        ["Algorithm version", algo.get("algorithm_version") or "n/a"],
+        ["Configuration version", algo.get("configuration_version") or "n/a"],
+        ["Paper trades recorded", algo.get("paper_trades_recorded") or 0],
+    ]
+    body = _kv_table(headline)
+
+    rows = _assessment_rows()
+    if rows:
+        bucket_head = ["Bucket", "Trades", "Win%", "Wins/Loss", "Net P&L", "Expectancy", "PF", "MaxDD", "Last10", "Last20"]
+        bucket_rows = []
+        for row in rows:
+            bucket_rows.append([
+                str(row.get("bucket", "?")),
+                str(row.get("total_closed", "?")),
+                str(row.get("win_rate_pct") or "n/a"),
+                f"{row.get('winning') or 0}/{row.get('losing') or 0}",
+                str(row.get("net_pnl") or "n/a"),
+                str(row.get("expectancy") or "n/a"),
+                str(row.get("profit_factor") or "n/a"),
+                str(row.get("max_drawdown_pct") or "n/a"),
+                str(row.get("last_10_win_rate") or "n/a"),
+                str(row.get("last_20_win_rate") or "n/a"),
+            ])
+        body += "<h3>Per-dataset bucket detail</h3>" + (
+            f"<table><thead><tr>{''.join(f'<th>{_esc(h)}</th>' for h in bucket_head)}</tr></thead>"
+            f"<tbody>{''.join('<tr>' + ''.join(f'<td class=num>{_esc(c)}</td>' for c in row) + '</tr>' for row in bucket_rows)}</tbody></table>"
+        )
+
+    reasons = [
+        ["WHY this status?", algo.get("health_reason") or "n/a"],
+        ["WHY this readiness?", algo.get("readiness_reason") or "n/a"],
+        ["Heading source", algo.get("headline_note") or ""],
+    ]
+    body += "<h3>Decision rationale</h3>" + _kv_table(reasons)
+    body += (
+        "<p class='note'><strong>PAPER-ONLY:</strong> ALGO READY is a "
+        "<em>paper-trading</em> readiness indicator. It never authorizes "
+        "real-money trading or live broker execution. Real-money trading stays "
+        "disabled.</p>"
+    )
+    return _section("ALGORITHM READY / HEALTH", body)
 
 
 def _git_facts() -> dict[str, str]:
@@ -280,6 +355,7 @@ def render() -> str:
   {_section("ENGINEERING", eng_body)}
   {_section("MODEL / STRATEGY", model_body)}
   {_section("PAPER TRADING", pt_body)}
+  {_algorithm_section(state)}
   {_section("SAFETY", safety_body)}
   {_section("BLOCKERS / RISKS", br_body)}
   {_section("AGENT", agent_body)}
