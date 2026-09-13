@@ -153,7 +153,8 @@ fno-ai-paper-trading/
 |       |   |                            #   intervals, instrument_registry, errors,
 |       |   |                            #   dataset_store, validation
 |       |-- strategies/                  # base, engine, moving_average_cross,
-|       |   |                           #   regime_filtered (WS 7.11 challenger)
+|       |   |                           #   regime_filtered (WS 7.11 challenger),
+|       |   |                           #   research_candidates (WS 7.16 H1-H5)
 |       |-- risk/                        # manager.py, sizer.py, stop_loss.py
 |       |-- broker/                      # base.py, paper_broker.py
 |       |-- portfolio/                   # portfolio.py
@@ -170,7 +171,8 @@ fno-ai-paper-trading/
 |       |-- regime/                      # WS 7.3 descriptive market regime detection
 |       |-- evaluation/                  # WS 7.4/7.5 historical + five-year replay,
 |       |   |                           #   session replay, reports,
-|       |   |                           #   champion_challenger (WS 7.11 comparison)
+|       |   |                           #   champion_challenger (WS 7.11 comparison),
+|       |   |                           #   candidates (WS 7.16 generic challenger harness)
 |       |-- experience/                  # WS 7.9 evidence domain: records, enums,
 |       |   |                           #   classification, queries, builders
 |       |-- learning/                   # WS 7.10 outcome analysis + gated candidate
@@ -189,8 +191,11 @@ fno-ai-paper-trading/
 |                            #   evaluate_champion_challenger.py (WS 7.11),
 |                            #   manage_model_versions.py (WS 7.12),
 |                            #   run_learning_loop.py (WS 7.13),
-|                            #   run_watchdog.py (WS 7.14)
-`-- tests/                  # 788 unit tests, no network, no external deps
+|                            #   run_watchdog.py (WS 7.14),
+|                            #   audit_champion_failure.py (WS 7.16),
+|                            #   evaluate_candidates.py (WS 7.16 selection),
+|                            #   finalize_oos_confirmation.py (WS 7.16 single OOS read)
+`-- tests/                  # 843 unit tests, no network, no external deps
 ```
 
 Build/run facts: Python 3.13+; virtualenv `.venv`; `pip install -r requirements.txt`; `python src/main.py` for demos; `pytest` for the suite; both `python -m fno_ai_paper_trading.backtest` and `python -m fno_ai_paper_trading.research` run offline demos.
@@ -523,10 +528,12 @@ Legend: **IMPLEMENTED** = exists and exercised by tests/demos; **CONFIGURED-SCAF
 | Operator CLI: offline report rendering from stored session payload | IMPLEMENTED | `scripts/paper_session_report.py` (WS 6.6) |
 | Architecture diagram (layered SVG) | IMPLEMENTED | `docs/architecture/architecture.svg` |
 | AI decision support / regime-aware evolution | IMPLEMENTED (evaluation-first) | `PROJECT_PLAN.md` §17d–§17f — frozen MA(5,21) baseline; WS 7.1–7.5 features/regime/evaluation/replay, WS 7.9 experience store, WS 7.10 gated candidate generation, WS 7.11 champion vs challenger (evidence only), WS 7.12 promotion gate + version registry/rollback, WS 7.13 continuous feedback/learning loop, WS 7.14 alerting + watchdog/health/fail-safe (paper-labelled, delivery-only) |
+| Real-data champion model-performance + failure audit | IMPLEMENTED | `evaluation/fast_signal.py`, `evaluation/model_performance.py`, `scripts/audit_champion_failure.py` — continuous 5m replay over 87,193 NIFTY bars; champion nets **-143.21%**; root cause: short-only churn (0/2601 long entries) |
+| WS 7.16 pre-registered challenger circuitry (H1–H5) | IMPLEMENTED — **concluded B** | `strategies/research_candidates.py`, `evaluation/candidates.py`, `scripts/evaluate_candidates.py` (selection, OOS withheld), `scripts/finalize_oos_confirmation.py` (single OOS read) — every rule net-negative on design/validation/OOS; shortlist OOS per-trade t = -2.05 / -2.95 (significantly **negative**); gate PROMOTE under defaults only (`require_positive_oos_pnl=False`); **REJECT** under credible-edge criteria; no promotion, registry untouched |
 | Real broker adapter | PLANNED | `PROJECT_PLAN.md` Phase 4; `Broker` ABC defined |
 | HTTP transport (curl.exe on Windows + urllib fallback) | IMPLEMENTED | `utils/http.py` |
 | Retry/backoff + structured logging | IMPLEMENTED | `utils/retry.py`, `utils/logging.py` |
-| Test suite | IMPLEMENTED | 788 tests pass offline (as of WS 7.14) |
+| Test suite | IMPLEMENTED | 843 tests pass offline (as of WS 7.16) |
 
 ---
 

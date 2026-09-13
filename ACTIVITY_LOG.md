@@ -26,6 +26,7 @@
 | 4 | Historical-data CLI + real-data research (NIFTY 50 1d 2015–2024) | **DONE** — commits `da1b59a`, `e1a2b38`; real dataset acquired 2026-09-08 |
 | 5 | AI analysis / decision support; backtesting engine + analytics | **Backtest engine:** folded into Phase 2 (implemented); analytics extended by the research framework (Phase 3). **AI analysis / decision support:** planned (not started) |
 | 6 | Paper Trading V1 — current-data paper session | **DONE — Phase 6 COMPLETE · V1 READY** — WS 6.2 (`e853667`), WS 6.3 (`b4f8129`), WS 6.4 stop-loss (`75d3a44`), WS 6.4b session runtime (`b05a17c`), WS 6.5 persistence (`118e976`), WS 6.7 acceptance replay (`0e5ce1c`, 30 tests), WS 6.1 doc alignment (`248c895`), WS 6.6 session ops / monitoring (`00ed8ed` + docs `c4570ba`; 561 suite at close), all pushed. 2026-09-11 documentation finalization → **Phase 6 COMPLETE · V1 IMPLEMENTATION COMPLETE · V1 STATUS: READY** (561/561 tests, 30/30 acceptance, paper-only boundary, deterministic runtime, persistence/recovery, monitoring, no live broker execution) |
+| 7 | Evaluation-first strategy research & regime discipline (WS 7.1–7.16) | **DONE** — WS 7.1–7.5, 7.9–7.14 implemented (784 tests at 4ae). Real-data champion evaluation (`550b5c8`, **net -143.21%**), failure audit (`a1d027b`), and the pre-registered challenger cycle (H1–H5) concluded **B — no credible, robust, reproducible edge** (843 tests); MA(5,21) stays the frozen baseline; no promotion executed |
 
 *Phase numbers in this table follow the activity log's own scheme; for plan-level numbering see PROJECT_PLAN §17d (Paper Trading V1 = Phase 6).*
 
@@ -1569,8 +1570,79 @@ NIFTY 5m + report evidence` (550b5c8), pushed.
 
 ---
 
+## 4ag. 2026-09-12 — WS 7.16: Controlled challenger research cycle (engine + research owner)
+
+**Objective.** Convert the champion negative result (`-143.21%`,
+`docs/model_performance_report.md`) into a disciplined research cycle: audit the
+failure, register a small explicit challenger set, evaluate with a protected
+single-use OOS, apply the existing promotion gate, and stop at **A** (credible
+edge passes) or **B** (no credible edge). PAPER ONLY — nothing was routed, tuned
+against OOS, or changed in risk/execution code.
+
+**Deliverables.**
+- `docs/champion_failure_audit.md` + `scripts/audit_champion_failure.py` →
+  `reports/model_performance/audit_champion_failure.json` (reconciliation True).
+  Root cause: **short-only churn into an uptrend** — 0/2601 long entries; gross
+  bar-close edge +1.12/trade (t=+0.66, none); slippage-adjusted realized
+  **-42.09/trade** (t=-24.60); friction ₹146,129 ≈ 50× gross edge; 70.7% of
+  trades held ≤20 bars all losers; only the 51+ bar bucket won (97 trades,
+  96.9%); every decision-time regime bucket negative. (committed `a1d027b`)
+- `src/fno_ai_paper_trading/strategies/research_candidates.py` — H1–H5
+  pre-registered O(n) providers + Strategy wrappers + `CANDIDATES` registry
+  (locked params, bounded perturbation grids, rationale).
+- `src/fno_ai_paper_trading/evaluation/candidates.py` — generic harness
+  (engine `signals=` path, date split design/validation/protected-OOS,
+  per-segment analytics, cost scan, robustness grid, gate delta views).
+- `scripts/evaluate_candidates.py` (selection; OOS withheld from print) and
+  `scripts/finalize_oos_confirmation.py` (the single OOS read + gate + t-stats).
+
+**Protocol.** DESIGN = bars < 2025-07-01 (64,831), VALIDATION = 2025-07-01..2025-12-31
+(9,387), PROTECTED OOS = ≥ 2026-01-01 (12,975, 173 days). Selection on
+design+validation only; OOS read once for the shortlist (H2 long-only MA 20/50,
+H4 trend-gated MA 5/21); c1/c3/c5 dropped on design+validation grounds.
+
+**Headline findings (honest).** Every registered rule is net-negative on every
+segment. Shortlist OOS: H2 -6.51% (130 trades), H4 -3.59% (50 trades); champion
+OOS -21.76% with buy&hold OOS -10.58%. Per-trade OOS edges (slippage-adj,
+pre-commission): champion **-42.07 (t=-6.76)**, H2 **-35.45 (t=-2.05)**,
+H4 **-57.52 (t=-2.95)** — significantly **negative** even pre-commission. OOS
+zero-friction gross: H2 +1.70% (only non-negative number, impossible to realize),
+H4 -0.48%. All OOS perturbation variants negative. **Under default gate criteria
+(`require_positive_oos_pnl=False`) both shortlisted challengers mechanically
+receive PROMOTE — a criterion artifact (they merely lose less than a -21.8%
+champion); under the credible-edge criterion (positive OOS net P&L) both are
+REJECT. No promotion executed; registry untouched.**
+
+**Determination.** **B.** No credible, robust, reproducible edge; further
+optimization of this family is not scientifically justified (confirmed by the
+negative per-trade t-stats, not absence of effort). Final deliverable
+`docs/model_research_final_report.md` (20 required sections).
+
+**Verification.** Full suite **843 passed** (813 baseline + 30 new:
+`test_research_candidates.py` provider≡strategy equivalence, future-perturbation
+no-look-ahead, determinism, param validation, engine replay equality;
+`test_candidates_eval.py` date-split, reconciliation, segment partition,
+monotone cost scan, bounded robustness, gate key views). Plus a latent
+invariant added: Donchian requires `entry_channel > exit_channel`.
+
+**Status.** Committed as `docs: WS 7.16 final model research report (conclusion B)`
+and pushed to `origin/master`.
+
+---
+
 ## 5. Open Topics / Risks
 
+- **12-Sep-2026 research cycle concluded B (no credible edge; family closed).**
+  The pre-registered challenger cycle (WS 7.16, `docs/model_research_final_report.md`)
+  found every MA-cross-family rule net-negative on design, validation **and** the
+  protected single-use OOS; per-trade OOS edges are significantly negative even
+  pre-commission (champion t=-6.76, best challenger t=-2.05). The promotion gate
+  returned PROMOTE under default criteria only because the champion is
+  catastrophic (`require_positive_oos_pnl=False` makes "beats champion" mean
+  "loses less"); under the credible-edge criteria both shortlisted challengers
+  are REJECTed. Recommendation: revisit the gate default for negative-baseline
+  regimes (require positive OOS P&L). MA(5,21) remains FROZEN; no promotion.
+  Any future research must use a fresh, untouched OOS period.
 - **12-Sep-2026 continuous real-data replay: champion MA(5,21) nets -143.21%**
   over 87,193 real NIFTY 5m bars (friction ₹146,129 vs gross trading P&L ≈
   +₹2,918; all years and all decision-time regimes negative; only the zero-cost

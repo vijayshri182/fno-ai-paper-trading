@@ -461,8 +461,15 @@ Never commit real values to `.env` — the file is git-ignored.
   **-143.21%** over 87,193 real NIFTY 5m bars (all years and all decision-time
   regimes negative; NIFTY buy-and-hold +27.96%) — a clear negative result on
   real data, kept as evidence for the promotion gate, not a reason to change
-  the algorithm. Any candidate improvement must clear the evaluation discipline
-  in `PROJECT_PLAN.md` §17e.
+  the algorithm. The **12-Sep-2026 controlled challenger cycle**
+  (`docs/model_research_final_report.md`) then registered and evaluated five
+  pre-registered MA-cross-family challengers on design/validation with a
+  protected single-use out-of-sample period and concluded **B — no credible,
+  robust, reproducible edge** (shortlist OOS per-trade t-stats -2.05 / -2.95,
+  both significantly negative even before commission). No challenger was
+  promoted; MA(5,21) stays frozen; the family is closed unless verified on a
+  fresh, untouched OOS period. Any future candidate must clear the evaluation
+  discipline in `PROJECT_PLAN.md` §17e.
 - **Market data is offline-safe:** the only provider exercised by the demos is
   `InMemoryMarketDataProvider`. The Kite Connect and Upstox adapters are
   read-only market-data clients, unit-tested against mocked HTTP; they never
@@ -487,7 +494,7 @@ Never commit real values to `.env` — the file is git-ignored.
 | **Phase 3 (historical, ready)** | Local dataset cache + read-only Upstox historical adapter + interval/validation tooling — enabled when the user configures `UPSTOX_ACCESS_TOKEN` |
 | **Phase 3 (upcoming)** | Historical-data CLI/download pipeline |
 | **Phase 6 (Paper Trading V1, done — READY)** | Live/current-data paper session: completed-5m-candle loop, 1% risk sizing, 2% stop-loss, long-only NIFTY 50, persistence under git-ignored `paper_state/`, monitoring/ops, 30 offline acceptance-replay tests — see `docs/trading/PAPER_TRADING_V1.md` |
-| **Phase 7 (post-V1, in progress — evaluation-first)** | AI decision-support foundation (advisory only), deterministic feature engineering, market regime detection, historical strategy evaluation, ~5-year replay capability, the durable experience store, outcome analysis / candidate generation, champion vs challenger evaluation, controlled promotion/rollback via an evidence-gated promotion gate + version registry, the continuous feedback/learning loop (paper-trade replay → experience capture → hypotheses → comparison → gate → promoted champion feeds the next cycle), and a pluggable alert engine + watchdog/health/fail-safe (all alerts labeled **PAPER TRADING — NO LIVE ORDER**) are implemented; MA(5,21) is the frozen baseline; regime-aware and AI candidates are researched/validated (historical + out-of-sample, no look-ahead, no leakage) before adoption — see `PROJECT_PLAN.md` §17d/§17e/§17g |
+| **Phase 7 (post-V1, in progress — evaluation-first)** | AI decision-support foundation (advisory only), deterministic feature engineering, market regime detection, historical strategy evaluation, ~5-year replay capability, the durable experience store, outcome analysis / candidate generation, champion vs challenger evaluation, controlled promotion/rollback via an evidence-gated promotion gate + version registry, the continuous feedback/learning loop (paper-trade replay → experience capture → hypotheses → comparison → gate → promoted champion feeds the next cycle), and a pluggable alert engine + watchdog/health/fail-safe (all alerts labeled **PAPER TRADING — NO LIVE ORDER**) are implemented; MA(5,21) is the frozen baseline. The real-data **champion failure audit** (`docs/champion_failure_audit.md`) and the **pre-registered challenger cycle** (H1–H5, `docs/model_research_final_report.md`) concluded **B — no credible edge; no promotion** (protected single-use OOS 2026-01-01..2026-09-11; best challenger OOS per-trade t = -2.05). Future regime-aware/AI candidates require a fresh untouched OOS period — see `PROJECT_PLAN.md` §17d/§17e/§17g |
 | **Phase 7+ (PLANNED — later, controlled)** | Regime-aware strategy evaluation (WS 7.6), continuous paper-trading agent (WS 7.8), GUI/monitoring dashboard (read-only, "PAPER TRADING — NO LIVE ORDERS" — WS 7.7), and third-party notification integrations — not implemented (`PROJECT_PLAN.md` §17f, §17h–§17l) |
 | **Phase 4** | Real broker adapter behind an interface, required to remain disabled by default |
 

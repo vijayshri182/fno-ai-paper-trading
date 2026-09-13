@@ -1206,7 +1206,31 @@ AI remains advisory. **Deterministic controls remain authoritative.**
   baseline when evidence demonstrates **meaningful improvement while respecting
   risk constraints**.
 
-## 17e.11 Distinctions preserved
+## 17e.11 First registered cycle — outcome 2026-09-12 (WS 7.16)
+
+The first controlled candidate cycle has been run and closed on real data
+(see `docs/model_research_final_report.md`, `docs/champion_failure_audit.md`):
+
+- Five pre-registered MA-cross-family challengers (long-only 5/21, long-only
+  20/50, momentum-gated 5/21, trend-gated 5/21, Donchian 20/10) were evaluated
+  on design (bars < 2025-07-01) and validation (2025-07-01..2025-12-31) with a
+  **protected single-use OOS** (≥ 2026-01-01, 12,975 bars / 173 days) consumed
+  exactly once for the shortlist (H2, H4).
+- **Determination: B — no credible, robust, reproducible edge.** Every rule is
+  net-negative on every segment. OOS per-trade edges (slippage-adjusted,
+  pre-commission) are significantly **negative**: champion **t = -6.76**, H2
+  **t = -2.05**, H4 **t = -2.95**. The default promotion gate returns PROMOTE
+  only because `require_positive_oos_pnl=False` makes "beats champion" equal
+  "loses less than a -21.8% champion"; under the credible-edge criterion
+  (positive OOS P&L) both shortlisted challengers are REJECT. **No promotion;
+  registry untouched; MA(5,21) stays FROZEN.**
+- Consequence for future cycles: re-opening this family requires a **fresh,
+  untouched** OOS period and a new pre-registered hypothesis set; parameter
+  grids over the same window are not scientifically justified. Consider
+  tightening `PromotionCriteria.require_positive_oos_pnl` for negative-baseline
+  regimes.
+
+## 17e.12 Distinctions preserved
 
 * V1 (Phase 6) = completed/stable paper-trading infrastructure.
 * Phase 7 = research & evaluation (this discipline) and the PLANNED capabilities

@@ -19,6 +19,18 @@
 > benchmark +27.96% buy-and-hold; all splits/walk-forward negative). This is a
 > **clear negative result on real data**; MA(5,21) remains frozen pending any
 > challenger passing the §17d/§17e promotion gates.
+>
+> **2026-09-12 research cycle update (WS 7.16 / `docs/model_research_final_report.md`):**
+> the failure audit (`docs/champion_failure_audit.md`) plus the five pre-registered
+> challengers H1–H5 were evaluated on design/validation with a protected single-use
+> OOS. **Conclusion B — no credible, robust, reproducible edge.** Every rule is
+> net-negative on every segment; shortlist OOS per-trade edges are significantly
+> **negative** even pre-commission (champion t=-6.76, H2 t=-2.05, H4 t=-2.95). The
+> default-criteria gate mechanically PROMOTEs both shortlist challengers only
+> because it does not require positive OOS P&L (they lose less than a -21.8%
+> champion); under the credible-edge criterion both are **REJECT**. No promotion;
+> registry untouched; MA(5,21) stays frozen. Full suite: **843 passed** (813 + 30
+> candidate/harness tests).
 
 ---
 
