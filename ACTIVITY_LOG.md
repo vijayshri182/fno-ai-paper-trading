@@ -2022,6 +2022,89 @@ close-out checkpoint.
 
 ---
 
+## 4an. 2026-09-13 — Local Upstox OAuth callback (loopback-only) + explicit execution-credential roles
+
+**Requirement (operator-mandated amendment to WS 7.9).** Register and implement
+the minimum safe local Upstox OAuth callback at `http://127.0.0.1:8000/callback`:
+Browser → Upstox authorization → `callback?code=...` → local handler → auth-code
+exchange → access token. Rules: local-only (never a public interface); the
+authorization code and access token are **never** stored/printed in Git, reports,
+logs, dashboard, or source; **no real order** is placed as part of OAuth
+implementation or testing; credentials roles are explicit — `UPSTOX_API_KEY`
+identifies the Upstox app/client, `UPSTOX_API_SECRET` is used **only** for
+OAuth/token exchange (never an API header), `UPSTOX_ACCESS_TOKEN` authenticates
+API requests; analytics never falls back to `UPSTOX_ACCESS_TOKEN` and execution
+never falls back to the analytics credential; PAPER must not require an Upstox
+token; token presence never auto-enables live.
+
+**What changed.**
+
+- `execution/upstox.py` — `UpstoxCredentials` gains the `api_secret` field
+  (read from `UPSTOX_API_SECRET`, stripped in `__post_init__`); module docstring
+  and `repr` document/enforce the three roles (`repr` shows only
+  `api_secret_configured=bool`, never the secret).
+- `src/fno_ai_paper_trading/execution/oauth.py` — new (no order surface):
+  `UpstoxOAuthConfig` (repr redacts `client_secret`), `authorize_url()`
+  (`{base}/v2/login/authorization/dialog?client_id=...&redirect_uri=...&response_type=code&state=...`),
+  `new_oauth_state()` (32-byte `secrets.token_urlsafe`), `resolve_callback_path()`
+  (CSRF state compared with `hmac.compare_digest`), `LocalCallbackServer`
+  (loopback-only host guard "127.0.0.1"/"::1"/"localhost"; `ThreadingHTTPServer`;
+  handler `log_message` suppressed because the request path carries the auth
+  code; `serve_once(timeout)` via `serve_forever` + `shutdown`), `TokenResponse`,
+  `exchange_code_for_token()` / `exchange_from_env()` (form POST to
+  `{base}/v2/login/authorization/token`; `HttpError` → typed `UpstoxExecutionError`;
+  robust `data.`/top-level access-token JSON parse), and success/error HTML pages
+  that never echo code or token.
+- `scripts/upstox_oauth.py` — new CLI: `--client-id`, `--client-secret`,
+  `--redirect-uri`, `--port`, `--base-url`, `--timeout`, `--no-open`,
+  `--write-env`/`--no-write-env`, `--env-file` (default repo `.env`), `--state`
+  (explicit CSRF state for reproducible tests). Never prints the code, secret or
+  token; default stores the access token in the git-ignored `.env` via
+  `dotenv.set_key` (`--no-write-env` leaves it in-process only); prints the
+  authorization URL (public client id only) when not auto-opened; exit 0 on
+  success, exit 2 on config error / timeout; prints reminders that the token is
+  not an enablement switch and that the helper cannot place a trade.
+- `.env.example`, README, PROJECT_PLAN §17p (new hard-safety item 7),
+  ARCHITECTURE (env table, tree, §20), PROGRESS — execution-credential roles
+  and OAuth helper documented; no placeholder values contain secrets.
+
+**Tests.** `tests/test_upstox_oauth.py` (26 tests, deterministic, offline):
+authorize-URL construction (params, no secret in URL, exact 127.0.0.1:8000
+callback, unpredictable state), callback-path resolution (accepted/wrong
+state/missing code/trailing slash/root/404), loopback-only server (0.0.0.0
+refused; real urllib GET round-trip returns the code while the body never
+contains code/token; wrong-state 400; missing-code 400; timeout), token
+exchange (form body captured incl. client secret only in the body; nested
+`data` payload; empty code → no request; missing access_token; HTTP 400/401 →
+typed `UpstoxExecutionError`), no-leakage/no-orders (repr redacts secret; no
+`/order` surface in URLs), and a **full loopback CLI round-trip** against a
+local mock token endpoint asserting the token lands only in the passed
+git-ignored `.env` file. Plus 4 new api-secret boundary tests in
+`tests/test_credential_separation.py` (from_env reads `UPSTOX_API_SECRET`; no
+fallback from an analytics secret; secret never in request headers; secret
+never in repr).
+
+**Verification.**
+
+- Focused run: 47 passed (26 OAuth + 21 credential separation).
+- Full suite: **1091 passed** in 45.26s (1061 + 30; 0 skipped / 0 xfailed).
+- `py_compile` clean for `execution/oauth.py`, `execution/upstox.py`,
+  `scripts/upstox_oauth.py`, tests.
+- CLI failure paths offline: missing credentials → exit 2; no callback within
+  timeout → exit 2 with the loopback-only authorization URL printed (no secret
+  echoed).
+
+**Honest status.** The OAuth helper has been verified against loopback mocks
+only; it has **not** been run against Upstox's live authorization service, and
+**no real order was placed** (the helper cannot place one). The single REAL F&O
+experiment remains scheduled for **2026-09-14** under explicit
+operator-controlled enablement.
+
+**Status.** Uncommitted (local working tree) — reported to the operator for
+review; commit/push only when requested.
+
+---
+
 ## 5. Open Topics / Risks
 
 - **13-Sep-2026 WS 7.9 dry-run verified only; the single REAL F&O experiment is

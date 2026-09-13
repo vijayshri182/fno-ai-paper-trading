@@ -37,6 +37,19 @@
 > redacts tokens. +18 tests (`tests/test_credential_separation.py`); full suite
 > now **1061 passed**.
 >
+> **2026-09-13 local Upstox OAuth callback implemented (WS 7.9 addendum):**
+> `execution/oauth.py` + `scripts/upstox_oauth.py` obtain a fresh
+> `UPSTOX_ACCESS_TOKEN` through Upstox's authorization-code flow on a
+> **loopback-only** callback (`http://127.0.0.1:8000/callback`). Credential
+> roles are explicit and tested: `UPSTOX_API_KEY` = app/client id (public);
+> `UPSTOX_API_SECRET` = token-exchange body only (never an API header, never
+> echoed); `UPSTOX_ACCESS_TOKEN` = API auth (data layer never reads any of
+> these, execution never reads `FNO_UPSTOX_*`). The helper never prints/logs
+> the code, secret or token (token → git-ignored `.env` only, or in-process
+> with `--no-write-env`), places **no orders**, and never opens the live gate.
+> +26 tests (`tests/test_upstox_oauth.py` incl. full loopback CLI round-trip);
+> full suite now **1091 passed**.
+>
 > **2026-09-12 research cycle update (WS 7.16 / `docs/model_research_final_report.md`):**
 > the failure audit (`docs/champion_failure_audit.md`) plus the five pre-registered
 > challengers H1–H5 were evaluated on design/validation with a protected single-use

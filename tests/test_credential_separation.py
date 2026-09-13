@@ -48,6 +48,7 @@ from fno_ai_paper_trading.utils.http import HttpError
 
 DATA_TOKEN = "DATA-TOKEN-1234567890"
 EXEC_TOKEN = "EXEC-TOKEN-0987654321"
+EXEC_SECRET = "app-secret-never-leaked-abcdef"
 HEX_TOKEN = "abcdef0123456789abcdef0123456789abcdef01"
 KEY = "NSE_FO|NIFTY 24 DEC 2026 24500 CE"
 LOT = 75
@@ -199,6 +200,39 @@ class TestExecutionCredentials:
         with pytest.raises(Exception) as excinfo:
             adapter.place_order(_buy_order())
         assert "Upstox rejected the access token" in str(excinfo.value)
+
+    # ------------------------------------------------------------------
+    # UPSTOX_API_SECRET role: OAuth exchange only, never on API calls
+    # ------------------------------------------------------------------
+
+    def test_execution_credentials_read_api_key_and_secret(self, monkeypatch) -> None:
+        monkeypatch.setenv("UPSTOX_API_KEY", "app-key")
+        monkeypatch.setenv("UPSTOX_API_SECRET", EXEC_SECRET)
+        monkeypatch.setenv("UPSTOX_ACCESS_TOKEN", EXEC_TOKEN)
+        credentials = UpstoxCredentials.from_env()
+        assert credentials.api_key == "app-key"
+        assert credentials.api_secret == EXEC_SECRET
+
+    def test_execution_never_falls_back_to_analytics_secret(self, monkeypatch) -> None:
+        monkeypatch.setenv("UPSTOX_API_SECRET", "")
+        monkeypatch.setenv("FNO_UPSTOX_CLIENT_SECRET", "analytics-ss-flow-secret")
+        credentials = UpstoxCredentials.from_env()
+        assert credentials.api_secret == ""
+
+    def test_api_secret_never_enters_request_headers(self) -> None:
+        credentials = UpstoxCredentials(
+            access_token=EXEC_TOKEN, api_key="app-key", api_secret=EXEC_SECRET
+        )
+        headers = credentials.headers()
+        joined = "\n".join(str(k) + ": " + str(v) for k, v in headers.items())
+        assert EXEC_SECRET not in joined
+        assert "api_secret" not in headers
+
+    def test_api_secret_never_appears_in_repr(self) -> None:
+        credentials = UpstoxCredentials(api_secret=EXEC_SECRET)
+        rendered = repr(credentials)
+        assert EXEC_SECRET not in rendered
+        assert "api_secret_configured=True" in rendered
 
 
 # ---------------------------------------------------------------------------

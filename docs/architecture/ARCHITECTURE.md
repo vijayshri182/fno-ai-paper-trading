@@ -188,7 +188,7 @@ fno-ai-paper-trading/
 |       |-- execution/                  # WS 7.9 controlled live F&O execution
 |       |   |                           #   integration test (DEFAULT-CLOSED):
 |       |   |                           #   gate, state, signal, instrument, risk,
-|       |   |                           #   upstox, memory, manager, audit
+|       |   |                           #   upstox, oauth, memory, manager, audit
 |       `-- utils/                       # functions, http, retry, logging
 |-- scripts/                 # acquire_dataset.py, research_real_data.py,
 |                            #   upstox_smoke_test.py, generate_research_report.py,
@@ -202,8 +202,9 @@ fno-ai-paper-trading/
 |                            #   evaluate_candidates.py (WS 7.16 selection),
 |                            #   finalize_oos_confirmation.py (WS 7.16 single OOS read),
 |                            #   run_paper_agent.py (WS 7.8),
-|                            #   run_live_execution_test.py (WS 7.9 execution layer)
-`-- tests/                  # 1061 unit tests, no network, no external deps
+|                            #   run_live_execution_test.py (WS 7.9 execution layer),
+|                            #   upstox_oauth.py (WS 7.9 local OAuth token helper)
+`-- tests/                  # 1091 unit tests, no network, no external deps
 ```
 
 Build/run facts: Python 3.13+; virtualenv `.venv`; `pip install -r requirements.txt`; `python src/main.py` for demos; `pytest` for the suite; both `python -m fno_ai_paper_trading.backtest` and `python -m fno_ai_paper_trading.research` run offline demos.
@@ -411,6 +412,7 @@ These current limits are **static caps**, not the V1 session rules. V1 risk-base
 | `PaperSettings` | `FNO_` | Paper-run defaults: capital, risk caps, commission/slippage, log level, environment. **Plus five V1 paper-session fields**: `paper_interval` ("5m"), `paper_lookback_days` (3), `paper_risk_per_trade_pct` (0.01), `paper_stop_loss_pct` (0.02), `paper_state_dir` ("paper_state"). Three are consumed as `PaperSession` defaults (WS 6.4b); none are wired into `load_settings()` yet. |
 | `KiteSettings` | `FNO_KITE_*` | Read-only Kite client: api_key, access_token (empty by default), base_url, timeout, max_retries; `configured` is True only when both credentials present. |
 | `UpstoxSettings` | `FNO_UPSTOX_*` (analytics/data) | Read-only Upstox client **for the data layer only**: client_id/secret (SSO flow placeholders), access_token (`FNO_UPSTOX_ACCESS_TOKEN`), api_key, base_url, timeout, max_retries; `configured` True when a token is present. Never passed to the execution path. |
+| Execution credentials | `UPSTOX_*` (execution layer) | Read by `execution/upstox.py` and `execution/oauth.py` directly, never by `config/settings.py` or the data layer: `UPSTOX_ACCESS_TOKEN` (API auth), `UPSTOX_API_KEY` (app/client id — public, optional `x-api-key`), `UPSTOX_API_SECRET` (OAuth token-exchange body ONLY), `UPSTOX_BASE_URL`, `UPSTOX_TIMEOUT_SECONDS`, `UPSTOX_MAX_RETRIES`. |
 
 - `load_settings`, `load_kite_settings`, `load_upstox_settings` load `.env` (or an explicit file) then read process env; exported variables take precedence. `load_upstox_settings` reads the **data-scoped** `FNO_UPSTOX_*`; the WS 7.9 execution adapter reads its own `UPSTOX_*` variables directly (credentials never cross layers, `tests/test_credential_separation.py`).
 - **Secrets:** all real credentials belong in git-ignored `.env` or the environment; `.env.example` contains only template/empty values; no module hard-codes credentials and no module logs them (`utils/logging.py` explicitly never emits environment values).
@@ -588,7 +590,7 @@ Legend: **IMPLEMENTED** = exists and exercised by tests/demos; **CONFIGURED-SCAF
 | HTTP transport (curl.exe on Windows + urllib fallback) | IMPLEMENTED | `utils/http.py` |
 | Retry/backoff + structured logging | IMPLEMENTED | `utils/retry.py`, `utils/logging.py` |
 | Continuous paper-trading agent (WS 7.8) | IMPLEMENTED | `agent/` package + `scripts/run_paper_agent.py` — MARKET CLOSED/OPEN states, watchdog fail-safe STOP, dual checkpoint; paper-only (§17h) |
-| Controlled live F&O execution integration test (WS 7.9 execution layer) | IMPLEMENTED — dry-run verified | `execution/manager.py` → `scripts/run_live_execution_test.py` — smoke run PASS/COMPLETE/PAPER/flat; 67 tests (§17p); +18 credential-separation tests (`tests/test_credential_separation.py`) |
+| Controlled live F&O execution integration test (WS 7.9 execution layer) | IMPLEMENTED — dry-run verified | `execution/manager.py` → `scripts/run_live_execution_test.py` — smoke run PASS/COMPLETE/PAPER/flat; 67 tests (§17p); +18 credential-separation tests (`tests/test_credential_separation.py`); +26 OAuth callback tests (`tests/test_upstox_oauth.py` incl. loopback token-exchange E2E) |
 | Test suite | IMPLEMENTED | 1061 tests pass offline (as of WS 7.9 execution layer + credential separation) |
 
 ---
@@ -689,7 +691,8 @@ The system's design makes safety structural rather than behavioral. Reproduced a
 
 - **Paper-only toggle is impossible to flip at runtime.** `Broker.is_live` is a class attribute default `False`; `PaperBroker` hard-codes it and rejects live construction. No environment, config key, or code path can turn live execution on.
 - **No write endpoints exist in the data layer.** Upstox/Kite adapters perform reads (quotes, candles, master, status) only; scripts use `GET` only. Therefore a malfunction cannot place real orders through the data layer.
-- **Credential separation is structural.** The analytics/data credential (`FNO_UPSTOX_ACCESS_TOKEN`) exists only in the data-layer settings/provider and the data scripts; the execution credential (`UPSTOX_ACCESS_TOKEN`) is read only by the WS 7.9 gate and `execution/upstox.py`. The adapter no longer imports the data settings object, the data provider fails a fetch without its own token (it never reads `UPSTOX_ACCESS_TOKEN`), the adapter fails a non-dry-run order without `UPSTOX_ACCESS_TOKEN` before any HTTP write, paper trading never requires the execution token, a token's presence never opens the gate, and every output path (reprs, reasons, audit) redacts token values. Enforced by `tests/test_credential_separation.py`.
+- **Credential separation is structural.** The analytics/data credential (`FNO_UPSTOX_ACCESS_TOKEN`) exists only in the data-layer settings/provider and the data scripts; the execution credentials (`UPSTOX_API_KEY`, `UPSTOX_API_SECRET`, `UPSTOX_ACCESS_TOKEN`) are read only by the WS 7.9 gate, `execution/upstox.py` and `execution/oauth.py`. The adapter no longer imports the data settings object, the data provider fails a fetch without its own token (it never reads `UPSTOX_ACCESS_TOKEN`), the adapter fails a non-dry-run order without `UPSTOX_ACCESS_TOKEN` before any HTTP write, paper trading never requires the execution token, a token's presence never opens the gate, and every output path (reprs, reasons, audit) redacts token values. Enforced by `tests/test_credential_separation.py`.
+- **Local OAuth is loopback-only and order-free.** `execution/oauth.py` + `scripts/upstox_oauth.py` obtain a fresh `UPSTOX_ACCESS_TOKEN` via Upstox authorization-code flow: the callback server binds **only** 127.0.0.1/::1/localhost (`http://127.0.0.1:8000/callback`), the CSRF `state` is compared in constant time, handler access logs are suppressed (the request path carries the auth code), the client secret never leaves the token-exchange form body, and the code/secret/token are never printed, logged, or persisted outside the git-ignored `.env` (`--no-write-env` keeps the token in-process only). The helper places **no orders** and cannot enable live execution by itself. Enforced by `tests/test_upstox_oauth.py`, including a full loopback CLI round-trip against a local mock token endpoint. Credential roles are explicit and tested: `UPSTOX_API_KEY` = app/client id; `UPSTOX_API_SECRET` = token exchange only; `UPSTOX_ACCESS_TOKEN` = API auth.
 - **Single mandatory risk gate.** Strategies, services, and backtests all route through `RiskManager`; a rejection stops execution. Strategies cannot place broker orders directly.
 - **Determinism = auditable.** `Decimal` math, no randomness, bar-timestamped backtest fills, and hand-verified datasets let any result be reproduced and reviewed.
 - **Credentials stay out of code and logs.** `.env` git-ignored; `.env.example` safe; logging never emits environment values; providers fail with typed configuration errors when credentials are absent.

@@ -438,7 +438,8 @@ Defaults are shown next to each variable in `.env.example`.
 | `FNO_UPSTOX_TIMEOUT_SECONDS` | `10` | HTTP timeout for Upstox data calls |
 | `FNO_UPSTOX_MAX_RETRIES` | `3` | Retries on rate-limit/5xx/network errors |
 | `UPSTOX_ACCESS_TOKEN` | *(empty)* | **Execution-layer** Upstox token, consumed ONLY by the WS 7.9 gate/adapter. Not an enablement switch — a real send additionally needs `FNO_LIVE_EXECUTION_TEST_ENABLED=1`, a matching consent fingerprint and `--confirm-live-enablement`. The data layer never reads it |
-| `UPSTOX_API_KEY` | *(empty)* | Execution-layer Upstox API key (optional `x-api-key` header) |
+| `UPSTOX_API_KEY` | *(empty)* | Execution-layer Upstox API key (public app/client id; optional `x-api-key` header) |
+| `UPSTOX_API_SECRET` | *(empty)* | Upstox OAuth client secret — used ONLY in the token-exchange body of the local OAuth helper (`scripts/upstox_oauth.py`); never an API header, never echoed, never committed |
 | `UPSTOX_BASE_URL` | `https://api.upstox.com` | Upstox execution endpoint base URL |
 | `UPSTOX_TIMEOUT_SECONDS` | `10` | HTTP timeout for execution calls |
 | `UPSTOX_MAX_RETRIES` | `3` | Retries on rate-limit/5xx/network errors |
@@ -455,13 +456,18 @@ Never commit real values to `.env` — the file is git-ignored.
 
 **Credential separation (mandatory).** Analytics/data credentials
 (`FNO_KITE_*`, `FNO_UPSTOX_*`) live exclusively in the analytics/data layer;
-the WS 7.9 execution token (`UPSTOX_ACCESS_TOKEN`) is consumed only by the
-execution gate/adapter. Neither layer falls back to the other's token: the
-data provider refuses a fetch without `FNO_UPSTOX_ACCESS_TOKEN`, and the
-execution adapter refuses a non-dry-run order without `UPSTOX_ACCESS_TOKEN`
-(before any HTTP write). Paper trading never requires the execution token, and
-presence of `UPSTOX_ACCESS_TOKEN` alone can **never** open the live gate.
-Enforced by `tests/test_credential_separation.py`.
+the WS 7.9 execution credentials (`UPSTOX_API_KEY`, `UPSTOX_API_SECRET`,
+`UPSTOX_ACCESS_TOKEN`) are consumed only by the execution gate/adapter.
+Neither layer falls back to the other's tokens: the data provider refuses a
+fetch without `FNO_UPSTOX_ACCESS_TOKEN`, and the execution adapter refuses a
+non-dry-run order without `UPSTOX_ACCESS_TOKEN` (before any HTTP write).
+Credential roles are explicit: `UPSTOX_API_KEY` identifies the Upstox app;
+`UPSTOX_API_SECRET` is used ONLY in the OAuth token-exchange body
+(`scripts/upstox_oauth.py`, loopback-only `http://127.0.0.1:8000/callback`)
+and never in an API header; `UPSTOX_ACCESS_TOKEN` authenticates API requests
+and is never obtainable via analytics fallback. Paper trading never requires
+the execution token, and presence of `UPSTOX_ACCESS_TOKEN` alone can **never**
+open the live gate. Enforced by `tests/test_credential_separation.py`.
 
 ---
 
@@ -481,7 +487,12 @@ Enforced by `tests/test_credential_separation.py`.
 - **No secrets in code:** all credentials belong in `.env` (git-ignored) or
   environment variables, never in source. The Kite and Upstox adapters refuse to
   send data without credentials and raise a typed `ProviderConfigurationError`
-  when misconfigured.
+  when misconfigured. The execution-layer OAuth helper (`scripts/upstox_oauth.py`)
+  binds only to `127.0.0.1` (`http://127.0.0.1:8000/callback`), uses the client
+  secret **only** in the token-exchange body, never prints/logs the code, secret,
+  or token (token is written only to the git-ignored `.env`), and places **no
+  orders** — verified by `tests/test_upstox_oauth.py` (incl. a full loopback
+  CLI round-trip).
 - **No AI/strategy claims:** the strategy engine is deterministic (moving
   average crossover; MA(5,21) is the frozen V1 baseline). AI decision support
   and the learning loop (Phase 7) are implemented behind an interface with

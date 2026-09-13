@@ -19,6 +19,12 @@ Safety properties:
   falls back to it. The token is never logged; ``repr`` redacts it.
 * Without ``UPSTOX_ACCESS_TOKEN`` the credentials are simply unconfigured and a
   non-dry-run attempt raises **before any HTTP write**.
+* Credential roles (see `.env.example` and ``execution/oauth.py``):
+  ``UPSTOX_API_KEY`` identifies the Upstox application (client id) and is sent
+  as ``x-api-key``; ``UPSTOX_API_SECRET`` is used **only** by the OAuth token
+  exchange and is never sent on API calls; ``UPSTOX_ACCESS_TOKEN`` authenticates
+  API requests. The API secret is stripped/normalized like every other value and
+  is never included in ``headers()``, ``repr``, audit or logs.
 * Non-2xx HTTP failures map to typed errors from ``data.errors``/``execution.errors``.
 """
 from __future__ import annotations
@@ -68,10 +74,21 @@ _OPEN_TOKENS = frozenset(
 
 @dataclass(frozen=True)
 class UpstoxCredentials:
-    """Environment-derived credentials; the token is never persisted or logged."""
+    """Environment-derived credentials; tokens and secrets are never logged.
+
+    Roles:
+
+    * ``access_token`` — authenticates Upstox API requests (``UPSTOX_ACCESS_TOKEN``).
+    * ``api_key`` — identifies the Upstox application/API client
+      (``UPSTOX_API_KEY``); sent as ``x-api-key`` when present.
+    * ``api_secret`` — Upstox application secret (``UPSTOX_API_SECRET``), used
+      **only** by the OAuth token exchange (``execution/oauth.py``); it is never
+      placed in request headers by this adapter and never logged.
+    """
 
     access_token: str = ""
     api_key: str = ""
+    api_secret: str = ""
     base_url: str = UPSTOX_BASE_URL
     timeout_seconds: float = 10.0
     max_retries: int = 3
@@ -79,6 +96,7 @@ class UpstoxCredentials:
     def __post_init__(self) -> None:
         object.__setattr__(self, "access_token", (self.access_token or "").strip())
         object.__setattr__(self, "api_key", (self.api_key or "").strip())
+        object.__setattr__(self, "api_secret", (self.api_secret or "").strip())
         object.__setattr__(self, "base_url", (self.base_url or UPSTOX_BASE_URL).rstrip("/"))
         if self.timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be > 0")
@@ -106,7 +124,9 @@ class UpstoxCredentials:
 
     def __repr__(self) -> str:
         return (
-            f"UpstoxCredentials(base_url={self.base_url!r}, api_key_configured={bool(self.api_key)}, "
+            f"UpstoxCredentials(base_url={self.base_url!r}, "
+            f"api_key_configured={bool(self.api_key)}, "
+            f"api_secret_configured={bool(self.api_secret)}, "
             "access_token=<redacted>)"
         )
 
@@ -123,6 +143,7 @@ class UpstoxCredentials:
         return cls(
             access_token=os.getenv("UPSTOX_ACCESS_TOKEN", "").strip(),
             api_key=os.getenv("UPSTOX_API_KEY", "").strip(),
+            api_secret=os.getenv("UPSTOX_API_SECRET", "").strip(),
             base_url=(os.getenv("UPSTOX_BASE_URL", "") or UPSTOX_BASE_URL),
             timeout_seconds=float(os.getenv("UPSTOX_TIMEOUT_SECONDS", "") or 10.0),
             max_retries=int(os.getenv("UPSTOX_MAX_RETRIES", "") or 3),

@@ -1657,6 +1657,20 @@ signal. It rates broker plumbing only (Outcome A) and never rates the algorithm
    requires the execution token, the execution adapter never imports the data
    settings object, and a token's mere presence can never open the gate.
    Enforced by `tests/test_credential_separation.py`.
+7. **Execution-credential roles + local OAuth.** `UPSTOX_API_KEY` identifies the
+   Upstox app/client (**public**, optional `x-api-key` header + OAuth `client_id`);
+   `UPSTOX_API_SECRET` (if configured) is the OAuth client secret — used **only**
+   in the token-exchange form body of the local helper
+   (`scripts/upstox_oauth.py`), never an API header, never echoed; a missing
+   secret is fine for adapter API calls as long as an access token is present.
+   The token helper serves after the Upstox authorization redirect on the
+   **loopback-only** callback `http://127.0.0.1:8000/callback` (host restricted
+   to 127.0.0.1/::1/localhost), matches the CSRF `state` in constant time,
+   suppresses handler access logs (the path carries the code), never prints or
+   persists the code/secret/token (token default: git-ignored `.env` only,
+   `--no-write-env` keeps it in-process), issues **no orders**, and never
+   enables live execution by itself. Output pages never echo the code or token.
+   Enforced by `tests/test_upstox_oauth.py` (unit + full loopback CLI round-trip).
 
 **State machine** (one trade per run): IDLE → AUTHENTICATING →
 INSTRUMENT_VALIDATED → ENTRY_REQUESTED → ENTRY_ACKNOWLEDGED → ENTRY_FILLED →

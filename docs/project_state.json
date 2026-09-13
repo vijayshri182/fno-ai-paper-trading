@@ -20,25 +20,26 @@
     "Phase 7 — WS 7.6 regime-aware strategy evaluation (recorded evidence; hypotheses inert, no promotion)",
     "Phase 7 — WS 7.17 Algorithm Research & Competition Layer + WS 7.7 GUI / monitoring dashboard (registry, family competition, daily attribution, scoreboard; 930 tests; no promotion)",
     "Phase 7 — WS 7.8 Continuous Paper-Trading Agent (states, heartbeat, persistence, jobs, ContinuousPaperAgent, CLI runner; 976 tests; paper-only; watchdog-gated polling; dual checkpoint)",
-    "Phase 7 — WS 7.9 Controlled Live F&O Execution Integration Test (execution layer: gate, state machine, risk preflight, upstox adapter, memory adapter, LiveExecutionTestManager, CLI runner; 67 tests; default closed, dry-run only; smoke verified PASS) + 18 credential-separation tests (analytics/data FNO_UPSTOX_* vs execution UPSTOX_ACCESS_TOKEN; 1061 test suite)"
+    "Phase 7 — WS 7.9 Controlled Live F&O Execution Integration Test (execution layer: gate, state machine, risk preflight, upstox adapter, memory adapter, LiveExecutionTestManager, CLI runner; 67 tests; default closed, dry-run only; smoke verified PASS) + 18 credential-separation tests (analytics/data FNO_UPSTOX_* vs execution UPSTOX_ACCESS_TOKEN; 1061 test suite)",
+    "Phase 7 — WS 7.9 local Upstox OAuth callback (loopback-only 127.0.0.1:8000/callback; execution/oauth.py + scripts/upstox_oauth.py; explicit credential roles UPSTOX_API_KEY / UPSTOX_API_SECRET / UPSTOX_ACCESS_TOKEN; no orders; code/secret/token never printed/logged/committed; 26 OAuth tests + 4 API-secret boundary tests; 1091 test suite)"
   ],
   "pending_phases": [
     "Phase 7+ — 17g five-year historical evaluation run + report",
     "Phase 7+ — real-broker adapter (separate explicitly controlled capability; requires human approval — never silently enabled)"
   ],
-  "active_task": "WS 7.9 credential separation enforced + verified (1061 tests; data token FNO_UPSTOX_ACCESS_TOKEN, execution token UPSTOX_ACCESS_TOKEN disjoint; smoke PASS) — the single real F&O experiment is scheduled for tomorrow under explicit human-controlled enablement; no live order today",
-  "last_completed_checkpoint": "WS 7.9 credential separation (analytics/data vs execution tokens, no fallback, no leakage) + 18 tests + smoke re-verification (dry-run PASS; gate default-closed; Algorithm Health unchanged RED/NO)",
+  "active_task": "WS 7.9 local Upstox OAuth callback implemented (loopback-only; scripts/upstox_oauth.py; 1091 tests) — the single real F&O experiment is scheduled for tomorrow under explicit human-controlled enablement; no live order today",
+  "last_completed_checkpoint": "WS 7.9 local Upstox OAuth callback (execution/oauth.py + scripts/upstox_oauth.py; loopback-only 127.0.0.1:8000/callback; no orders; explicit credential roles; 26 OAuth tests + 4 API-secret boundaries; 1091 suite) + credential-separation and smoke verification (dry-run PASS; gate default-closed; Algorithm Health unchanged RED/NO)",
   "last_commit": "65fd839",
   "last_pushed_commit": "65fd839",
   "tests": {
-    "passed": 1061,
+    "passed": 1091,
     "failed": 0,
     "skipped": 0,
-    "last_run_label": "1061 = 1043 prior + 18 credential-separation tests (data settings read FNO_UPSTOX_* only; execution adapter reads UPSTOX_* only; no fallback; no POST without token; token alone cannot open gate; no leakage in repr/reasons/redact/audit)"
+    "last_run_label": "1091 = 1061 prior + 26 OAuth tests (test_upstox_oauth.py: authorize URL, callback path + CSRF state, loopback-only server, token exchange, no-leakage/no-order-surface, full loopback CLI round-trip) + 4 API-secret boundary tests (UPSTOX_API_SECRET in from_env, no analytics fallback, never in headers/repr)"
   },
   "validation": {
     "status": "PASS",
-    "summary": "1061 tests passed; WS 7.9 execution integration verified via 67 behavior tests + deterministic smoke run (outcome PASS, stage COMPLETE, mode PAPER, dry-run True, position flat; audit JSONL written). Credential separation enforced + tested (18 tests): analytics/data layer reads FNO_UPSTOX_* only, execution adapter reads UPSTOX_ACCESS_TOKEN only, no cross-layer fallback, no non-dry-run POST without token, token presence alone cannot open the gate, tokens redacted in every output. Algorithm Health monitor unchanged RED / ALGO READY=NO. No real order placed; live execution gate default-closed; single real F&O experiment deferred to operator-consented enablement."
+    "summary": "1091 tests passed; WS 7.9 execution integration verified via 67 behavior tests + deterministic smoke run (outcome PASS, stage COMPLETE, mode PAPER, dry-run True, position flat; audit JSONL written). Credential separation enforced + tested (22 tests): analytics/data layer reads FNO_UPSTOX_* only, execution adapter reads UPSTOX_* only, no cross-layer fallback, no non-dry-run POST without token, token presence alone cannot open the gate, tokens redacted in every output; API secret role verified (OAuth body only, never headers/repr). Local Upstox OAuth callback (loopback-only) implemented and verified against loopback mocks incl. a full CLI round-trip (26 tests; no orders; code/secret/token never printed/logged/committed). Algorithm Health monitor unchanged RED / ALGO READY=NO. No real order placed; live execution gate default-closed; single real F&O experiment deferred to operator-consented enablement."
   },
   "champion": {
     "name": "MA(5,21) moving-average cross (MovingAverageCrossStrategy)",
@@ -88,18 +89,19 @@
     "WS 7.17: every family competition tier is E and A BEST TESTED is ABSENT — no family has a credible positive-OOS candidate; conclusion B stands.",
     "WS 7.8 agent is implemented and verified offline (tests + dev-sandbox smoke); continuous operation still requires an operator-scheduled run; the on-disk heartbeat is a synthetic smoke heartbeat, not a live-paper P&L claim.",
     "2026 data OOS pool used once for WS 7.16 shortlist confirmation — further research must use a fresh untouched OOS period.",
-    "WS 7.9 implementation is dry-run verified only; the single REAL F&O order is scheduled for 2026-09-14 and requires explicit operator-controlled enablement (gate + consent fingerprint + confirm). No real order may be placed outside that consented window."
+    "WS 7.9 implementation is dry-run verified only; the single REAL F&O order is scheduled for 2026-09-14 and requires explicit operator-controlled enablement (gate + consent fingerprint + confirm). No real order may be placed outside that consented window.",
+    "WS 7.9 local OAuth helper (scripts/upstox_oauth.py) is verified against loopback mocks only and has not been run against Upstox's live authorization service; the access token must come from the operator's own authorized Upstox app and is never printed/logged/committed."
   ],
   "safety_status": {
     "real_money_trading": "DISABLED",
     "broker_order_execution": "DISABLED (default; WS 7.9 live gate CLOSED, dry-run only)",
-    "credentials_secrets": "NOT INTRODUCED (FNO_UPSTOX_* = analytics/data token, UPSTOX_ACCESS_TOKEN = execution-only for the gate/adapter; no cross-layer fallback; token passed via CLI arg, dropped from every persisted payload, redacted in reprs/reasons/audit)",
+    "credentials_secrets": "NOT INTRODUCED (FNO_UPSTOX_* = analytics/data token, UPSTOX_ACCESS_TOKEN = execution-only for the gate/adapter, UPSTOX_API_KEY = app/client id (public), UPSTOX_API_SECRET = OAuth token-exchange body ONLY via the loopback-only local helper; no cross-layer fallback; code/secret/token never printed/logged/committed; token passed via CLI arg, dropped from every persisted payload, redacted in reprs/reasons/audit; OAuth helper writes the token only to the git-ignored .env)",
     "risk_controls": "PROTECTED",
     "stop_loss_controls": "PROTECTED",
     "position_sizing_controls": "PROTECTED",
     "max_loss_controls": "PROTECTED"
   },
-  "last_activity": "WS 7.9 credential separation enforced + verified (18 tests; analytics/data FNO_UPSTOX_* vs execution UPSTOX_ACCESS_TOKEN disjoint; smoke rerun PASS in dry-run PAPER mode; Algorithm Health unchanged RED/NO)",
+  "last_activity": "WS 7.9 local Upstox OAuth callback implemented (loopback-only 127.0.0.1:8000/callback; execution/oauth.py + scripts/upstox_oauth.py; code/secret/token never printed/logged/committed; no orders; 26 OAuth + 4 API-secret boundary tests; full suite 1091 passed; Algorithm Health unchanged RED/NO)",
   "next_action": "2026-09-14: single real F&O experiment under explicit human-controlled enablement (gate open + consent + confirm); after that, 17g five-year historical evaluation run + report (PLANNED)",
   "agent_status": "RUNNING",
   "heartbeat": "",
