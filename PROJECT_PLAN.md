@@ -1060,9 +1060,15 @@ controlled capabilities:
   experience dataset used for strategy/model evaluation (§17g). No look-ahead,
   no leakage, reproducible, consistent cost assumptions.
 
-*Work stream 7.6 — Regime-aware strategy evaluation* — **PLANNED**
+*Work stream 7.6 — Regime-aware strategy evaluation* — **DONE**
 * Investigate MA(5,21) + regime-filter hypotheses (§17e.5). Hypotheses only;
-  validated like any candidate.
+  validated like any candidate. Implemented as an evaluation-only module over
+  recorded champion evidence: hypotheses R1 structural no-op (0/2601 long
+  entries, so BUY gates cannot fire), R2/R3 rejected, R4/R5 not testable on
+  recorded round trips; the closest prior gates were already rejected on the
+  protected OOS (WS 7.16). No promotion executed (see
+  `docs/regime_eval_report.md`, `evaluation/regime_eval.py`,
+  `scripts/eval_regime_hypotheses.py`, `tests/test_regime_eval.py`).
 
 *Work stream 7.7 — GUI / monitoring dashboard* — **PLANNED**
 * Read-only-first web GUI exposing system/trading/performance/historical/learning

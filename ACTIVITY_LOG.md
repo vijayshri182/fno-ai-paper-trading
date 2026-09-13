@@ -1681,6 +1681,51 @@ in the follow-up commit of this session).
 
 ---
 
+## 4ai. 2026-09-13 — WS 7.6: Regime-aware strategy evaluation (recorded champion evidence)
+
+**Objective.** Complete PLAN the work stream 7.6: investigate the §17e.5
+regime-filter hypotheses (strong-trend/allow, sideways/HOLD, volatility-sizing,
+weak-signal/HOLD, signal+confirmation) for the frozen MA(5,21) champion.
+Hypotheses only; validated like any candidate. PAPER ONLY.
+
+**Deliverables.**
+- `evaluation/regime_eval.py` — evaluation-only module over the **recorded**
+  champion replay (`reports/model_performance/trades.csv`): it separates the
+  protected single-use OOS (entries ≥ 2026-01-01) and computes every hypothesis
+  on the safe design+validation slice (2,216 trades) — OOS is never re-read for
+  any computation.
+- `scripts/eval_regime_hypotheses.py` → `reports/regime_eval/regime_eval.json`
+  (evidence snapshot, git-ignored).
+- `tests/test_regime_eval.py` — 14 tests (partition/boundary, metric math,
+  group partition without double counting, gate-residual math, no-op gate
+  equality, hypothesis registry completeness, recorded-replay reconciliation).
+- `docs/regime_eval_report.md` — the formal report.
+
+**Headline findings (honest, recorded evidence).**
+- Champion **never enters long**: 0/2,601 round trips are BUY (0/2,216 safe
+  slice) → every BUY-side regime filter (incl. WS 7.11
+  `RegimeFilteredMovingAverageCross`) is a **structural no-op**.
+- Every decision-time entry regime on the safe slice is net-negative
+  (expectancies −35.80…−68.38/trade); trend groups sideways −54.40 (2,082) and
+  down −60.18 (134); volatility groups all negative.
+- SHORT-gate simulation (suppress non-down entries) leaves a 134-trade residual
+  at **−60.18/trade** — still deeply negative. WS 7.16's trend-gated candidate
+  (H4) was already rejected on the recorded protected OOS (net −3.59%,
+  per-trade −57.52, t −2.95).
+- Verdicts: R1 `structural_no_op`, R2/R3 `rejected`, R4/R5 `not_testable_recorded`
+  (MA(5,21) emits a binary crossover with no strength; round trips carry no
+  confirmation feature). No regime hypothesis shows a credible edge; **no
+  promotion**; frozen baseline unchanged.
+
+**Verification.** Full suite **880 passed** (866 + 14). Recorded reconciliation
+passes: safe slice 2,216 == ALGO READY ledger backtest bucket; per-regime
+partition sums exactly to baseline; 2601 = 2216 safe + 385 separated OOS.
+
+**Status.** Committed and pushed (WS 7.6 feature commit + docs checkpoint; see
+dashboard for the hashes).
+
+---
+
 ## 5. Open Topics / Risks
 
 - **12-Sep-2026 research cycle concluded B (no credible edge; family closed).**

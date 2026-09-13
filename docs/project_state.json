@@ -5,9 +5,9 @@
     "package_version": "0.1.0"
   },
   "project_version": "0.1.0",
-  "overall_progress": 86,
+  "overall_progress": 88,
   "current_phase": "Phase 7 — Post-V1 evolution, evaluation-first (paper-trading-only)",
-  "current_phase_version": "WS 7.6 — Regime-aware strategy evaluation",
+  "current_phase_version": "WS 7.7 — GUI / monitoring dashboard",
   "phase_status": "IN_PROGRESS",
   "completed_phases": [
     "Phase 1 — Foundations & strategy evaluation framework",
@@ -16,28 +16,28 @@
     "Phase 4 — Historical research & five-year replay capability (engine)",
     "Phase 5 — AI decision-support foundation",
     "Phase 6 — Paper Trading V1 (all work streams 6.1-6.7)",
-    "Phase 7 — WS 7.1..7.5, 7.9..7.14, WS 7.15/7.16 champion evaluation + controlled research cycle (conclusion B)"
+    "Phase 7 — WS 7.1..7.5, 7.9..7.14, WS 7.15/7.16 champion evaluation + controlled research cycle (conclusion B)",
+    "Phase 7 — WS 7.6 regime-aware strategy evaluation (recorded evidence; hypotheses inert, no promotion)"
   ],
   "pending_phases": [
-    "Phase 7 — WS 7.6 regime-aware strategy evaluation",
     "Phase 7 — WS 7.7 GUI / monitoring dashboard",
     "Phase 7 — WS 7.8 continuous paper-trading agent",
     "Phase 7+ — 17g five-year historical evaluation run + report",
     "Phase 7+ — real-broker adapter (separate explicitly controlled capability; requires human approval — never silently enabled)"
   ],
-  "active_task": "Bootstrap live project dashboard (docs/project_status.html + docs/project_state.json) then start WS 7.6",
-  "last_completed_checkpoint": "547aa33 — docs checkpoint WS 7.16 (0cd2b38)",
-  "last_commit": "547aa33",
-  "last_pushed_commit": "547aa33",
+  "active_task": "Execute WS 7.7 — read-only-first GUI / monitoring dashboard (integrated with the live dashboard mechanism)",
+  "last_completed_checkpoint": "WS 7.6 regime-aware evaluation committed (module + CLI + 14 tests + report; 880 passing)",
+  "last_commit": "pending",
+  "last_pushed_commit": "b2e7762",
   "tests": {
-    "passed": 843,
+    "passed": 880,
     "failed": 0,
     "skipped": 0,
-    "last_run_label": "WS 7.16 closing suite (813 baseline + 30 candidates)"
+    "last_run_label": "880 suite (843 baseline + 23 ALGO READY + 14 WS 7.6 regime-eval)"
   },
   "validation": {
     "status": "PASS",
-    "summary": "843 tests passed; champion failure audit reconciliation True; OOS single-read confirmation conclusion B"
+    "summary": "880 tests passed; ALGO READY monitor RED/NO/DETERIORATING on recorded champion; WS 7.6 regime-filter hypotheses found inert on recorded evidence (no promotion)"
   },
   "champion": {
     "name": "MA(5,21) moving-average cross (MovingAverageCrossStrategy)",
@@ -63,6 +63,7 @@
   "blockers": [],
   "risks": [
     "MA(5,21) baseline has no long entries and deep negative net performance on continuous 5m replay — scientific finding recorded, no edge manufactured.",
+    "WS 7.6: all recorded decision-time entry regimes are net-negative; regime-filter hypotheses are inert on recorded evidence (no promotion).",
     "Upstox live candles require operator-scheduled runs; no always-on server until WS 7.8.",
     "2026 data OOS pool used once for WS 7.16 shortlist confirmation — further research must use a fresh untouched OOS period."
   ],
@@ -75,8 +76,8 @@
     "position_sizing_controls": "PROTECTED",
     "max_loss_controls": "PROTECTED"
   },
-  "last_activity": "ALGO READY assessed: health=RED ready=NO trend=DETERIORATING",
-  "next_action": "Create dashboard generator, commit checkpoint, then execute WS 7.6",
+  "last_activity": "WS 7.6 regime-aware evaluation on recorded champion: hypotheses R1 no-op, R2/R3 rejected, R4/R5 untestable on recorded evidence; no promotion",
+  "next_action": "Execute WS 7.7 (GUI / monitoring dashboard), then WS 7.8 continuous paper-trading agent",
   "agent_status": "RUNNING",
   "heartbeat": "",
   "timestamp": "",
