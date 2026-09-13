@@ -5,11 +5,12 @@
     "package_version": "0.1.0"
   },
   "project_version": "0.1.0",
-  "overall_progress": 95,
+  "overall_progress": 96,
   "current_phase": "Phase 7 — Post-V1 evolution, evaluation-first (paper-trading-only)",
-  "current_phase_version": "WS 7.9 controlled live F&O execution integration test (implemented; dry-run only) + WS 7.17 + WS 7.7 dashboard + WS 7.8 continuous agent (implemented)",
+  "current_phase_version": "WS 7.18 walk-forward adaptive research & learning engine (implemented + verified on real data; 5 challengers gated INSUFFICIENT_EVIDENCE, 0 promotions) + WS 7.9 controlled live F&O execution integration test (implemented; dry-run only) + WS 7.17 + WS 7.7 dashboard + WS 7.8 continuous agent (implemented)",
   "phase_status": "IN_PROGRESS",
   "completed_phases": [
+    "Phase 7 — WS 7.18 Walk-Forward Adaptive Research & Learning Engine (walkforward package: 21-field day-by-day algorithm evolution ledger; algorithm for day D frozen before D; preregistered hypotheses with trend-normalized regime predicates; future-only challenger validation; promotion gate; protected OOS never loaded (domain truncated); deterministic byte-identical resume; reports + timeline + dashboard section; 18 tests; real run 932/932 research days — 5 challengers all gated INSUFFICIENT EVIDENCE, 0 promotions; 1109 test suite)",
     "Phase 1 — Foundations & strategy evaluation framework",
     "Phase 2 — Data engineering & validation",
     "Phase 3 — Evaluation-first research discipline",
@@ -27,19 +28,19 @@
   "pending_phases": [
     "Phase 7+ — real-broker adapter (separate explicitly controlled capability; requires human approval — never silently enabled; third-party notification integrations are future/PLANNED — require external credentials)"
   ],
-  "active_task": "17g five-year historical evaluation run + report COMPLETE (WS 7.5 on real NIFTY 50 5m data 2022-01-03..2026-09-11; 1165/1165 trading days COMPLETE, 0 invalid; frozen MA(5,21) nets -69.16 Rs (-0.069%) after 1622 round trips — a cost-dominated breakeven; docs/five_year_eval_report.md) — next human-gated steps: single real F&O experiment 2026-09-14; real-broker adapter",
-  "last_completed_checkpoint": "17g five-year historical evaluation run + report (WS 7.5: 1165/1165 trading days COMPLETE over real 5m history 2022-01-03..2026-09-11 — ~4.7y honest maximum; 0 invalid; 87,193 bars; frozen MA(5,21) net -69.16 Rs (-0.069%), 1622 RT, win 5.12%, PF 0.038, costs 107,561.65 Rs, MDD 945.05 Rs; one-session-per-day per WS 7.5 spec; docs/five_year_eval_report.md; artifacts reports/five_year_replay.*) — evidence only, no promotion, protected OOS untouched, no source/test changes (1091 suite)",
-  "last_commit": "e29d6f5",
-  "last_pushed_commit": "e29d6f5",
+  "active_task": "WS 7.18 walk-forward adaptive research & learning engine COMPLETE (walkforward package implemented + tested [18 tests]; verified on real NIFTY 50 5m: 932/932 research days walked 2022-01-03..2025-10-03, protected OOS 2025-10-06 truncated out and never loaded; champion model_0 net -80,269.64 Rs over 1293 RT; 5 challengers spawned 2023..2025, future-only 20-day validated, all gated INSUFFICIENT EVIDENCE; 0 promotions; deterministic byte-identical ledger across two runs; full suite 1109 passed; docs/PROGRESS/ACTIVITY updated) — next human-gated steps: single real F&O experiment 2026-09-14; real-broker adapter",
+  "last_completed_checkpoint": "WS 7.18 walk-forward adaptive research & learning engine (walkforward/config|records|catalog|learning|gate|engine|reports + __init__; script scripts/run_walkforward.py; reports/walkforward/summary.json|versions.json|promotions.jsonl|evolution_timeline.html|.md|walkforward.ledger.jsonl|walkforward.state.json; real run walked 932/932 research days with deterministic byte-identical ledgers; 5 challengers gated INSUFFICIENT_EVIDENCE, 0 promotions; protected OOS untouched; full suite 1109 passed)",
+  "last_commit": "16f37fc",
+  "last_pushed_commit": "16f37fc",
   "tests": {
-    "passed": 1091,
+    "passed": 1109,
     "failed": 0,
     "skipped": 0,
-    "last_run_label": "1091 passed; five-year evaluation cycle made NO source/test changes (run = read-only 2021 acquisition attempt + day-chunked replay + reports + docs). Coverage: 1061 prior + 26 OAuth (test_upstox_oauth.py) + 4 API-secret boundary tests"
+    "last_run_label": "1109 passed in 35.75s (1091 prior + 18 walk-forward engine tests: 21-field ledger, freeze-at-day-start, byte-identical resume, config-hash rejection, append-only ledger, no-live-imports AST, future-only validation, budget caps, frozen catalog params, orphan blocking, gate PROMOTE/REJECT/INSUFFICIENT_EVIDENCE, criteria round-trip, evidence-window version scoping, report artifacts, trend normalization, OOS truncation)"
   },
   "validation": {
     "status": "PASS",
-    "summary": "1091 tests passed; WS 7.9 execution integration verified via 67 behavior tests + deterministic smoke run (outcome PASS, stage COMPLETE, mode PAPER, dry-run True, position flat; audit JSONL written). Credential separation enforced + tested (22 tests): analytics/data layer reads FNO_UPSTOX_* only, execution adapter reads UPSTOX_* only, no cross-layer fallback, no non-dry-run POST without token, token presence alone cannot open the gate, tokens redacted in every output; API secret role verified (OAuth body only, never headers/repr). Local Upstox OAuth callback (loopback-only) implemented and verified against loopback mocks incl. a full loopback CLI round-trip (26 tests; no orders; code/secret/token never printed/logged/committed). 17g five-year run + report COMPLETE over real 5m history (1165/1165 days, ~4.7y honest maximum; frozen MA(5,21) net -69.16 Rs / -0.069% after 1622 round trips, costs 107,561.65 Rs — cost-dominated breakeven, no edge manufactured, nothing promoted, protected OOS untouched; no source/test changes). Algorithm Health monitor unchanged RED / ALGO READY=NO. No real order placed; live execution gate default-closed; single real F&O experiment deferred to operator-consented enablement."
+    "summary": "1109 tests passed. WS 7.18 walk-forward engine verified: algorithm-for-day-D frozen before D; evidence windows strictly future; ledger append-only; resume byte-identical under same config hash and config-hash changes refused; protected OOS truncated out (raises only when empty); challenger params frozen catalog constants; strict total budget; gate returns PROMOTE/REJECT/INSUFFICIENT_EVIDENCE with reasons; trend-normalized regime predicates (regression test); AST check proves no live-trading module is imported. Real run: 932/932 research days, two independent runs byte-identical, 5 challengers all INSUFFICIENT_EVIDENCE, 0 promotions. Algorithm Health unchanged RED / ALGO READY=NO. No real order placed; live execution gate default-closed; single real F&O experiment deferred to operator-consented enablement (2026-09-14)."
   },
   "champion": {
     "name": "MA(5,21) moving-average cross (MovingAverageCrossStrategy)",
@@ -47,12 +48,52 @@
     "full_window_net_return_pct": "-143.21",
     "oos_net_return_pct": "-21.76",
     "per_trade_oos_t": "-6.76",
-    "note": "Frozen. A candidate must demonstrate credible improvement before any promotion."
+    "note": "Frozen. WS 7.18 walked model_0 over the full research domain (net -80,269.64 Rs over 1293 round trips, cost-dominated) and still found no challenger worth promoting. A candidate must demonstrate credible improvement before any promotion."
   },
   "challenger": {
     "status": "None promoted",
-    "decision": "REJECT",
-    "reason": "No challenger demonstrated a credible robust OOS edge (WS 7.16 conclusion B; per-trade OOS t-stats significantly negative)."
+    "decision": "INSUFFICIENT_EVIDENCE",
+    "reason": "WS 7.18 walk spawned 5 preregistered challengers (2023..2025); each validated future-only on 20 trading days and each stood flat in validation (0-1 trades vs min 10), so every promotion gate returned INSUFFICIENT_EVIDENCE; none demonstrated a credible improvement (aligns with WS 7.16 conclusion B)."
+  },
+  "algorithm_walk_forward": {
+    "framework_version": "walkforward-1.0",
+    "run_id": "walkforward",
+    "research_only": true,
+    "protected_oos_start": "2025-10-06",
+    "domain": {
+      "first_day": "2022-01-03",
+      "last_day": "2025-10-03",
+      "days_available": 932,
+      "days_processed": 932
+    },
+    "champion": {
+      "active_version_id": "model_0",
+      "strategy_name": "moving_average_cross",
+      "net_pnl": "-80269.643793365",
+      "round_trips": 1293,
+      "wins": 63,
+      "losses": 1230,
+      "costs": "82616.243793365",
+      "slippage": "63550.91015",
+      "max_drawdown_pct": "0.53962935253500"
+    },
+    "benchmark": {
+      "name": "buy_and_hold",
+      "net_pnl": "7259.65",
+      "total_return_pct": "7.2596500"
+    },
+    "challengers_spawned": 5,
+    "challengers_gated": 5,
+    "promotions": 0,
+    "gate_decisions": [
+      { "day": "2023-03-16", "challenger_id": "wfc-suppress_sells_not_down-r014", "decision": "INSUFFICIENT_EVIDENCE", "reason": "validation trades 0 below minimum 10" },
+      { "day": "2024-07-03", "challenger_id": "wfc-suppress_buys_not_up-r030", "decision": "INSUFFICIENT_EVIDENCE", "reason": "validation trades 1 below minimum 10" },
+      { "day": "2024-12-26", "challenger_id": "wfc-suppress_sells_not_down-r036", "decision": "INSUFFICIENT_EVIDENCE", "reason": "validation trades 0 below minimum 10" },
+      { "day": "2025-01-23", "challenger_id": "wfc-suppress_buys_not_up-r037", "decision": "INSUFFICIENT_EVIDENCE", "reason": "validation trades 1 below minimum 10" },
+      { "day": "2025-08-18", "challenger_id": "wfc-suppress_sells_not_down-r044", "decision": "INSUFFICIENT_EVIDENCE", "reason": "validation trades 0 below minimum 10" }
+    ],
+    "determinism": "two independent full runs produced byte-identical ledgers (sha256 equal)",
+    "artifacts": "reports/walkforward/{summary.json,versions.json,promotions.jsonl,evolution_timeline.html,evolution_timeline.md,walkforward.ledger.jsonl,walkforward.state.json} (git-ignored)"
   },
   "paper_trading_status": {
     "readiness": "READY (V1 paper server implemented)",
@@ -88,10 +129,11 @@
     "WS 7.6: all recorded decision-time entry regimes are net-negative; regime-filter hypotheses are inert on recorded evidence (no promotion).",
     "WS 7.17: every family competition tier is E and A BEST TESTED is ABSENT — no family has a credible positive-OOS candidate; conclusion B stands.",
     "WS 7.8 agent is implemented and verified offline (tests + dev-sandbox smoke); continuous operation still requires an operator-scheduled run; the on-disk heartbeat is a synthetic smoke heartbeat, not a live-paper P&L claim.",
-    "2026 data OOS pool used once for WS 7.16 shortlist confirmation — further research must use a fresh untouched OOS period.",
+    "2026 data OOS pool used once for WS 7.16 shortlist confirmation — further research must use a fresh untouched OOS period; WS 7.18 truncates protected OOS (2025-10-06) out of its domain and never loads it.",
     "WS 7.9 implementation is dry-run verified only; the single REAL F&O order is scheduled for 2026-09-14 and requires explicit operator-controlled enablement (gate + consent fingerprint + confirm). No real order may be placed outside that consented window.",
     "WS 7.9 local OAuth helper (scripts/upstox_oauth.py) is verified against loopback mocks only and has not been run against Upstox's live authorization service; the access token must come from the operator's own authorized Upstox app and is never printed/logged/committed.",
-    "17g five-year replay covers 2022-01-03..2026-09-11 (~4.7 calendar years — Upstox serves no 5m bars before 2022; the 2021 gap acquisition returned empty windows). Frozen MA(5,21) replays net -69.16 Rs (-0.069%) over 1165 days / 1622 round trips with 107,561.65 Rs of transaction costs — a cost-dominated breakeven consistent with conclusion B (no edge); one-session-per-day (WS 7.5) is a different honest measurement from the continuous single-session replay (net -143.21%, docs/model_performance_report.md)."
+    "17g five-year replay covers 2022-01-03..2026-09-11 (~4.7 calendar years — Upstox serves no 5m bars before 2022; the 2021 gap acquisition returned empty windows). Frozen MA(5,21) replays net -69.16 Rs (-0.069%) over 1165 days / 1622 round trips with 107,561.65 Rs of transaction costs — a cost-dominated breakeven consistent with conclusion B (no edge); one-session-per-day (WS 7.5) is a different honest measurement from the continuous single-session replay (net -143.21%, docs/model_performance_report.md).",
+    "WS 7.18 walk-forward: all 5 challengers gated INSUFFICIENT_EVIDENCE because their regime-filtered variants stood flat in 20-day validation windows (0-1 trades vs min 10). This is the honest evidence-first outcome, but it means research on the current champion yielded no new information; keeping research actionable may require revisiting the validation-trade minimum or adding challengers that trade more in-window (config/evidence decisions — still gated before any promotion)."
   ],
   "safety_status": {
     "real_money_trading": "DISABLED",
@@ -102,8 +144,8 @@
     "position_sizing_controls": "PROTECTED",
     "max_loss_controls": "PROTECTED"
   },
-  "last_activity": "17g five-year historical evaluation run + report COMPLETE (WS 7.5: 1165/1165 trading days over real 2022-01-03..2026-09-11 NIFTY 50 5m data; frozen MA(5,21) net -69.16 Rs/-0.069% after 1622 round trips; cost-dominated breakeven, conclusion B unchanged, nothing promoted; docs/five_year_eval_report.md; full suite 1091 passed; no source/test changes)",
-  "next_action": "2026-09-14: single real F&O experiment under explicit human-controlled enablement (gate open + consent + confirm). After that, remaining plan items are human-gated: real-broker adapter (requires human approval — never silently enabled) and third-party notification integrations (future, require external credentials).",
+  "last_activity": "WS 7.18 walk-forward adaptive research & learning engine COMPLETE (21-field algorithm evolution ledger; 932/932 research days walked on real NIFTY 50 5m; champion model_0 net -80,269.64 Rs; 5 challengers all gated INSUFFICIENT EVIDENCE; 0 promotions; protected OOS never loaded; deterministic byte-identical ledgers; 1109 tests passed; docs + PROGRESS + ACTIVITY + dashboard updated)",
+  "next_action": "2026-09-14: single real F&O experiment under explicit human-controlled enablement (gate open + consent + confirm). The WS 7.18 engine is available for future research walks; any adaptive-research tuning (e.g. validation-trade minimum, additional catalog hypotheses) is a config/evidence decision and still never promotes without passing the 21-criteria future-only gate. After the live test, remaining plan items are human-gated: real-broker adapter (requires human approval — never silently enabled) and third-party notification integrations (future, require external credentials).",
   "agent_status": "RUNNING",
   "heartbeat": "",
   "timestamp": "",
@@ -131,7 +173,7 @@
     "strategy_id": "moving_average_cross",
     "strategy_family": "TREND_FOLLOWING",
     "strategy_version": "1.0.0",
-    "attribution_note": "Algorithm Health is attested to the frozen MA(5,21) champion (family TREND_FOLLOWING). Cross-family competition lives in the Algorithm Laboratory scoreboard; the champion is NOT promotable under current recorded evidence.",
+    "attribution_note": "Algorithm Health is attested to the frozen MA(5,21) champion (family TREND_FOLLOWING). Cross-family competition lives in the Algorithm Laboratory scoreboard; the champion is NOT promotable under current recorded evidence. The WS 7.18 walk-forward engine also found no champion-worthy challenger (all gated INSUFFICIENT_EVIDENCE).",
     "readiness_reason": "paper readiness is NO because the health assessment is RED (backtest net expectancy -54.75311039689981949458483755/trade is not positive over 2216 trades)",
     "health_reason": "backtest net expectancy -54.75311039689981949458483755/trade is not positive over 2216 trades",
     "last_updated": "2026-09-13T09:11:05+05:30",

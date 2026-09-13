@@ -495,6 +495,74 @@ def _algorithm_section(state: dict[str, Any]) -> str:
     return _section("ALGORITHM READY / HEALTH", body)
 
 
+def _algorithm_evolution_section() -> str:
+    """WS 7.18: walk-forward evolution ledger headline from reports/walkforward."""
+    summary = _read_json("reports/walkforward/summary.json")
+    if not isinstance(summary, dict) or not summary.get("run_id"):
+        return _section(
+            "ALGORITHM EVOLUTION (WS 7.18 WALK-FORWARD)",
+            "<p class='note'>No walk-forward artifact yet — run "
+            "<code>scripts/run_walkforward.py</code>.</p>",
+        )
+    domain = summary.get("domain") or {}
+    scope = summary.get("scope") or {}
+    champ = summary.get("champion_totals") or {}
+    bench = summary.get("benchmark") or {}
+    versions = summary.get("versions") or []
+    promotions = summary.get("promotions") or []
+    challengers = summary.get("challengers") or {}
+    active = [v for v in versions if v.get("status") == "ACTIVE"]
+    active_id = active[0].get("version_id", "?") if active else "?"
+
+    rows: list[list[str]] = [
+        ["Framework / run", f"walkforward-{summary.get('framework_version','?')}  ·  run {summary.get('run_id','?')}"],
+        ["Discipline", str(scope.get("note", "?"))],
+        ["Protected OOS start", str(scope.get("protected_oos_start", "?"))],
+        ["Walked research domain", f"{domain.get('first_day','?')} .. {domain.get('last_day','?')} ({domain.get('days_processed','?')}/{domain.get('days_available','?')} days)"],
+        ["Active algorithm (end of walk)", str(active_id)],
+        ["Champion domain net P&L", str(champ.get("net_pnl", "?"))],
+        ["Champion round trips", f"{champ.get('round_trips','?')}  (wins {champ.get('wins','?')} / losses {champ.get('losses','?')})"],
+        ["Champion costs / slippage", f"{champ.get('costs','?')} / {champ.get('slippage','?')}"],
+        ["Champion max drawdown", f"{champ.get('max_drawdown_pct','?')}%"],
+        ["Buy-and-hold reference", f"{bench.get('name','?')}: net {bench.get('net_pnl','?')} ({bench.get('total_return_pct','?')}%)"],
+        ["Promotions", str(len(promotions))],
+        ["Challengers spawned / gated", f"{len(challengers)} spawned / {len(promotions)} gated"],
+    ]
+    body = _kv_table(rows)
+
+    body += "<h3>Challenger lifecycle (pre-registered hypotheses, future-only validation)</h3>"
+    ch_rows = []
+    for cid in sorted(challengers):
+        c = challengers[cid]
+        ch_rows.append([
+            str(c.get("key", "?")),
+            str(c.get("title", ""))[:38],
+            c.get("status", "?"),
+            f"{c.get('validation_start','?')}..{c.get('validation_end','?')}",
+            str(c.get("validated_days", 0)),
+            str(c.get("decision", "?")),
+        ])
+    if ch_rows:
+        body += _simple_table(ch_rows, ["Key", "Title", "Status", "Future-only window", "Days", "Decision"])
+    else:
+        body += "<p class='note'>No challenger hypothesis was supported by recorded evidence during this walk.</p>"
+
+    props = []
+    discipline = summary.get("algorithm_evolution") or {}
+    for k, v in discipline.items():
+        props.append(f"<li><strong>{k.replace('_', ' ')}</strong>: {'yes' if v else 'no'}</li>")
+    body += "<h3>Ledger discipline guarantees</h3><ul>" + "".join(props) + "</ul>"
+
+    body += (
+        "<p class='note'>Every ledger day answers: WHAT algorithm traded, WHY (problem), "
+        "WHAT hypothesis was pre-registered, WHAT happened in future-only validation, WAS it "
+        "promoted, and WHY the next algorithm runs. 21-field day-by-day record: "
+        "reports/walkforward/walkforward.ledger.jsonl; readable timeline: "
+        "reports/walkforward/evolution_timeline.html.</p>"
+    )
+    return _section("ALGORITHM EVOLUTION (WS 7.18 WALK-FORWARD)", body)
+
+
 def _git_facts() -> dict[str, str]:
     branch = _sh("git", "rev-parse", "--abbrev-ref", "HEAD") or "?"
     head = _sh("git", "rev-parse", "--short", "HEAD") or "?"
@@ -680,6 +748,7 @@ def render() -> str:
   {_section("MODEL / STRATEGY", model_body)}
   {_algorithm_section(state)}
   {_laboratory_section()}
+  {_algorithm_evolution_section()}
   {_daily_performance_section()}
   {_continuous_agent_section()}
   {_live_execution_section()}

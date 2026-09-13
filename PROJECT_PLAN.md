@@ -1787,6 +1787,76 @@ Documented, non-negotiable:
 
 ---
 
+# 17q. Walk-Forward Adaptive Research & Learning Engine (WS 7.18) — DONE
+
+> **Design contract.** An evidence-first, paper/historical-only engine that walks
+> a research domain **day by day**, keeps a **21-field day-by-day algorithm
+> evolution ledger**, and can adapt the algorithm **only** through a preregistered
+> hypothesis → future-only validation → gate → promotion cycle. It never tunes
+> parameters, never re-reads protected out-of-sample days, and never touches live
+> trading.
+
+## 17q.1 Non-negotiable invariants
+* **Algorithm for day D is frozen before D** — the ledger row for D shows
+  `algorithm_used[D] == next_day_algorithm[D-1]`; a promotion decided on D takes
+  effect only on the next trading day.
+* **Learning from day D affects only futures** — champion evidence windows and
+  challenger windows are strictly `> created` days.
+* **History is never rewritten** — the ledger is append-only; a resumable
+  checkpoint (state.json) plus the JSONL ledger make re-runs byte-identical for
+  the same config hash and input.
+* **No parameter tuning** — challenger parameters are fixed catalog constants;
+  the only knobs are pre-registered regime/trend gates.
+* **Protected OOS is never loaded** — a run truncates its working domain strictly
+  before `protected_oos_start` (raising if nothing remains); gate evidence is
+  entirely in-domain.
+
+## 17q.2 Turn-key architecture
+* `walkforward/config.py` — `WalkForwardConfig` (frozen): cadences, minimums,
+  budget caps, 21-criteria gate, protected-OOS cut, cost/risk assumptions; an
+  immutable `config_hash` guards resume.
+* `walkforward/records.py` — `DailyEvolutionRecord` (21 fields, `1.day`..`21.why_next_day`).
+* `walkforward/catalog.py` — preregistered challenger hypotheses (suppress BUY
+  outside UP, suppress SELL outside DOWN, suppress sideways entries, …) with
+  **trend-normalized** regime predicates (`up_normal` → `UP`).
+* `walkforward/learning.py` — champion evidence aggregation, hypothesis seeding,
+  challenger spawning/orphan rules, `campaign_window`.
+* `walkforward/gate.py` — `PromotionGate` (arrival checks, net-P&L-delta,
+  criteria, reasons) with the champion base-gate treated as a hard failure the
+  moment it stops being a PASS.
+* `walkforward/engine.py` — the walk loop, `_maybe_gate`, state checkpoint,
+  benchmark, resumable `run()`.
+* `walkforward/reports.py` — `summary.json`, `versions.json`,
+  `promotions.jsonl`, `evolution_timeline.html/.md`.
+* `scripts/run_walkforward.py` — CLI with auto-detected `protected_oos_start`
+  (from the five-year replay report).
+
+## 17q.3 Ledger (21 fields)
+`1.day` `2.algorithm_used` `3.parent_algorithm` `4.regime` `5.signal`
+`6.trades` `7.pnl` `8.transaction_costs` `9.slippage` `10.outcome`
+`11.evidence` `12.problem_identified` `13.hypothesis_generated`
+`14.challenger_generated` `15.modification_proposed` `16.evidence_supporting`
+`17.validation_period_assigned` `18.validation_status` `19.promotion_decision`
+`20.next_day_algorithm` `21.why_next_day`. Every field is machine-readable and
+the timeline renders it for a human.
+
+## 17q.4 Real-data run (2026-09-13) — evidence only, nothing promoted
+* Domain: NIFTY 50 5m, **932/932 research days** walked (2022-01-03..2025-10-03);
+  protected OOS 2025-10-06 truncated out, never loaded. Two independent runs
+  produced **byte-identical ledgers**.
+* Champion (MA(5,21), `model_0`) domain net **−80,269.64 ₹** over 1293 round
+  trips with 82,616 ₹ of transaction costs — costs dominate the edge,
+  consistent with WS 7.16 conclusion B.
+* Research spawned **5 challengers** (2023..2025), each validated **future-only**
+  on 20 trading days, all gated **INSUFFICIENT EVIDENCE** (regime-filtered
+  variants stood flat in validation: 0–1 trades vs the required 10). **0
+  promotes.**
+* Verified: freeze-at-day-start, append-only, deterministic resume, config-hash
+  rejection, protected-OOS truncation, budget caps, trend normalization.
+  Full suite **1109 passed** (18 walk-forward tests).
+
+---
+
 # 18. Analytics
 
 Future analytics should include:

@@ -935,3 +935,45 @@ stay PLANNED behind the evaluation discipline.**
   is data + reports + documentation only).
 
 ---
+
+## 32. 17q — Walk-Forward Adaptive Research & Learning Engine (WS 7.18) (2026-09-13)
+
+> The `walkforward/` package turns day-by-day algorithm evolution into a
+> **recorded** discipline: a 21-field ledger answers, for every research day,
+> WHAT algorithm ran, WHY a problem was flagged, WHAT preregistered hypothesis
+> was proposed, HOW it was validated on future-only data, WAS it promoted, and
+> WHY the next day's algorithm is what it is. Paper/historical only; protected
+> OOS is never loaded.
+
+- **Engine** (`walkforward/engine.py`): resumable walk over a day-chunked
+  domain; day D's algorithm frozen before D; `_maybe_gate` on cadence/final
+  boundaries; promotions take effect next day; append-only JSONL ledger +
+  `state.json` checkpoint; deterministic (`promoted_at` fixed to 00:00:00, no
+  wall-clock); resume is guarded by `config_hash` and proven byte-identical;
+  `protected_oos_start` **truncates** the domain (raises only if empty).
+- **Preregistered hypotheses** (`walkforward/catalog.py`) with **trend-normalized**
+  regime predicates (`up_normal` → `UP`). Bug found during verification: predicates
+  matched exact labels (`"UP"`) while evidence buckets carry `up_normal` — had
+  made challengers structurally unfireable; fixed + regression test
+  (18 walk-forward tests).
+- **Gate** (`walkforward/gate.py`): 21-criteria window evaluation, strict
+  `max_challengers_total` budget, `INSUFFICIENT_EVIDENCE` status, and the
+  champion base-gate treated as hard (base reasons only count while PASS).
+- **Reports** (`walkforward/reports.py`): `summary.json` (incl. per-challenger
+  `challenger_id`), `versions.json`, `promotions.jsonl`, and a human-readable
+  `evolution_timeline.html/.md`. Dashboard gains an **ALGORITHM EVOLUTION
+  (WS 7.18 WALK-FORWARD)** section.
+- **CLI** (`scripts/run_walkforward.py`): auto-detects `protected_oos_start`
+  from `reports/five_year_replay.json` (first `out_of_sample` per_day =
+  2025-10-06); JSON/CLI config overrides coerced to real `date` objects.
+- **Real-data run on NIFTY 50 5m:** walked **932/932 research days**
+  (2022-01-03..2025-10-03); champion `model_0` net **−80,269.64 ₹** over 1293
+  round trips (costs 82,616 ₹ — cost-dominated, consistent with conclusion B);
+  **5 challengers spawned, all future-only-validated (20 days), all gated
+  INSUFFICIENT EVIDENCE** (regime-filtered variants stood flat: 0–1 trades vs
+  required 10) → **0 promotions**. Two independent runs → **byte-identical
+  ledger**. Readable timeline: `reports/walkforward/evolution_timeline.html`.
+- Tests: **1109 passed** (1091 + 18 walk-forward tests; +1 regression for
+  trend normalization). Artifacts (git-ignored): `reports/walkforward/*`.
+
+---

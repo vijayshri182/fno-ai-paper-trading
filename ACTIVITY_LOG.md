@@ -2163,7 +2163,75 @@ the staged diff: 0 matches.
 
 ---
 
+## 4ap. 2026-09-13 — 17q Walk-Forward Adaptive Research & Learning Engine (WS 7.18)
+
+**Objective.** Turn "adaptive research" into a recorded day-by-day discipline:
+a 21-field algorithm-evolution ledger that, for every research day, answer WHAT
+algorithm ran, WHY a problem was flagged, WHAT preregistered hypothesis was
+proposed, HOW it was validated on future-only data, WAS it promoted, and WHY the
+next day's algorithm is what it is — with protected OOS never loaded and live
+trading untouched.
+
+**Engine** (`walkforward/engine.py`). Resumable walk over a day-chunked domain;
+algorithm for day D frozen before D; `_maybe_gate` on promotion cadence / final
+boundaries; promotions take effect next trading day; append-only JSONL ledger +
+`state.json` checkpoint; fully deterministic (no wall-clock; `promoted_at` fixed
+to 00:00:00); resume proven byte-identical and `config_hash`-guarded;
+`protected_oos_start` **truncates** the working domain (raises only if empty).
+
+**Preregistered hypotheses** (`walkforward/catalog.py`). Four fixed challenger
+rules (suppress BUY outside UP, suppress SELL outside DOWN, suppress sideways
+entries; params are catalog constants). Verification caught a real bug: the
+predicates matched exact labels ("UP") while evidence buckets carry trend-prefixed
+labels ("up_normal"), which made challengers structurally unable to fire — fixed
+by normalizing to trend tokens with a regression test.
+
+**Gate** (`walkforward/gate.py`). 21-criteria future-only window evaluation,
+strict challenger budget, `INSUFFICIENT_EVIDENCE` status, and the champion
+base-gate treated as a hard constraint (its `reasons` only count while it is a
+PASS).
+
+**CLI.** `scripts/run_walkforward.py` auto-detects `protected_oos_start` from
+`reports/five_year_replay.json` (first `period == "out_of_sample"` per_day =
+2025-10-06) and coerces JSON/CLI date overrides to real `date` objects.
+
+**Real-data run** (NIFTY 50 5m, 2022-01-03..2025-10-03): **932/932 research
+days** walked; champion `model_0` net **−80,269.64 ₹** over 1293 round trips
+(costs 82,616 ₹ — cost-dominated, consistent with conclusion B); **5
+challengers spawned across 2023–2025, each validated on a future-only 20-day
+window, all gated INSUFFICIENT EVIDENCE** (the regime-filtered variants stood
+flat: 0–1 validation trades vs a minimum of 10); **0 promotions**. Two
+independent full runs produced **byte-identical ledgers**. Readable timeline:
+`reports/walkforward/evolution_timeline.html`.
+
+**Verification.** `tests/test_walkforward_engine.py` = **18 tests** (21-field
+completeness, freeze-at-day-start, determinism + byte-identical resume,
+config-hash rejection, append-only ledger, OOS truncation, no-live-imports AST
+check, future-only validation, budget cap, frozen catalog constants, orphan
+blocking, gate PROMOTE/REJECT/INSUFFICIENT_EVIDENCE, criteria round-trip,
+evidence-window version scoping, report artifacts, trend normalization).
+Full suite **1109 passed** in 35.75s.
+
+**Safety.** Research-only flag set; paper/historical path only; protected OOS
+never loaded; no live module imported (AST-verified); no credentials touched;
+Real-money trading remains DISABLED; today's real F&O experiment situation
+unchanged (scheduled 2026-09-14, operator-consented only).
+
+---
+
 ## 5. Open Topics / Risks
+
+- **13-Sep-2026 WS 7.18 walk-forward ran 932 research days with 0 promotions.**
+  The engine is verified end-to-end, but on this dataset every spawned
+  challenger stood flat in its future-only validation window (0–1 trades vs the
+  min-validation-trades=10 requirement), so all five gates returned
+  INSUFFICIENT EVIDENCE. This is the honest, evidence-first outcome (they lost
+  nothing but proved nothing), not a modified conclusion: MA(5,21) stays the
+  frozen champion, no promotion. If research on the current champion is to
+  remain actionable, revisit either the validation-trade minimum or add
+  challengers whose fixed catalog parameters trade more in a 20-day window —
+  both are config/evidence decisions, not algorithm changes, and anything still
+  must pass the 21-criteria future-only gate before promotion.
 
 - **13-Sep-2026 WS 7.9 dry-run verified only; the single REAL F&O experiment is
   scheduled for 2026-09-14 under explicit operator-controlled enablement.**
