@@ -1721,8 +1721,9 @@ Hypotheses only; validated like any candidate. PAPER ONLY.
 passes: safe slice 2,216 == ALGO READY ledger backtest bucket; per-regime
 partition sums exactly to baseline; 2601 = 2216 safe + 385 separated OOS.
 
-**Status.** Committed and pushed (WS 7.6 feature commit + docs checkpoint; see
-dashboard for the hashes).
+**Status.** Committed as `c6f5dca` (`feat: WS 7.6 regime-aware strategy
+evaluation - hypotheses inert on recorded champion evidence (no promotion)`),
+pushed.
 
 ---
 

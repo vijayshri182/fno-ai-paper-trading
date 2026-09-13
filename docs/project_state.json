@@ -26,8 +26,8 @@
     "Phase 7+ — real-broker adapter (separate explicitly controlled capability; requires human approval — never silently enabled)"
   ],
   "active_task": "Execute WS 7.7 — read-only-first GUI / monitoring dashboard (integrated with the live dashboard mechanism)",
-  "last_completed_checkpoint": "WS 7.6 regime-aware evaluation committed (module + CLI + 14 tests + report; 880 passing)",
-  "last_commit": "pending",
+  "last_completed_checkpoint": "c6f5dca — WS 7.6 regime-aware evaluation committed (module + CLI + 14 tests + report; 880 passing)",
+  "last_commit": "c6f5dca",
   "last_pushed_commit": "b2e7762",
   "tests": {
     "passed": 880,

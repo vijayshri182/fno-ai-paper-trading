@@ -1068,7 +1068,8 @@ controlled capabilities:
   recorded round trips; the closest prior gates were already rejected on the
   protected OOS (WS 7.16). No promotion executed (see
   `docs/regime_eval_report.md`, `evaluation/regime_eval.py`,
-  `scripts/eval_regime_hypotheses.py`, `tests/test_regime_eval.py`).
+  `scripts/eval_regime_hypotheses.py`, `tests/test_regime_eval.py`). Committed
+  `c6f5dca`.
 
 *Work stream 7.7 — GUI / monitoring dashboard* — **PLANNED**
 * Read-only-first web GUI exposing system/trading/performance/historical/learning
