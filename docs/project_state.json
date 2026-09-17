@@ -28,19 +28,19 @@
   "pending_phases": [
     "Phase 7+ — real-broker adapter (separate explicitly controlled capability; requires human approval — never silently enabled; third-party notification integrations are future/PLANNED — require external credentials)"
   ],
-  "active_task": "WS 7.18 walk-forward adaptive research & learning engine COMPLETE (walkforward package implemented + tested [18 tests]; verified on real NIFTY 50 5m: 932/932 research days walked 2022-01-03..2025-10-03, protected OOS 2025-10-06 truncated out and never loaded; champion model_0 net -80,269.64 Rs over 1293 RT; 5 challengers spawned 2023..2025, future-only 20-day validated, all gated INSUFFICIENT EVIDENCE; 0 promotions; deterministic byte-identical ledger across two runs; full suite 1109 passed; docs/PROGRESS/ACTIVITY updated) — next human-gated steps: single real F&O experiment 2026-09-14; real-broker adapter",
-  "last_completed_checkpoint": "WS 7.18 walk-forward adaptive research & learning engine (walkforward/config|records|catalog|learning|gate|engine|reports + __init__; script scripts/run_walkforward.py; reports/walkforward/summary.json|versions.json|promotions.jsonl|evolution_timeline.html|.md|walkforward.ledger.jsonl|walkforward.state.json; real run walked 932/932 research days with deterministic byte-identical ledgers; 5 challengers gated INSUFFICIENT_EVIDENCE, 0 promotions; protected OOS untouched; full suite 1109 passed)",
-  "last_commit": "d081db0",
-  "last_pushed_commit": "d081db0",
+  "active_task": "WS 7.18 walk-forward adaptive research & learning engine COMPLETE (walkforward package implemented + tested [18 tests]; verified on real NIFTY 50 5m: 932/932 research days walked 2022-01-03..2025-10-03, protected OOS 2025-10-06 truncated out and never loaded; champion model_0 net -80,269.64 Rs over 1293 RT; 5 challengers spawned 2023..2025, future-only 20-day validated, all gated INSUFFICIENT EVIDENCE; 0 promotions; deterministic byte-identical artifacts across three runs (2 fresh + 1 resumed); full suite 1109 passed; docs/PROGRESS/ACTIVITY updated) — next human-gated steps: single real F&O experiment 2026-09-14; real-broker adapter",
+  "last_completed_checkpoint": "WS 7.18 walk-forward adaptive research & learning engine (walkforward/config|records|catalog|learning|gate|engine|reports + __init__; script scripts/run_walkforward.py; reports/walkforward/summary.json|versions.json|promotions.jsonl|evolution_timeline.html|.md|walkforward.ledger.jsonl|walkforward.state.json; real run walked 932/932 research days with deterministic byte-identical artifacts (3 runs incl. resume); 5 challengers gated INSUFFICIENT_EVIDENCE, 0 promotions; protected OOS untouched; full suite 1109 passed)",
+  "last_commit": "7d12fd8",
+  "last_pushed_commit": "7d12fd8",
   "tests": {
-    "passed": 1109,
+    "passed": 1752,
     "failed": 0,
     "skipped": 0,
-    "last_run_label": "1109 passed in 35.75s (1091 prior + 18 walk-forward engine tests: 21-field ledger, freeze-at-day-start, byte-identical resume, config-hash rejection, append-only ledger, no-live-imports AST, future-only validation, budget caps, frozen catalog params, orphan blocking, gate PROMOTE/REJECT/INSUFFICIENT_EVIDENCE, criteria round-trip, evidence-window version scoping, report artifacts, trend normalization, OOS truncation)"
+    "last_run_label": "1752 passed in 150.37s (2026-09-17 on the real Upstox-validated checkout; the prior 1109 label predates later-added suites now collected in the full run: WS 7.9 live-execution integration, OAuth/credential-boundary, paper-session, acceptance replay + current Upstox V3 provider/registry/interval tests; no integration code was changed during this validation)"
   },
   "validation": {
     "status": "PASS",
-    "summary": "1109 tests passed. WS 7.18 walk-forward engine verified: algorithm-for-day-D frozen before D; evidence windows strictly future; ledger append-only; resume byte-identical under same config hash and config-hash changes refused; protected OOS truncated out (raises only when empty); challenger params frozen catalog constants; strict total budget; gate returns PROMOTE/REJECT/INSUFFICIENT_EVIDENCE with reasons; trend-normalized regime predicates (regression test); AST check proves no live-trading module is imported. Real run: 932/932 research days, two independent runs byte-identical, 5 challengers all INSUFFICIENT_EVIDENCE, 0 promotions. Algorithm Health unchanged RED / ALGO READY=NO. No real order placed; live execution gate default-closed; single real F&O experiment deferred to operator-consented enablement (2026-09-14)."
+    "summary": "1109 tests passed. WS 7.18 walk-forward engine verified: algorithm-for-day-D frozen before D; evidence windows strictly future; ledger append-only; resume byte-identical under same config hash and config-hash changes refused; protected OOS truncated out (raises only when empty); challenger params frozen catalog constants; strict total budget; gate returns PROMOTE/REJECT/INSUFFICIENT_EVIDENCE with reasons; trend-normalized regime predicates (regression test); AST check proves no live-trading module is imported. Real run: 932/932 research days, three runs (2 fresh + 1 resumed) byte-identical across all 7 artifacts, 5 challengers all INSUFFICIENT_EVIDENCE, 0 promotions. Algorithm Health unchanged RED / ALGO READY=NO. No real order placed; live execution gate default-closed; single real F&O experiment deferred to operator-consented enablement (2026-09-14)."
   },
   "champion": {
     "name": "MA(5,21) moving-average cross (MovingAverageCrossStrategy)",
@@ -117,7 +117,7 @@
         "reason": "validation trades 0 below minimum 10"
       }
     ],
-    "determinism": "two independent full runs produced byte-identical ledgers (sha256 equal)",
+    "determinism": "three runs (two fresh + one resumed after --stop-after-days 500) produced byte-identical artifacts across all 7 outputs (sha256 equal)",
     "artifacts": "reports/walkforward/{summary.json,versions.json,promotions.jsonl,evolution_timeline.html,evolution_timeline.md,walkforward.ledger.jsonl,walkforward.state.json} (git-ignored)"
   },
   "paper_trading_status": {
@@ -126,7 +126,7 @@
     "version": "Paper Session V1",
     "config_version": "paper_settings defaults",
     "market_session": "n/a (evaluation run context)",
-    "latest_paper_trade_note": "10-Sep-2026 real-data paper replay closed ~-194.68 INR single session; evaluated, not a trigger for changes"
+    "latest_paper_trade_note": "16-Sep-2026 real NIFTY 50 5m replay walked end-to-end through the paper engine on LIVE Upstox V3 REST data: 75/75 completed bars (first 09:15, last 15:25), 2 round trips qty 2 (BUY 12:30 + SELL 13:35, then BUY 14:50 / SELL 15:20), 4 fills 0 rejects, realized -272.47 Rs incl. 13.96+13.92 Rs commissions, single long slot, position flat, paper equity 99671.77; predecessor 10-Sep -194.68 single session. Evaluated, not a trigger for algorithm changes. 17-Sep: live V3 WebSocket verified FRESH (401/401 live ticks in OPEN; 09:15 candle O23222.05 H23226.75 L23197.30 C23222.35). Paper trading only — no real order."
   },
   "live_execution_test": {
     "status": "DRY-RUN READY (implementation complete; real send OFF by default)",
@@ -150,6 +150,8 @@
   },
   "blockers": [],
   "risks": [
+    "REST V3 intraday serves only completed/prior-session days: the in-progress 17-Sep session returned 0/5m bars, so same-session live paper trading via REST is not possible; the live V3 WebSocket feed instead delivered 401/401 FRESH NIFTY 50 ticks in OPEN and the 5m candle builder produced the 09:15 candle from those ticks (protected WS 7.9 WS 7.8 gap: no runtime 5m intraday consumer path).",
+    "Runtime paper agent (--upstox, 17-Sep) uses the provider DEFAULT interval 1d while PaperSession consumes 5m, so the watchdog fail-safe STOP'd the cycle (stale-bar guard) rather than paper-trading today — correct protective behavior; a same-interval intraday live data path is the required enabler and was NOT wired in this task.",
     "MA(5,21) baseline has no long entries and deep negative net performance on continuous 5m replay — scientific finding recorded, no edge manufactured.",
     "WS 7.6: all recorded decision-time entry regimes are net-negative; regime-filter hypotheses are inert on recorded evidence (no promotion).",
     "WS 7.17: every family competition tier is E and A BEST TESTED is ABSENT — no family has a credible positive-OOS candidate; conclusion B stands.",
@@ -169,7 +171,7 @@
     "position_sizing_controls": "PROTECTED",
     "max_loss_controls": "PROTECTED"
   },
-  "last_activity": "WS 7.18 walk-forward adaptive research & learning engine COMPLETE (21-field algorithm evolution ledger; 932/932 research days walked on real NIFTY 50 5m; champion model_0 net -80,269.64 Rs; 5 challengers all gated INSUFFICIENT EVIDENCE; 0 promotions; protected OOS never loaded; deterministic byte-identical ledgers; 1109 tests passed; docs + PROGRESS + ACTIVITY + dashboard updated)",
+  "last_activity": "WS 7.18 walk-forward adaptive research & learning engine COMPLETE (21-field algorithm evolution ledger; 932/932 research days walked on real NIFTY 50 5m; champion model_0 net -80,269.64 Rs; 5 challengers all gated INSUFFICIENT EVIDENCE; 0 promotions; protected OOS never loaded; deterministic byte-identical artifacts (fresh + resumed); 1109 tests passed; docs + PROGRESS + ACTIVITY + dashboard updated)",
   "next_action": "2026-09-14: single real F&O experiment under explicit human-controlled enablement (gate open + consent + confirm). The WS 7.18 engine is available for future research walks; any adaptive-research tuning (e.g. validation-trade minimum, additional catalog hypotheses) is a config/evidence decision and still never promotes without passing the 21-criteria future-only gate. After the live test, remaining plan items are human-gated: real-broker adapter (requires human approval — never silently enabled) and third-party notification integrations (future, require external credentials).",
   "agent_status": "RUNNING",
   "heartbeat": "",
