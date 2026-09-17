@@ -30,7 +30,7 @@
   ],
   "active_task": "WS 7.18 walk-forward adaptive research & learning engine COMPLETE (walkforward package implemented + tested [18 tests]; verified on real NIFTY 50 5m: 932/932 research days walked 2022-01-03..2025-10-03, protected OOS 2025-10-06 truncated out and never loaded; champion model_0 net -80,269.64 Rs over 1293 RT; 5 challengers spawned 2023..2025, future-only 20-day validated, all gated INSUFFICIENT EVIDENCE; 0 promotions; deterministic byte-identical artifacts across three runs (2 fresh + 1 resumed); full suite 1109 passed; docs/PROGRESS/ACTIVITY updated) — next human-gated steps: single real F&O experiment 2026-09-14; real-broker adapter",
   "last_completed_checkpoint": "WS 7.18 walk-forward adaptive research & learning engine (walkforward/config|records|catalog|learning|gate|engine|reports + __init__; script scripts/run_walkforward.py; reports/walkforward/summary.json|versions.json|promotions.jsonl|evolution_timeline.html|.md|walkforward.ledger.jsonl|walkforward.state.json; real run walked 932/932 research days with deterministic byte-identical artifacts (3 runs incl. resume); 5 challengers gated INSUFFICIENT_EVIDENCE, 0 promotions; protected OOS untouched; full suite 1109 passed)",
-  "last_commit": "7d12fd8",
+  "last_commit": "51f272f",
   "last_pushed_commit": "7d12fd8",
   "tests": {
     "passed": 1752,
@@ -171,8 +171,8 @@
     "position_sizing_controls": "PROTECTED",
     "max_loss_controls": "PROTECTED"
   },
-  "last_activity": "WS 7.18 walk-forward adaptive research & learning engine COMPLETE (21-field algorithm evolution ledger; 932/932 research days walked on real NIFTY 50 5m; champion model_0 net -80,269.64 Rs; 5 challengers all gated INSUFFICIENT EVIDENCE; 0 promotions; protected OOS never loaded; deterministic byte-identical artifacts (fresh + resumed); 1109 tests passed; docs + PROGRESS + ACTIVITY + dashboard updated)",
-  "next_action": "2026-09-14: single real F&O experiment under explicit human-controlled enablement (gate open + consent + confirm). The WS 7.18 engine is available for future research walks; any adaptive-research tuning (e.g. validation-trade minimum, additional catalog hypotheses) is a config/evidence decision and still never promotes without passing the 21-criteria future-only gate. After the live test, remaining plan items are human-gated: real-broker adapter (requires human approval — never silently enabled) and third-party notification integrations (future, require external credentials).",
+  "last_activity": "WS 7.26 fresh-OOS accumulation: audited pool (2 UNTOUCHED sessions, 150 bars), GET-only probes confirmed 2026-09-14 served no bars and 2026-09-17 not yet served ~2h post-close; no new session materialized; ALGO READY assessed: health=RED ready=NO trend=DETERIORATING",
+  "next_action": "CONTINUE_AUTONOMOUSLY (next action acquire_fresh_oos_data): keep accumulating fresh untouched NIFTY 50 5m sessions strictly after protected OOS boundary 2026-09-11 until the fresh validation threshold (>=20 trading days / >=1500 bars / >=30 trades) is satisfied; then one single-use fresh-OOS validation run. Current pool: 2 trading days / 150 bars UNTOUCHED (upstox_Nifty_50_5m_20260915_20260915, upstox_Nifty_50_5m_20260916_20260916); remaining ~18 trading days / ~1350 bars. Protected OOS 2025-10-06..2026-09-11 stays frozen and is never relabelled as fresh. LIVE GATE stays CLOSED; no orders; no promotion.",
   "agent_status": "RUNNING",
   "heartbeat": "",
   "timestamp": "",
@@ -200,10 +200,10 @@
     "strategy_id": "moving_average_cross",
     "strategy_family": "TREND_FOLLOWING",
     "strategy_version": "1.0.0",
-    "attribution_note": "Algorithm Health is attested to the frozen MA(5,21) champion (family TREND_FOLLOWING). Cross-family competition lives in the Algorithm Laboratory scoreboard; the champion is NOT promotable under current recorded evidence. The WS 7.18 walk-forward engine also found no champion-worthy challenger (all gated INSUFFICIENT_EVIDENCE).",
+    "attribution_note": "Algorithm Health is attested to the frozen MA(5,21) champion (family TREND_FOLLOWING). Cross-family competition lives in the Algorithm Laboratory scoreboard; the champion is NOT promotable under current recorded evidence.",
     "readiness_reason": "paper readiness is NO because the health assessment is RED (backtest net expectancy -54.75311039689981949458483755/trade is not positive over 2216 trades)",
     "health_reason": "backtest net expectancy -54.75311039689981949458483755/trade is not positive over 2216 trades",
-    "last_updated": "2026-09-13T09:11:05+05:30",
+    "last_updated": "2026-09-17T17:31:57+05:30",
     "headline_note": "headline figures above are the historical/backtest bucket (MA(5,21) recorded replay); per-bucket details are in the dashboard.",
     "paper_trades_recorded": 0
   },

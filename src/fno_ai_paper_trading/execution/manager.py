@@ -136,6 +136,7 @@ class LiveExecutionTestManager:
         hold_seconds: float | None = None,
         poll_seconds: float | None = None,
         order_timeout_seconds: float | None = None,
+        force_one_lot_round_trip: bool = False,
     ) -> None:
         if not isinstance(adapter, ExecutionAdapter):
             raise TypeError("adapter must implement ExecutionAdapter")
@@ -148,6 +149,8 @@ class LiveExecutionTestManager:
         self.clock = clock if clock is not None else _naive_ist_now
         self.sleep = sleep
         self.confirm_live_enablement = bool(confirm_live_enablement)
+        self.force_one_lot_round_trip = bool(force_one_lot_round_trip)
+        self.entry_fill_quantity: int | None = None
         self.hold_seconds = (
             float(hold_seconds) if hold_seconds is not None else float(live_settings.hold_seconds)
         )
@@ -303,7 +306,19 @@ class LiveExecutionTestManager:
 
         # --- 3. trend signal -> CALL/PUT ------------------------------------
         decision = decide_call_put(signal_bars or [], self.signal_strategy)
-        if decision.leg is CallPutSignal.NONE:
+        # Forced one-lot round trip (WS 7.24B OPTION B): the operator pinned a
+        # CALL/PUT leg AND explicitly invoked --force-one-lot-round-trip. We
+        # only bypass the HOLD *decision* by using that operator-pinned leg —
+        # never by weakening the gate: the gate/* confirm_live_enablement checks
+        # below remain mandatory and unchanged.
+        forced_leg = (
+            side_preference
+            if self.force_one_lot_round_trip
+            and side_preference is not None
+            and side_preference is not CallPutSignal.NONE
+            else None
+        )
+        if decision.leg is CallPutSignal.NONE and forced_leg is None:
             reasons.append(
                 "strategy signal is HOLD — no CALL or PUT leg; refusing to trade "
                 f"(pinned side would be {side_preference.value if side_preference is not None else 'none'}, "
@@ -314,7 +329,7 @@ class LiveExecutionTestManager:
                          pinned=side_preference.value if side_preference else "none",
                          reason="no trade")
             return
-        leg = (
+        leg = forced_leg if forced_leg is not None else (
             side_preference
             if side_preference is not None and side_preference is not CallPutSignal.NONE
             else decision.leg
@@ -401,6 +416,7 @@ class LiveExecutionTestManager:
             self._record("entry_not_filled", status=entry_status.value)
             return
         self.entry_fill_price = self._fill_price(entry_detail, premium)
+        self.entry_fill_quantity = self._filled_quantity(entry_detail, quantity)
         self.state.transition(ExecutionTestState.ENTRY_FILLED)
         self.state.transition(ExecutionTestState.HOLDING)
         self._record("entry_filled", fill_price=str(self.entry_fill_price))
@@ -410,9 +426,17 @@ class LiveExecutionTestManager:
         self._record("hold_completed", hold_seconds=self.hold_seconds)
 
         # --- 10. exit (exactly one) -------------------------------------------
+        # WS 7.24B OPTION B (--force-one-lot-round-trip): SELL exactly the
+        # *actual* quantity that the broker filled on entry (may be a partial
+        # fill); never the nominal lot when a forced round trip is in effect.
+        exit_quantity = (
+            self.entry_fill_quantity
+            if self.force_one_lot_round_trip and self.entry_fill_quantity is not None
+            else quantity
+        )
         exit_side = OrderSide.SELL if side is OrderSide.BUY else OrderSide.BUY
         exit_order = Order(
-            instrument=instrument, side=exit_side, quantity=quantity, order_id=new_id("ORD")
+            instrument=instrument, side=exit_side, quantity=exit_quantity, order_id=new_id("ORD")
         )
         try:
             self.exit_ack = self.adapter.place_order(exit_order, mode=gate_decision.mode)
@@ -427,7 +451,7 @@ class LiveExecutionTestManager:
                      dry_run=self.exit_ack.dry_run, side=exit_side.value)
 
         exit_status, exit_detail = self._wait_for_fill(
-            self.exit_ack, quantity, "exit", reasons
+            self.exit_ack, exit_quantity, "exit", reasons
         )
         if exit_status is not OrderStatus.FILLED:
             self._record("exit_not_filled", status=exit_status.value)
@@ -509,6 +533,13 @@ class LiveExecutionTestManager:
             value = detail.get("average_price")
             return Decimal(str(value)) if value is not None else fallback
         except Exception:  # noqa: BLE001 - malformed price never blocks a run
+            return fallback
+
+    def _filled_quantity(self, detail: dict[str, object], fallback: int) -> int:
+        try:
+            value = detail.get("filled_quantity")
+            return int(str(value)) if value is not None else fallback
+        except Exception:  # noqa: BLE001 - malformed fill never blocks a run
             return fallback
 
     def _try_emergency_flatten(self, instrument, mode: ExecutionMode) -> None:
