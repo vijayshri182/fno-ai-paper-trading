@@ -51,6 +51,7 @@ from fno_ai_paper_trading.data.instrument_registry import get_research_instrumen
 from fno_ai_paper_trading.data.market_hours import NSE_TZ  # noqa: E402
 from fno_ai_paper_trading.data.mock_provider import build_crossing_ohlcv  # noqa: E402
 from fno_ai_paper_trading.data.upstox_provider import UpstoxHistoricalDataProvider  # noqa: E402
+from fno_ai_paper_trading.data.upstox_instruments import resolve_from_upstox_master  # noqa: E402
 from fno_ai_paper_trading.execution.audit import ExecutionAudit  # noqa: E402
 from fno_ai_paper_trading.execution.gate import LiveExecutionTestGate  # noqa: E402
 from fno_ai_paper_trading.execution.instrument import resolve_fno_instrument  # noqa: E402
@@ -131,14 +132,23 @@ def main(argv: list[str] | None = None) -> int:
                         help="explicit human confirmation that a real order is authorized")
     parser.add_argument("--underlying", default="NIFTY 50",
                         help="registered research underlying used for the trend signal (default NIFTY 50)")
-    parser.add_argument("--expiry", default="2026-12-24", metavar="YYYY-MM-DD",
-                        help="option expiry (must be after today)")
-    parser.add_argument("--strike", default="24500", help="option strike")
+    parser.add_argument("--expiry", default="", metavar="YYYY-MM-DD",
+                        help="option expiry (must be after today); empty = derive from --expiry-bucket")
+    parser.add_argument("--expiry-bucket", default="", choices=["", "current_week", "next_week", "current_month", "next_month"],
+                        help="calendar bucket for the expiry when --expiry is empty (default current_week)")
+    parser.add_argument("--strike", default="", help="option strike; empty = ATM from the underlying spot")
     parser.add_argument("--side", choices=["CALL", "PUT", "auto"], default="auto",
-                        help="CALL/PUT leg; auto derives from the MA(5,21) trend signal")
+                        help="CALL/PUT leg; auto derives the leg from the selected signal strategy")
+    parser.add_argument("--signal-strategy", choices=["ma521", "composite-trend", "composite-mean-reversion", "composite-breakout"],
+                        default="ma521",
+                        help="signal strategy for the auto leg (default ma521 = the frozen champion; "
+                             "composite-* = enhanced multi-indicator composite presets)")
     parser.add_argument("--instrument-key", default="", metavar="SEGMENT|SYMBOL",
-                        help="Upstox instrument key of the option to trade (required for --data-source upstox)")
-    parser.add_argument("--lot-size", type=int, default=75, help="F&O lot size of the expiry (default 75)")
+                        help="explicit Upstox instrument key; when omitted the contract is resolved from the Upstox master file")
+    parser.add_argument("--instruments-file", default="", metavar="PATH",
+                        help="local NSE.json(.gz) master file to use instead of downloading it (offline/deterministic)")
+    parser.add_argument("--lot-size", type=int, default=0,
+                        help="F&O lot size override (0 = take the authoritative lot size from the master file)")
     parser.add_argument("--holder", default="operator",
                         help="consent-file 'operator' label for the --smoke helpers")
     parser.add_argument("--token", default="", help="Upstox analytics/data token for the signal feed (env: FNO_UPSTOX_ACCESS_TOKEN)")
@@ -148,6 +158,12 @@ def main(argv: list[str] | None = None) -> int:
                         help="override hold; default from FNO_LIVE_TEST_HOLD_SECONDS (300s in live)")
     parser.add_argument("--out", default="reports/execution/last_run_summary.json",
                         help="where to write the run summary JSON")
+    parser.add_argument("--force-one-lot-round-trip", "--force", dest="force_one_lot_round_trip",
+                        action="store_true",
+                        help="WS 7.24B OPTION B: pin an explicit --side CALL/PUT and do exactly one "
+                             "one-lot BUY -> confirmed fill -> SELL the ACTUAL filled quantity -> flat. "
+                             "The LIVE_EXECUTION_TEST gate stays mandatory: this only forces a single "
+                             "lot round trip, it never re-opens/weakens the gate or consent.")
     args = parser.parse_args(argv)
 
     setup_logging()
@@ -179,19 +195,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # ------------------------------------------------------- instrument
     underlying = get_research_instrument(args.underlying)
-    option_key = args.instrument_key or f"NSE_FO|{args.underlying.upper()} 24 DEC 2026 {int(Decimal(args.strike)):d} {args.side if args.side != 'auto' else 'CE'}"
-    try:
-        instrument = resolve_fno_instrument(
-            underlying=underlying.symbol,
-            expiry=_parse_date(args.expiry),
-            strike=Decimal(args.strike),
-            option_type="CE" if args.side in ("CALL", "auto") else "PE",
-            exchange_token=option_key,
-            lot_size=args.lot_size,
-        )
-    except Exception as exc:  # noqa: BLE001 - invalid instrument means no run
-        print(f"instrument validation failed: {exc}", file=sys.stderr)
-        return 2
+    option_type_pref = "PE" if args.side == "PUT" else "CE"
 
     # ------------------------------------------------------- signal bars
     try:
@@ -199,6 +203,81 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:  # noqa: BLE001
         print(f"signal data unavailable: {exc}", file=sys.stderr)
         return 2
+
+    instrument_tokens: dict[str, int] = {}
+    resolved_contract = None
+    if args.data_source == "upstox" and not args.instrument_key:
+        # Resolve the real, currently-tradable contract from the authoritative
+        # Upstox master file. Strike/expiry are not hard-coded: expiry comes
+        # from --expiry or --expiry-bucket, and an empty strike resolves to the
+        # ATM strike from the underlying spot (last signal bar).
+        spot = None
+        if not args.strike and bars:
+            spot = Decimal(str(bars[-1].close))
+        try:
+            resolved_contract = resolve_from_upstox_master(
+                underlying=underlying.symbol,
+                expiry=_parse_date(args.expiry) if args.expiry else None,
+                expiry_bucket=(
+                    args.expiry_bucket if args.expiry_bucket
+                    else ("current_week" if not args.expiry else None)
+                ),
+                strike=Decimal(args.strike) if args.strike else None,
+                option_type=option_type_pref,
+                spot_price=spot,
+                instruments_file=(args.instruments_file or None),
+            )
+        except Exception as exc:  # noqa: BLE001 - invalid instrument means no run
+            print(f"instrument resolution failed: {exc}", file=sys.stderr)
+            return 2
+        instrument = resolved_contract.to_instrument()
+        instrument_tokens = resolved_contract.to_adapter_tokens()
+        print("[instrument] resolved from the Upstox master file:")
+        for field, value in resolved_contract.describe().items():
+            print(f"  {field}: {value}")
+        if args.expiry_bucket or not args.expiry:
+            print(f"  expiry note: bucket '{args.expiry_bucket or 'current_week'}' "
+                  f"selected expiry {resolved_contract.expiry.isoformat()}")
+        if not args.strike:
+            print(f"  strike note: ATM strike {resolved_contract.strike} "
+                  f"selected from spot {spot}")
+    else:
+        if args.instrument_key:
+            missing = [
+                name for name, value in (("--expiry", args.expiry), ("--strike", args.strike))
+                if not value
+            ]
+            if missing:
+                print(
+                    "--instrument-key requires " + " and ".join(missing) + "; omit "
+                    "--instrument-key to auto-resolve the current contract from the "
+                    "Upstox master file.",
+                    file=sys.stderr,
+                )
+                return 2
+        # Synthetic path (smoke) or a manually-pinned key: the expiry/strike are
+        # explicit operator inputs here, not broker-resolved defaults. The smoke
+        # defaults are synthetic fixtures for the offline crossing series only.
+        option_expiry = _parse_date(args.expiry) if args.expiry else date(2026, 12, 24)
+        option_strike = int(Decimal(args.strike)) if args.strike else (int(bars[-1].close) if bars else 25000)
+        option_key = args.instrument_key or (
+            f"NSE_FO|{args.underlying.upper()} {option_expiry:%d %b %Y} {option_strike} "
+            f"{args.side if args.side != 'auto' else 'CE'}"
+        )
+        option_lot = args.lot_size if args.lot_size > 0 else (75 if args.data_source == "smoke" else 75)
+        try:
+            instrument = resolve_fno_instrument(
+                underlying=underlying.symbol,
+                expiry=option_expiry,
+                strike=Decimal(option_strike),
+                option_type=option_type_pref,
+                exchange_token=option_key,
+                lot_size=option_lot,
+            )
+        except Exception as exc:  # noqa: BLE001 - invalid instrument means no run
+            print(f"instrument validation failed: {exc}", file=sys.stderr)
+            return 2
+        option_key = instrument.exchange_token or option_key
 
     # ------------------------------------------------------- adapter
     if args.data_source == "smoke":
@@ -216,8 +295,30 @@ def main(argv: list[str] | None = None) -> int:
         adapter = UpstoxExecutionAdapter(
             credentials=credentials,
             dry_run=dry_run,
-            instrument_tokens={},
+            instrument_tokens=instrument_tokens,
         )
+        if resolved_contract is not None and dry_run:
+            # Sanitized evidence: the exact order body a real send would POST,
+            # reconstructed deterministically from the resolved contract. It
+            # carries no credentials — only the public contract token. For an
+            # auto leg the transaction_type is decided by the signal at runtime.
+            if args.side == "auto":
+                print("[payload] dry-run: order body for a real send (credentials removed; "
+                      "transaction_type decided by the signal at runtime):")
+            else:
+                print("[payload] dry-run: order body a real send would POST to /v2/order/place (credentials removed):")
+            print(json.dumps({
+                "instrument_token": resolved_contract.instrument_token,
+                "quantity": int(resolved_contract.lot_size),
+                "product": "M",
+                "validity": "DAY",
+                "price": 0,
+                "tag": "fno-ai-controlled-live-execution-test",
+                "instrument_type": "OPT",
+                "transaction_type": ("BUY" if option_type_pref == "CE" else "SELL") if args.side != "auto" else "<signal>",
+                "order_type": "MARKET",
+                "is_amo": False,
+            }, indent=2))
 
     # ------------------------------------------------------- manager
     risk_manager = RiskManager(settings)
@@ -241,6 +342,19 @@ def main(argv: list[str] | None = None) -> int:
     default_hold = 0.2 if args.data_source == "smoke" else None
     hold_seconds = args.hold_seconds if args.hold_seconds and args.hold_seconds > 0 else default_hold
 
+    from fno_ai_paper_trading.strategies.composite import MultiIndicatorStrategy
+    from fno_ai_paper_trading.strategies.moving_average_cross import MovingAverageCrossStrategy
+
+    if args.signal_strategy == "ma521":
+        signal_strategy = MovingAverageCrossStrategy(fast=5, slow=21)
+    else:
+        mode = {
+            "composite-trend": "trend",
+            "composite-mean-reversion": "mean_reversion",
+            "composite-breakout": "breakout",
+        }[args.signal_strategy]
+        signal_strategy = MultiIndicatorStrategy(mode=mode)
+
     manager = LiveExecutionTestManager(
         settings=settings,
         live_settings=live_settings,
@@ -251,14 +365,17 @@ def main(argv: list[str] | None = None) -> int:
         audit=audit,
         alert_engine=alert_engine,
         confirm_live_enablement=args.confirm_live_enablement and args.live,
+        force_one_lot_round_trip=args.force_one_lot_round_trip,
         hold_seconds=hold_seconds,
+        signal_strategy=signal_strategy,
     )
 
     side_pref = _side(args)
     if side_pref is not None:
         print(f"[plan] pinned leg: {side_pref.value}")
     else:
-        print("[plan] auto leg from frozen MA(5,21) trend signal")
+        print(f"[plan] auto leg from {signal_strategy.name} "
+              f"({'MA(5,21)' if args.signal_strategy == 'ma521' else args.signal_strategy.replace('composite-', '')} preset)")
 
     result = manager.run(instrument, signal_bars=bars, side_preference=side_pref)
 

@@ -176,6 +176,33 @@ class ExecutionPosition:
         return self.quantity == 0
 
 
+def _quote_node(data: dict, symbol: str) -> dict:
+    """Locate a market-quote node despite response-key separator differences.
+
+    Upstox quote responses key nodes with ``SEGMENT:symbol`` (colon) even
+    though requests use ``SEGMENT|symbol`` (pipe). This looks up the exact key
+    first (backward compatible), then the colon variant, then matches purely by
+    the symbol/token suffix so numeric and descriptive keys both work.
+    """
+    if not isinstance(data, dict):
+        return {}
+    node = data.get(symbol)
+    if isinstance(node, dict):
+        return node
+    colon = symbol.replace("|", ":")
+    if colon in data and isinstance(data[colon], dict):
+        return data[colon]
+    suffix = symbol.rsplit("|", 1)[-1].strip()
+    if suffix:
+        for key, value in data.items():
+            if not isinstance(value, dict):
+                continue
+            if key.rsplit(":", 1)[-1].strip() == suffix or key.rsplit("|", 1)[-1].strip() == suffix:
+                if isinstance(value.get("ohlc"), dict) and value["ohlc"].get("close") is not None:
+                    return value
+    return {}
+
+
 class ExecutionAdapter(ABC):
     """Broker-agnostic interface for the controlled live test.
 
@@ -234,9 +261,11 @@ def _map_order_status(raw: str, filled_quantity: int, quantity: int) -> OrderSta
 class UpstoxExecutionAdapter(ExecutionAdapter):
     """REST adapter over the Upstox V2 trading endpoints.
 
-    ``instrument_tokens`` maps a local ``exchange_token`` (``SEGMENT|SYMBOL``)
-    to the numeric Upstox instrument token the order API expects. When absent
-    for a symbol, the adapter refuses to place the order (no guessing).
+    ``instrument_tokens`` maps a local ``exchange_token`` (``SEGMENT|SYMBOL``
+    or the numeric-key form ``SEGMENT|TOKEN``) to the numeric Upstox instrument
+    token the order API expects. When absent for a symbol, the adapter refuses
+    to place the order (no guessing) *unless* the ``SEGMENT|TOKEN`` key already
+    carries the numeric token — that suffix is the identity, not a guess.
     """
 
     def __init__(
@@ -322,7 +351,7 @@ class UpstoxExecutionAdapter(ExecutionAdapter):
         response = self._get(f"/v2/market-quote/ohlc/{key}")
         payload = response.json
         data = payload.get("data") or {}
-        node = data.get(symbol) or {}
+        node = _quote_node(data, symbol)
         ohlc = node.get("ohlc") or {}
         close = ohlc.get("close")
         if close is None:
@@ -411,13 +440,27 @@ class UpstoxExecutionAdapter(ExecutionAdapter):
         response = self._get("/v2/positions")
         payload = response.json
         rows = (payload.get("data") or []) if isinstance(payload.get("data"), list) else []
+        # Map broker-reported numeric instrument tokens back to our registered
+        # exchange_token keys so FLAT reconciliation matches by identity, not by
+        # display symbol (Upstox reports the descriptive trading_symbol).
+        reverse_map = {token: key for key, token in self.instrument_tokens.items()}
         positions: list[ExecutionPosition] = []
         for row in rows:
+            symbol = str(row.get("trading_symbol") or "")
+            reported_token = row.get("instrument_token")
+            if reported_token is not None:
+                try:
+                    symbol = reverse_map.get(int(reported_token), symbol)
+                except (TypeError, ValueError):
+                    pass
+            raw_quantity = row.get("net_quantity")
+            if raw_quantity is None:
+                raw_quantity = row.get("quantity")
             positions.append(
                 ExecutionPosition(
-                    symbol=str(row.get("trading_symbol") or ""),
+                    symbol=symbol,
                     exchange=str(row.get("exchange") or "NSE"),
-                    quantity=int(row.get("net_quantity") or 0),
+                    quantity=int(raw_quantity or 0),
                     average_price=(
                         Decimal(str(row["average_price"])) if row.get("average_price") is not None else None
                     ),
@@ -429,8 +472,13 @@ class UpstoxExecutionAdapter(ExecutionAdapter):
     # ---------------------------------------------------------------- internals
 
     def _token_for(self, exchange_token: str | None) -> int:
-        alt = dict(self.instrument_tokens)
-        token = alt.get(exchange_token)
+        token = self.instrument_tokens.get(exchange_token)
+        if token is None and exchange_token:
+            # A SEGMENT|TOKEN key already carries the numeric Upstox token in
+            # its suffix (e.g. "NSE_FO|57617"); that is the identity, not a guess.
+            suffix = exchange_token.rsplit("|", 1)[-1].strip()
+            if suffix.isdigit():
+                token = int(suffix)
         if token is None:
             raise UpstoxExecutionError(
                 f"no numeric Upstox instrument token registered for {exchange_token!r}; "
