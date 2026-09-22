@@ -94,6 +94,21 @@ passes `interval="5m"` explicitly** — this is the deliberate fix for the upstr
 into a 5m session. The token is read from the environment **only**; it is never
 accepted on a command line, printed, or written to any report.
 
+Two properties make the seam honest (added 2026-09-22):
+
+* **Symbol-aligned instrument.** The engine is given *the same* `Instrument`
+  object the provider resolves for "NIFTY 50" (symbol `Nifty 50`). Without this
+  the bar validator rejected every real bar as `unexpected instrument 'Nifty 50'`
+  (a case mismatch against the canonical `NIFTY 50`), so a session could
+  "complete" with zero fills and zero data errors while silently consuming
+  nothing.
+* **Fail-closed empty session.** If the endpoint serves no completed bars for the
+  day (verified for the current session), `upstox` prints the reason, removes the
+  empty report it would otherwise leave behind, and exits `2`. The zero-bar
+  signal is `engine.last_processed is None` — the session tick-clock always
+  advances (idle ticks), so a clock-based check could never detect a bar-less
+  day.
+
 ### 2.6 Dev-only injection points
 `--failpoint A..J` injects a simulated process crash at a specific point in the
 per-tick pipeline (test/dev only). It exists so disaster recovery can be
@@ -204,3 +219,42 @@ minutes:
 ```powershell
 .\.venv\Scripts\python.exe -m pytest "tests\test_paper_track_simulation.py" "tests\test_paper_track_orders.py" -q
 ```
+
+---
+
+## 7. Real-market paper evidence (2026-09)
+
+Replayed through the **frozen on-paper contract** (MA(5,21) default, SessionGate
+09:30→entry / 15:20 flatten, 1%-per-trade risk sizing, 2% stop, broker
+commission + slippage):
+
+| Window | Bars | Result (paper execution only) |
+|---|---|---|
+| 14 completed NSE sessions, 2026-09-01 → 2026-09-21 (1050 real 5m bars, read-only Upstox endpoint) | 1050 | 26 round trips, **1 win / 25 losses (3.8% win rate)**, gross profit ₹75.29, gross loss ₹3,195.08, costs ₹732.44, **lifetime net −₹3,119.79**, avg trade −₹120.00, max day-end drawdown ₹3,119.79, 0 stop-outs, 4 EOD flattens, 0 data errors, reconciliation `True` |
+
+Cumulative fingerprint `8f1c0f7650d2ac2fa92b49afc5c1307068c0cbf4055f1e8f57230375dbea9f67`
+(account `realformer15b`, evidence store under
+`%TEMP%\opencode\evidence_store`, reproducibility script kept out of the repo by
+design). Every session ended `FLAT`/`FLATTENED`; the track never risked an
+overnight position.
+
+### 7.1 Honest reading of this window
+
+* The frozen MA(5,21) strategy **disconfirms** on real NIFTY 5m in this window —
+  this is genuine evidence, not a fabricated payout. It matches the shipped
+  research audit (`docs/champion_failure_audit.md`): MA(5,21) has no gross edge
+  and churned through 26 round trips in 14 sessions.
+* The value of the trail is the **faithful execution**, not the P&L: real bars →
+  validation → strategy → sizing → paper broker → hashed report → cumulative
+  reconciliation all ran with zero data errors or invariant violations.
+* This is prior-session **bar replay**, not a live session. The read-only
+  historical endpoint serves no bars for the current session (verified
+  2026-09-22: NSE session open, `get_historical_ohlcv(..., 09:05 → 10:31)`
+  returned 0 bars for today while 75-bar complete sessions existed for every
+  prior trading day). A full-session **live** validation is therefore not
+  achievable with the existing seam and is reported as an open limitation; the
+  track has no live-execution path and no scheduler anywhere in its source
+  (see `docs/paper_track_safety.md`).
+* Separately, an earlier 5-session replay (09-15..09-21) run with tomorrow's
+  *unfixed* seam produced 0 fills and 0 data errors — silently void. That defect
+  is what §2.5 documents; never treat a zero-fill report as "validated".
