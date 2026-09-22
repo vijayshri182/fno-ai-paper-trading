@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -57,11 +58,20 @@ class ProviderBarsSource:
     default can never silently downgrade the engine to daily bars.
     """
 
-    def __init__(self, provider, instrument: str = "NIFTY 50") -> None:
+    def __init__(self, provider, instrument: str | object = "NIFTY 50") -> None:
+        """instrument may be a symbol string or an already-resolved Instrument
+        (the exact object whose symbol the provider's bars carry, so the
+        engine's bar validator never rejects real bars on a case/format
+        mismatch such as 'Nifty 50' vs 'NIFTY 50')."""
         from fno_ai_paper_trading.paper_track.feed import TRACK_INSTRUMENT
 
         self.provider = provider
-        self.instrument = provider.get_instrument(instrument) or TRACK_INSTRUMENT(instrument)
+        if hasattr(instrument, "symbol"):
+            self.instrument = instrument
+        else:
+            self.instrument = provider.get_instrument(str(instrument)) or TRACK_INSTRUMENT(
+                str(instrument)
+            )
 
     def bars_up_to(self, moment: datetime):
         start = moment - timedelta(days=7)
@@ -232,6 +242,17 @@ def cmd_checkpt(args) -> int:
     return 0
 
 
+def empty_session(engine) -> bool:
+    """True when the engine consumed no completed bar for the session.
+
+    The session's tick-clock always advances (idle ticks still call
+    ``clock.set``), so ``last_processed`` — only ever set when a completed bar
+    is consumed — is the reliable zero-data signal; a ``clock``-based check
+    would falsely report "OK" on a bar-less day.
+    """
+    return engine.last_processed is None
+
+
 def cmd_upstox(args) -> int:
     print(PAPER_ONLY_BANNER)
     import os
@@ -248,10 +269,14 @@ def cmd_upstox(args) -> int:
 
     config = build_config(args)
     research = get_research_instrument("NIFTY 50")
+    # Align the engine's expected instrument with the object whose symbol the
+    # provider actually returns ('Nifty 50'); otherwise every real bar is
+    # rejected by the validator as "unexpected instrument" and nothing trades.
+    config = replace(config, instrument=research)
     provider = UpstoxHistoricalDataProvider(
         access_token=token, interval="5m", instruments=[research]
     )
-    source = ProviderBarsSource(provider, instrument=research.symbol)
+    source = ProviderBarsSource(provider, instrument=research)
     store = TrackStore(config.store_dir, config.account)
     day = trading_day_sequence(date.today(), 1)[0]
     engine = run_sessions(config=config, store=store, feed=source, days=[day], verbose=args.verbose)
@@ -259,10 +284,14 @@ def cmd_upstox(args) -> int:
     if violations:
         print(f"  INVARIANT VIOLATIONS: {violations}")
         return 2
-    if engine.clock.now() == datetime(1970, 1, 1):
+    if empty_session(engine):
+        # A zero-bar day must fail closed: the session tick-clock always
+        # advances, so only last_processed proves a completed bar was consumed.
+        store.delete_report(day)
         print(
-            f"no real bars arrived for {day}; nothing was traded or persisted "
-            "(check the token scope and the NIFTY 50 5m instrument)"
+            f"no completed bars arrived for {day}; nothing was traded and the "
+            "empty report was removed (the Upstox historical endpoint does not "
+            "serve in-session intraday candles; prior completed sessions do)"
         )
         return 2
     print(f"upstox session OK for {day}:")

@@ -299,6 +299,15 @@ class TrackStore:
     def load_report(self, day: date) -> dict | None:
         return self.read_verified(self.report_path(day))
 
+    def delete_report(self, day: date) -> None:
+        """Remove a persisted day report and its sha sidecar (used by fail-closed
+        commands that must not leave a misleading zero-bar report behind)."""
+        for path in (self.report_path(day), self._sha256_path(self.report_path(day))):
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+
     # -- manifest --------------------------------------------------
 
     def manifest(self) -> dict:
