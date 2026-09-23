@@ -83,7 +83,7 @@ def test_build_scoreboard_structure(recorded):
     assert board["schema_version"] == "1"
     assert board["deliverable"] == "algorithm_research_scoreboard"
     assert board["champion"]["strategy_id"] == "moving_average_cross"
-    assert len(board["registry_catalog"]) == 6
+    assert len(board["registry_catalog"]) == 7
     assert set(board["families"]) == {"TREND_FOLLOWING", "MOMENTUM", "BREAKOUT", "REGIME_SWITCHING"}
     comp = board["competition"]
     assert comp["best_tested_present"] is False

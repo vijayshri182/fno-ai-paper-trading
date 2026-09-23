@@ -50,3 +50,15 @@ class Strategy(ABC):
         deterministic: the same input must always produce the same result.
         Invest on insufficient data by returning ``HOLD``.
         """
+
+    def signals_for(self, bars: list[MarketPrice]) -> list[SignalResult] | None:
+        """Optional precomputed decision series for the whole bar history.
+
+        When implemented, the backtest engine uses this instead of calling
+        ``analyze(bars[:i+1])`` once per bar — a O(n) shortcut for long series.
+        It must be exactly the list ``analyze`` would return for every prefix
+        (causal and deterministic, one entry per bar, identical to the per-prefix
+        path). Returning ``None`` keeps the default per-bar analyze loop
+        unchanged. The live/paper service still calls ``analyze`` directly.
+        """
+        return None

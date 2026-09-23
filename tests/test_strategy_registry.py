@@ -1,8 +1,8 @@
 """Tests for the strategy registry (strategies/registry.py).
 
 The registry must register the frozen champion and the c1..c5 candidates
-without modifying them, expose the expected families, and round-trip through
-its JSON catalog.
+and the multi-indicator composite challenger without modifying them, expose
+the expected families, and round-trip through its JSON catalog.
 """
 from __future__ import annotations
 
@@ -28,9 +28,10 @@ def test_default_registry_contents():
         "c3_momentum_gated_ma_cross",
         "c4_trend_gated_ma_cross",
         "c5_donchian_breakout",
+        "composite_multi_indicator",
     ):
         assert candidate in registry, candidate
-    assert len(registry) == 6
+    assert len(registry) == 7
 
 
 def test_default_families():

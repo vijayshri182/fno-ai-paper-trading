@@ -18,14 +18,16 @@ from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any, Mapping
 
-# The seven research families.  ``Family`` is open-ended by design: new
+# The research families.  ``Family`` is open-ended by design: new
 # families are legal, but every family must contain at least one registered
 # spec before it is ranked on the scoreboard.
 TREND_FOLLOWING = "TREND_FOLLOWING"
 MOMENTUM = "MOMENTUM"
 BREAKOUT = "BREAKOUT"
+PULLBACK = "PULLBACK"
 MEAN_REVERSION = "MEAN_REVERSION"
 VOLATILITY_REGIME = "VOLATILITY_REGIME"
+MARKET_STRUCTURE = "MARKET_STRUCTURE"
 MULTI_TIMEFRAME = "MULTI_TIMEFRAME"
 REGIME_SWITCHING = "REGIME_SWITCHING"
 
@@ -33,8 +35,10 @@ ALL_FAMILIES: tuple[str, ...] = (
     TREND_FOLLOWING,
     MOMENTUM,
     BREAKOUT,
+    PULLBACK,
     MEAN_REVERSION,
     VOLATILITY_REGIME,
+    MARKET_STRUCTURE,
     MULTI_TIMEFRAME,
     REGIME_SWITCHING,
 )
@@ -166,4 +170,32 @@ def champion_spec(version: str = "1.0.0") -> StrategySpec:
         supports_confidence=False,
         reproducibility="deterministic and stateless",
         metadata={"algorithm_version": "v1-baseline-ma521", "configuration_version": "v1-paper-defaults"},
+    )
+
+
+def composite_spec(version: str = "2.0.0") -> StrategySpec:
+    """Enhanced multi-indicator composite (educational WS 7.18 addition).
+
+    Trend-following preset: EMA(9/21) alignment + MACD + Supertrend + ADX
+    filter + stochastic/OBV/VWAP confirmation with an RSI guard and an ATR
+    stop suggestion. Registered in the neutral catalog so it can be ranked
+    against the frozen champion under the existing competition discipline.
+    """
+    return StrategySpec(
+        strategy_id="composite_multi_indicator",
+        family=TREND_FOLLOWING,
+        strategy_name="multi_indicator_composite",
+        version=version,
+        description=(
+            "Multi-indicator composite (trend preset): combines EMA(9/21), MACD, "
+            "Supertrend, ADX filter, stochastic, OBV, VWAP and Bollinger votes with "
+            "an RSI guard and ATR-based stop distance. Educational framework only; "
+            "promotion requires the same OOS discipline as any challenger."
+        ),
+        parameters={"mode": "trend", "warmup": 40, "entry_votes": 3, "adx_min": 20},
+        entry_semantics="BUY when the trend-mode vote majority crosses the entry threshold with ADX confirmation",
+        exit_semantics="opposite vote majority (signal-based exit)",
+        supports_confidence=True,
+        reproducibility="deterministic and stateless",
+        metadata={"algorithm_version": "v2-composite-multi-indicator", "configuration_version": "v1-trend-preset"},
     )

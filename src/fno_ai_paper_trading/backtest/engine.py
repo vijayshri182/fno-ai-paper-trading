@@ -122,6 +122,7 @@ class BacktestEngine:
         config: BacktestConfig | None = None,
         *,
         signals: Sequence[SignalResult] | None = None,
+        journal: list | None = None,
     ) -> BacktestResult:
         """Run ``strategy`` (or precomputed ``signals``) over chronological bars.
 
@@ -130,8 +131,20 @@ class BacktestEngine:
         ``signals[i]`` equal to ``strategy.analyze(bars[:i+1])``. Bypassing the
         per-bar prefix slice avoids the O(n^2) cost of re-slicing a large series
         while preserving the no-look-ahead contract — every signal for bar ``i``
-        is still a pure function of bars ``[:i+1]``. When ``signals`` is None the
-        engine calls ``strategy.analyze(bars[:i+1])`` exactly as before.
+        is still a pure function of bars ``[:i+1]``.
+
+        When ``signals`` is None the engine first asks the strategy itself via
+        :meth:`~Strategy.signals_for` — a strategy may supply a precomputed
+        causal series (e.g. a latched replay) that is used verbatim. If the hook
+        returns None the engine falls back to calling
+        ``strategy.analyze(bars[:i+1])`` exactly as before. The explicit
+        ``signals`` argument always wins over the hook.
+
+        ``journal`` is an optional observability sink (list). When provided, one
+        dict per bar is appended capturing the exact per-bar transition: raw
+        signal, risk decision, fills, stop handling, position state and the
+        equity snapshot. It is purely additive — the engine's behavior and
+        results are identical whether or not a journal is attached.
         """
         config = config or BacktestConfig()
         slippage = (
@@ -156,6 +169,15 @@ class BacktestEngine:
                 raise ValueError(
                     f"signals must have one entry per bar ({len(signals)} != {len(bars)})"
                 )
+        else:
+            prepared = strategy.signals_for(bars)
+            if prepared is not None:
+                if len(prepared) != len(bars):
+                    raise ValueError(
+                        f"signals_for must return one entry per bar "
+                        f"({len(prepared)} != {len(bars)})"
+                    )
+                signals = list(prepared)
 
         equity_curve: list[EquityPoint] = []
         peak_equity = config.initial_capital
@@ -169,16 +191,40 @@ class BacktestEngine:
             # --- strategy sees only past + present ---
             signal = signals[i] if signals is not None else strategy.analyze(bars[: i + 1])
 
+            if journal is not None:
+                entry: dict[str, object] = {
+                    "index": i,
+                    "timestamp": bar.timestamp.isoformat() if bar.timestamp is not None else None,
+                    "raw_signal": signal.signal.value if signal else "HOLD",
+                    "actionable": bool(signal.actionable) if signal else False,
+                    "reason": signal.reason if signal else "",
+                    "position_before": self._pos_state(
+                        portfolio.position_for(bar.instrument.symbol)
+                    ),
+                    "stop_fill": False,
+                }
+
             if signal.actionable and signal.instrument is not None:
                 signals_generated += 1
                 side = OrderSide.BUY if signal.signal.value == "BUY" else OrderSide.SELL
                 order = Order(instrument=bar.instrument, side=side, quantity=config.quantity)
 
                 approved = True
+                risk_reasons: list[str] = []
                 if risk_manager is not None:
                     realized_today = self._realized_on_date(portfolio, bar.timestamp)
                     decision = risk_manager.evaluate(order, portfolio, bar.close, realized_today=realized_today)
                     approved = decision.approved
+                    risk_reasons = list(decision.reasons)
+
+                if journal is not None:
+                    entry["risk_approved"] = approved
+                    entry["risk_reasons"] = risk_reasons
+                    entry["order_side"] = side.value
+                    if approved:
+                        entry["risk_checks"] = _risk_checks_passed()
+                    else:
+                        entry["risk_checks"] = _risk_checks_failed(risk_reasons)
 
                 if approved:
                     orders_submitted += 1
@@ -189,8 +235,17 @@ class BacktestEngine:
                         trade = portfolio.apply_fill(fill)
                         orders_filled += 1
                         slippage_cost += abs(fill.price - bar.close) * fill.quantity * fill.instrument.multiplier
+                        if journal is not None:
+                            entry["fill_price"] = format(fill.price, "f")
+                            entry["fill_quantity"] = fill.quantity
+                            if old_qty == 0:
+                                entry["entry_trade_id"] = trade.trade_id
                         if self._is_closing_fill(old_qty, order.quantity, side):
                             closed_trades.append(trade)
+                            if journal is not None:
+                                entry["exit_trade_id"] = trade.trade_id
+                                entry["exit_reason"] = signal.reason
+                                entry["realized_pnl"] = format(trade.realized_pnl, "f")
 
             # --- protective stop-loss (WS 6.4): signal-first, stop-second ---
             if stop_policy is not None:
@@ -215,6 +270,12 @@ class BacktestEngine:
                             * stop_result.fill.quantity
                             * stop_result.fill.instrument.multiplier
                         )
+                        if journal is not None:
+                            entry["stop_fill"] = True
+                            entry["stop_price"] = format(stop_result.fill.price, "f")
+                            entry["exit_trade_id"] = stop_result.trade.trade_id
+                            entry["exit_reason"] = "STOP_LOSS (protective 2%)"
+                            entry["realized_pnl"] = format(stop_result.trade.realized_pnl, "f")
                         if self._is_closing_fill(
                             open_quantity, stop_result.fill.quantity, OrderSide.SELL
                         ):
@@ -224,6 +285,15 @@ class BacktestEngine:
             equity_point = self._snapshot(portfolio, bar, i, peak_equity)
             equity_curve.append(equity_point)
             peak_equity = max(peak_equity, equity_point.equity)
+
+            if journal is not None:
+                entry["position_after"] = self._pos_state(
+                    portfolio.position_for(bar.instrument.symbol)
+                )
+                entry["equity"] = format(equity_point.equity, "f")
+                entry["cash"] = format(equity_point.cash, "f")
+                entry["unrealized_pnl"] = format(equity_point.unrealized_pnl, "f")
+                journal.append(entry)
 
         return self._build_result(config, portfolio, equity_curve, bars, signals_generated,
                                   orders_submitted, orders_filled, closed_trades, slippage_cost)
@@ -264,6 +334,17 @@ class BacktestEngine:
             return False
         delta = fill_qty if side == OrderSide.BUY else -fill_qty
         return abs(old_qty + delta) < abs(old_qty)
+
+    @staticmethod
+    def _pos_state(position) -> dict[str, object] | None:
+        """Observability shape of a position (or None for flat)."""
+        if position is None:
+            return {"side": "FLAT", "quantity": 0}
+        return {
+            "side": "LONG" if position.is_long else "SHORT",
+            "quantity": position.quantity,
+            "entry_price": format(position.average_entry_price, "f"),
+        }
 
     @staticmethod
     def _snapshot(
@@ -350,3 +431,18 @@ class BacktestEngine:
             equity_curve=equity_curve,
             trades=list(portfolio.trade_history),
         )
+
+
+def _risk_checks_passed() -> list[dict[str, str]]:
+    """Journal shape for an approved pre-trade risk decision."""
+    return [{"check_name": "pre_trade_risk", "status": "PASSED", "reason": "approved"}]
+
+
+def _risk_checks_failed(reasons: list[str]) -> list[dict[str, str]]:
+    """Journal shape for a rejected pre-trade risk decision (one row per reason)."""
+    checks: list[dict[str, str]] = []
+    for reason in reasons or ["RISK_LIMIT"]:
+        checks.append(
+            {"check_name": "pre_trade_risk", "status": "FAILED", "reason": reason}
+        )
+    return checks

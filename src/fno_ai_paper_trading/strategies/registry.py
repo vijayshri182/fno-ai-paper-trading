@@ -19,6 +19,7 @@ from fno_ai_paper_trading.strategies.spec import (
     TREND_FOLLOWING,
     StrategySpec,
     champion_spec,
+    composite_spec,
     spec_for_candidate,
 )
 
@@ -32,6 +33,9 @@ _CANDIDATE_FAMILIES: Mapping[str, str] = {
     "c4_trend_gated_ma_cross": REGIME_SWITCHING,
     "c5_donchian_breakout": BREAKOUT,
 }
+
+#: Family for the enhanced multi-indicator composite strategy.
+_COMPOSITE_FAMILY = TREND_FOLLOWING
 
 Provider = Callable[..., list[Any]]
 
@@ -56,6 +60,7 @@ class StrategyRegistry:
         """Registry containing the champion + preregistered candidates."""
         registry = cls()
         registry.register(champion_spec(), provider=_champion_provider())
+        registry.register(composite_spec(), provider=_composite_provider())
         for key, entry in CANDIDATES.items():
             family = _CANDIDATE_FAMILIES[key]
             provider = entry.get("provider")
@@ -129,6 +134,17 @@ def _champion_provider() -> Provider:
     from fno_ai_paper_trading.strategies.moving_average_cross import MovingAverageCrossStrategy
 
     strategy = MovingAverageCrossStrategy(fast=5, slow=21)
+
+    def provider(bars: Any, context: Any | None = None) -> list[Any]:
+        return [strategy.analyze(bars)]
+
+    return provider
+
+
+def _composite_provider() -> Provider:
+    from fno_ai_paper_trading.strategies.composite import MultiIndicatorStrategy
+
+    strategy = MultiIndicatorStrategy(mode="trend")
 
     def provider(bars: Any, context: Any | None = None) -> list[Any]:
         return [strategy.analyze(bars)]

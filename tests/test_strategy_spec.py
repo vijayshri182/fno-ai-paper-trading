@@ -22,7 +22,7 @@ def test_family_namespace():
     assert MOMENTUM in ALL_FAMILIES
     assert REGIME_SWITCHING in ALL_FAMILIES
     assert BREAKOUT in ALL_FAMILIES
-    assert len(ALL_FAMILIES) == 7
+    assert len(ALL_FAMILIES) == 9
     assert is_family("MEAN_REVERSION")
     assert not is_family("unknown")
 

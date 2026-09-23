@@ -6,6 +6,7 @@ the risk manager and the paper broker.
 """
 from fno_ai_paper_trading.strategies.base import SignalResult, Strategy
 from fno_ai_paper_trading.strategies.engine import StrategyEngine
+from fno_ai_paper_trading.strategies.composite import MultiIndicatorStrategy
 from fno_ai_paper_trading.strategies.moving_average_cross import MovingAverageCrossStrategy
 from fno_ai_paper_trading.strategies.regime_filtered import (
     RegimeFilteredMovingAverageCross,
@@ -16,5 +17,6 @@ __all__ = [
     "SignalResult",
     "StrategyEngine",
     "MovingAverageCrossStrategy",
+    "MultiIndicatorStrategy",
     "RegimeFilteredMovingAverageCross",
 ]
