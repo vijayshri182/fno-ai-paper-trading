@@ -9,6 +9,11 @@ and humans consume:
   algorithm evolution ledger rendered as readable tables (one row per day).
 * ``versions.json`` — algorithm version / change history.
 * ``promotions.jsonl`` — promotion / rejection history (one decision per line).
+* :func:`algorithm_logic_report_md` — read-only per-day ``algorithm-logic``
+  report (renders where every day's algorithm/challenger logic actually lives:
+  version IDs in the ledger resolved against ``versions.json``, challenger
+  params persisted in ledger field 14, preregistered hypotheses from the frozen
+  catalog; anything not persisted is labelled NOT PERSISTED instead of guessed).
 
 All values come from the deterministic run result; no wall-clock time is ever
 embedded, so identical runs produce byte-identical reports.
@@ -398,4 +403,420 @@ def _build_timeline_md(
     return "\n".join(lines)
 
 
-__all__ = ["write_reports"]
+# ---------------------------------------------------------------------------
+# Algorithm-logic test report (read-only rendering of persisted artifacts)
+# ---------------------------------------------------------------------------
+
+_PREDICATE_BLURBS = {
+    "suppress_buys_not_up": "non-UP BUY trades lose while UP-regime BUYs win",
+    "suppress_sells_not_down": "non-DOWN SELL trades lose while DOWN-regime SELLs win",
+    "suppress_sideways_entries": "SIDEWAYS entries lose while trend-day entries win",
+    "stricter_trend_gate": "a 0.10 trend threshold separates UP BUY winners from non-UP BUY losers",
+}
+
+_ALGORITHM_LOGIC_HEADERS = (
+    "Day",
+    "Algorithm Logic",
+    "Parent Logic",
+    "Challenger Logic",
+    "What Changed",
+    "Validation Gate",
+    "Promotion Decision",
+    "Next Algo",
+)
+
+
+def _strategy_logic_text(
+    strategy_name: object, strategy_params: Mapping[str, object]
+) -> str:
+    """Human-readable logic for a persisted ``strategy_name`` + ``strategy_params``."""
+    params = dict(strategy_params or {})
+    if strategy_name == "moving_average_cross":
+        return (
+            f"CALL/PUT entries on fast-SMA({params.get('fast', '?')}) crossing "
+            f"above/below slow-SMA({params.get('slow', '?')}); otherwise HOLD"
+        )
+    if strategy_name == "regime_filtered_ma_cross":
+        trends = params.get("allowed_trends")
+        if isinstance(trends, (list, tuple)):
+            allowed = ",".join(str(t) for t in trends)
+        else:
+            allowed = str(trends)
+        return (
+            f"MA({params.get('fast', '?')},{params.get('slow', '?')}) cross "
+            f"restricted to allowed_trends=[{allowed}] "
+            f"(trend_threshold_pct={params.get('trend_threshold_pct', '?')}); "
+            f"BUY is suppressed outside the allowed trends, SELL/HOLD pass through"
+        )
+    fields = ", ".join(f"{k}={v}" for k, v in sorted(params.items()))
+    return f"{strategy_name}({fields})" if fields else f"{strategy_name}(no params)"
+
+
+def _resolve_algo_logic(
+    version_id: str, by_id: Mapping[str, Mapping[str, object]]
+) -> str:
+    version = by_id.get(version_id)
+    if version is None:
+        return (
+            f"{version_id}: NOT PERSISTED in versions.json "
+            f"(strategy/params unknown)"
+        )
+    name = version.get("strategy_name", "?")
+    params = version.get("strategy_params", {}) or {}
+    return f"{version_id}: {_strategy_logic_text(name, params)}"
+
+
+def _challenger_logic_text(items: Sequence[Mapping[str, object]]) -> str:
+    if not items:
+        return "— (none generated this day)"
+    out: list[str] = []
+    for item in items:
+        cid = str(item.get("challenger_id", "?"))
+        name = item.get("strategy_name", "?")
+        params = item.get("strategy_params", {}) or {}
+        out.append(f"{cid} [{_strategy_logic_text(name, params)}]")
+    return "; ".join(out)
+
+
+def _what_changed_text(
+    used: str, nxt: str, gates: Sequence[Mapping[str, object]]
+) -> str:
+    promoted = [g for g in gates if g.get("decision") == "PROMOTE"]
+    if promoted:
+        bits = [
+            f"{g.get('challenger_id', '?')} PROMOTED -> {g.get('promoted_version', '?')}"
+            for g in promoted
+        ]
+        if nxt and nxt != used:
+            bits.append(f"{used} -> {nxt}")
+        return "; ".join(bits)
+    if nxt and nxt != used:
+        return f"algorithm change: {used} -> {nxt}"
+    return f"No change (algorithm stays {used})"
+
+
+def _gate_run_text(gates: Sequence[Mapping[str, object]]) -> str:
+    if not gates:
+        return "NOT RUN — no challenger validation window completed this day"
+    return "RAN: " + "; ".join(
+        f"{g.get('challenger_id', '?')}={g.get('decision', '?')}" for g in gates
+    )
+
+
+def _promotion_decision_text(gates: Sequence[Mapping[str, object]]) -> str:
+    if not gates:
+        return "NO DECISION (gate not triggered today)"
+    return "; ".join(
+        f"{g.get('challenger_id', '?')} {g.get('decision', '?')}" for g in gates
+    )
+
+
+def _validation_status_rows(
+    records: Sequence[Mapping[str, object]],
+) -> list[list[str]]:
+    seen: list[tuple[str, str, str, str]] = []
+    for record in records:
+        for item in record.get("18.validation_status", []) or []:
+            if not isinstance(item, Mapping):
+                continue
+            row = (
+                str(item.get("challenger_id", "?")),
+                str(item.get("status", "?")),
+                str(item.get("window_start", "")),
+                str(item.get("window_end", "")),
+            )
+            if row not in seen:
+                seen.append(row)
+    return [list(row) for row in seen]
+
+
+def _logic_rows(
+    records: Sequence[Mapping[str, object]],
+    by_id: Mapping[str, Mapping[str, object]],
+) -> list[list[str]]:
+    """Rows shared by the Markdown and HTML algorithm-logic report renderers."""
+    rows: list[list[str]] = []
+    for record in records:
+        used = str(record.get("2.algorithm_used", ""))
+        parent = record.get("3.parent_algorithm")
+        challenger_items = record.get("14.challenger_generated", []) or []
+        gates = [
+            g
+            for g in (record.get("19.promotion_decision", []) or [])
+            if isinstance(g, Mapping)
+        ]
+        nxt = str(record.get("20.next_day_algorithm", ""))
+        rows.append(
+            [
+                str(record.get("1.day", "")),
+                _resolve_algo_logic(used, by_id),
+                (
+                    "— (baseline; no parent algorithm)"
+                    if not parent
+                    else _resolve_algo_logic(str(parent), by_id)
+                ),
+                _challenger_logic_text(challenger_items),
+                _what_changed_text(used, nxt, gates),
+                _gate_run_text(gates),
+                _promotion_decision_text(gates),
+                nxt,
+            ]
+        )
+    return rows
+
+
+def algorithm_logic_report_md(
+    records: Sequence[Mapping[str, object]],
+    versions: Sequence[Mapping[str, object]],
+    *,
+    oos_start: str,
+    title: str | None = None,
+) -> str:
+    """Render a per-day algorithm-logic test report as Markdown.
+
+    Pure rendering of persisted artifacts -- nothing is computed from wall
+    clock and nothing is invented:
+
+    * ``2.algorithm_used`` / ``3.parent_algorithm`` are resolved per version ID
+      against ``versions`` (``versions.json``); an ID with no record is labelled
+      NOT PERSISTED.
+    * ``14.challenger_generated`` carries the challenger strategy params that
+      were persisted at generation time.
+    * Preregistered challenger hypotheses are the frozen catalog constants.
+    * ``13/15/17/18/19`` feed the What Changed / validation / promotion cells.
+
+    An OOS boundary check compares the maximum included day against
+    ``oos_start`` and is always printed.
+    """
+    from fno_ai_paper_trading.walkforward.catalog import CATALOG
+
+    oos_start = str(oos_start)
+    if not records:
+        raise ValueError("records must contain at least one ledger row")
+    by_id = {str(v.get("version_id", "?")): v for v in versions}
+    days = sorted({str(r.get("1.day", "")) for r in records})
+    max_day = max(str(r["1.day"]) for r in records)
+    oos_ok = max_day < oos_start
+
+    lines = [
+        f"# {title or 'Walk-forward algorithm-logic test report'}",
+        "",
+        "- Source artifacts: `walkforward.ledger.jsonl` (21-field daily ledger) and "
+        "`versions.json` (per-version strategy name + parameters).",
+        f"- Days included: {len(records)} ({days[0]} .. {days[-1]})",
+        "- Algorithm logic: ledger field `2.algorithm_used` / `3.parent_algorithm` "
+        "(version IDs) resolved against `versions.json`; challenger params are "
+        "persisted in field `14.challenger_generated` at generation time.",
+        "- Preregistered challenger hypotheses: frozen constants "
+        "(`walkforward/catalog.py`); evidence only decides whether one fires.",
+        f"- Protected OOS start: `{oos_start}`",
+        (
+            f"- OOS boundary check: **PASS** (max included day {max_day} < {oos_start})"
+            if oos_ok
+            else f"- OOS boundary check: **FAIL** (max included day {max_day} >= {oos_start})"
+        ),
+        "",
+    ]
+
+    lines.append("| " + " | ".join(_ALGORITHM_LOGIC_HEADERS) + " |")
+    lines.append("|" + "|".join(["---"] * len(_ALGORITHM_LOGIC_HEADERS)) + "|")
+    for row in _logic_rows(records, by_id):
+        lines.append(
+            "| "
+            + " | ".join(c.replace("|", "\\|").replace("\n", " ") for c in row)
+            + " |"
+        )
+    lines.append("")
+
+    lines += [
+        "## Preregistered challenger catalog (frozen constants)",
+        "",
+        "Each challenger is a fixed-parameter, regime-filtered variant of the frozen "
+        "MA(5,21) champion. Parameters are locked in `walkforward/catalog.py`; they "
+        "are never derived from evidence (anti-overfitting discipline).",
+        "",
+        "| Key | Title | Frozen strategy params | Evidence predicate fires when |",
+        "|-----|-------|------------------------|------------------------------|",
+    ]
+    for spec in CATALOG:
+        params = ", ".join(f"{k}={v}" for k, v in spec.strategy_params.items())
+        blurb = _PREDICATE_BLURBS.get(
+            spec.key, spec.hypothesis[:80] + "…"
+        )
+        lines.append(
+            f"| `{spec.key}` | {spec.title} | `{params}` | {blurb} |"
+        )
+    lines.append("")
+
+    status_rows = _validation_status_rows(records)
+    if status_rows:
+        lines += [
+            "## Challenger validation status observed on the included days "
+            "(ledger field `18.validation_status`)",
+            "",
+            "| Challenger | Status | Window |",
+            "|------------|--------|--------|",
+        ]
+        for cid, status, start, end in status_rows:
+            window = f"{start} .. {end}" if start else "—"
+            lines.append(f"| {cid} | {status} | {window} |")
+        lines.append("")
+
+    lines += [
+        "## Persistence notes",
+        "",
+        "- Ledger field `2.algorithm_used` stores only a **version ID** (e.g. "
+        "`model_0`); the full strategy name and parameters are persisted per "
+        "version in `versions.json` and resolved above.",
+        "- Ledger field `3.parent_algorithm` stores the parent version ID (None "
+        "for the baseline champion).",
+        "- Challenger strategy/params are persisted in field "
+        "`14.challenger_generated` at generation time; the evidence predicate "
+        "itself is a frozen code constant in `catalog.py`.",
+        "- Any cell labelled `NOT PERSISTED in versions.json` means the referenced "
+        "version ID has no record there; nothing was guessed.",
+        f"- The OOS boundary check compares the max included day against the "
+        f"protected OOS start (`{oos_start}`); a FAIL would mean out-of-sample "
+        f"data was read, which the engine forbids by construction.",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def algorithm_logic_report_html(
+    records: Sequence[Mapping[str, object]],
+    versions: Sequence[Mapping[str, object]],
+    *,
+    oos_start: str,
+    title: str | None = None,
+) -> str:
+    """Render a per-day algorithm-logic test report as a self-contained HTML page.
+
+    Mirror of :func:`algorithm_logic_report_md` for the same persisted
+    artifacts: per-day algorithm/parent/challenger logic, What Changed, the
+    validation gate and promotion decisions, the frozen challenger catalog,
+    observed validation status, and an always-printed OOS boundary check.
+    """
+    from fno_ai_paper_trading.research.report import (
+        build_research_html,
+        kv_rows,
+        table,
+    )
+    from fno_ai_paper_trading.walkforward.catalog import CATALOG
+
+    oos_start = str(oos_start)
+    if not records:
+        raise ValueError("records must contain at least one ledger row")
+    by_id = {str(v.get("version_id", "?")): v for v in versions}
+    days = sorted({str(r.get("1.day", "")) for r in records})
+    max_day = max(str(r["1.day"]) for r in records)
+    oos_ok = max_day < oos_start
+
+    blocks = [
+        "<section><h2>Report</h2><table><tbody>"
+        + kv_rows(
+            [
+                (
+                    "Source artifacts",
+                    "walkforward.ledger.jsonl (21-field daily ledger) and "
+                    "versions.json (per-version strategy name + parameters)",
+                ),
+                ("Days included", f"{len(records)} ({days[0]} .. {days[-1]})"),
+                (
+                    "Algorithm logic",
+                    "ledger field 2/3 version IDs (algorithm_used / "
+                    "parent_algorithm) resolved against versions.json; "
+                    "challenger params persisted in field 14 at generation time",
+                ),
+                (
+                    "Preregistered challengers",
+                    "frozen constants (walkforward/catalog.py); evidence only "
+                    "decides whether one fires",
+                ),
+                ("Protected OOS start", oos_start),
+                (
+                    "OOS boundary check",
+                    (
+                        f"PASS — max included day {max_day} < {oos_start}"
+                        if oos_ok
+                        else f"FAIL — max included day {max_day} >= {oos_start}"
+                    ),
+                ),
+            ]
+        )
+        + "</tbody></table></section>",
+        "<section><h2>Per-day algorithm logic (one row per day)</h2>"
+        + table(list(_ALGORITHM_LOGIC_HEADERS), _logic_rows(records, by_id))
+        + "</section>",
+        "<section><h2>Preregistered challenger catalog (frozen constants)</h2>"
+        "<p>Each challenger is a fixed-parameter, regime-filtered variant of the "
+        "frozen MA(5,21) champion; parameters are locked in "
+        "<code>walkforward/catalog.py</code>, never derived from evidence "
+        "(anti-overfitting discipline).</p>"
+        + table(
+            ["Key", "Title", "Frozen strategy params", "Evidence predicate fires when"],
+            [
+                [
+                    spec.key,
+                    spec.title,
+                    ", ".join(f"{k}={v}" for k, v in spec.strategy_params.items()),
+                    _PREDICATE_BLURBS.get(spec.key, spec.hypothesis[:80] + "…"),
+                ]
+                for spec in CATALOG
+            ],
+        )
+        + "</section>",
+    ]
+
+    status_rows = _validation_status_rows(records)
+    if status_rows:
+        blocks.append(
+            "<section><h2>Challenger validation status observed on the included "
+            "days (ledger field 18)</h2>"
+            + table(
+                ["Challenger", "Status", "Window"],
+                [
+                    [
+                        cid,
+                        status,
+                        f"{start} .. {end}" if start else "—",
+                    ]
+                    for cid, status, start, end in status_rows
+                ],
+            )
+            + "</section>"
+        )
+
+    blocks.append(
+        "<section><h2>Persistence notes</h2><ul>"
+        "<li>Ledger field <code>2.algorithm_used</code> stores only a version ID "
+        "(e.g. <code>model_0</code>); the full strategy name and parameters are "
+        "persisted per version in <code>versions.json</code> and resolved above.</li>"
+        "<li>Ledger field <code>3.parent_algorithm</code> stores the parent version "
+        "ID (None for the baseline champion).</li>"
+        "<li>Challenger strategy/params are persisted in field "
+        "<code>14.challenger_generated</code> at generation time; the evidence "
+        "predicate itself is a frozen code constant in <code>catalog.py</code>.</li>"
+        "<li>Any cell labelled <code>NOT PERSISTED in versions.json</code> means "
+        "the referenced version ID has no record there; nothing was guessed.</li>"
+        f"<li>The OOS boundary check compares the max included day against the "
+        f"protected OOS start (<code>{oos_start}</code>); a FAIL would mean "
+        f"out-of-sample data was read, which the engine forbids by construction.</li>"
+        "</ul></section>"
+    )
+
+    return build_research_html(
+        title=title or "Walk-forward algorithm-logic test report",
+        blocks=blocks,
+        disclaimer=(
+            "Paper/historical walk-forward research only. Per-day algorithm logic is "
+            "resolved verbatim from persisted artifacts (ledger + versions.json); "
+            "anything not persisted is labelled NOT PERSISTED, never guessed. "
+            "Challenger parameters are frozen catalog constants, never tuned. The "
+            "protected out-of-sample period was never loaded or read here."
+        ),
+        generated_at=f"{days[0]} .. {days[-1]}",
+    )
+
+
+__all__ = ["write_reports", "algorithm_logic_report_md", "algorithm_logic_report_html"]

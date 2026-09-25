@@ -583,3 +583,147 @@ def test_reports_are_written_and_clearly_labelled(tmp_path):
     assert "Walk-forward algorithm evolution" in markdown
     assert "|" in markdown
     assert "model_0" in markdown
+
+
+def test_algorithm_logic_report_resolves_persisted_logic_and_checks_oos():
+    """The algorithm-logic test report resolves persisted version IDs against
+    versions.json, renders challenger params from ledger field 14, labels any
+    unknown version NOT PERSISTED, and always reports an OOS boundary check."""
+    from fno_ai_paper_trading.walkforward.reports import (
+        algorithm_logic_report_html,
+        algorithm_logic_report_md,
+    )
+
+    versions = [
+        {
+            "version_id": "model_0",
+            "strategy_name": "moving_average_cross",
+            "strategy_params": {"fast": 5, "slow": 21},
+            "status": "ACTIVE",
+        },
+        {
+            "version_id": "model_1",
+            "strategy_name": "regime_filtered_ma_cross",
+            "strategy_params": {
+                "fast": 5,
+                "slow": 21,
+                "trend_threshold_pct": "0.05",
+                "allowed_trends": ["UP"],
+            },
+            "status": "ACTIVE",
+        },
+    ]
+    records = [
+        {
+            "1.day": "2026-01-05",
+            "2.algorithm_used": "model_0",
+            "3.parent_algorithm": None,
+            "14.challenger_generated": [],
+            "18.validation_status": [
+                {
+                    "challenger_id": "wfc-suppress_buys_not_up-r001",
+                    "status": "INSUFFICIENT_EVIDENCE",
+                    "window_start": "2026-01-05",
+                    "window_end": "2026-01-26",
+                }
+            ],
+            "19.promotion_decision": [],
+            "20.next_day_algorithm": "model_0",
+        },
+        {
+            "1.day": "2026-01-12",
+            "2.algorithm_used": "model_0",
+            "3.parent_algorithm": None,
+            "14.challenger_generated": [
+                {
+                    "challenger_id": "wfc-suppress_buys_not_up-r001",
+                    "strategy_name": "regime_filtered_ma_cross",
+                    "strategy_params": {
+                        "fast": 5,
+                        "slow": 21,
+                        "trend_threshold_pct": "0.05",
+                        "allowed_trends": ["UP"],
+                    },
+                }
+            ],
+            "18.validation_status": [],
+            "19.promotion_decision": [],
+            "20.next_day_algorithm": "model_0",
+        },
+        {
+            "1.day": "2026-01-20",
+            "2.algorithm_used": "model_0",
+            "3.parent_algorithm": None,
+            "14.challenger_generated": [],
+            "18.validation_status": [],
+            "19.promotion_decision": [
+                {
+                    "challenger_id": "wfc-suppress_buys_not_up-r001",
+                    "decision": "INSUFFICIENT_EVIDENCE",
+                    "promoted_version": None,
+                }
+            ],
+            "20.next_day_algorithm": "model_0",
+        },
+        {
+            "1.day": "2026-01-22",
+            "2.algorithm_used": "missing_algo",
+            "3.parent_algorithm": None,
+            "14.challenger_generated": [],
+            "18.validation_status": [],
+            "19.promotion_decision": [],
+            "20.next_day_algorithm": "missing_algo",
+        },
+    ]
+    md = algorithm_logic_report_md(records, versions, oos_start="2026-01-30")
+
+    for header in (
+        "Day",
+        "Algorithm Logic",
+        "Parent Logic",
+        "Challenger Logic",
+        "What Changed",
+        "Validation Gate",
+        "Promotion Decision",
+        "Next Algo",
+    ):
+        assert f"| {header} |" in md
+
+    # Champion logic resolved from versions.json (never guessed).
+    assert (
+        "model_0: CALL/PUT entries on fast-SMA(5) crossing "
+        "above/below slow-SMA(21); otherwise HOLD" in md
+    )
+    # Challenger logic persisted at generation time (ledger field 14).
+    assert "wfc-suppress_buys_not_up-r001" in md
+    assert "restricted to allowed_trends=[UP]" in md
+    # Gate context: a decision day shows RAN; other days show NOT RUN.
+    assert "RAN:" in md
+    assert "INSUFFICIENT_EVIDENCE" in md
+    assert "NOT RUN" in md
+    # Baseline parent renders as expected; unknown version is labelled, not invented.
+    assert "baseline" in md
+    assert "missing_algo: NOT PERSISTED in versions.json" in md
+    # OOS boundary check: PASS when all included days precede the boundary ...
+    assert "OOS boundary check: **PASS**" in md
+    # ... and FAIL when a day at/after the boundary is included.
+    bad = algorithm_logic_report_md(records, versions, oos_start="2026-01-05")
+    assert "OOS boundary check: **FAIL**" in bad
+    # Deterministic rendering for identical inputs.
+    assert md == algorithm_logic_report_md(records, versions, oos_start="2026-01-30")
+
+    # The HTML mirror renders the same resolved rows.
+    htm = algorithm_logic_report_html(records, versions, oos_start="2026-01-30")
+    assert "<!DOCTYPE html>" in htm and "Disclaimer" in htm
+    assert "Per-day algorithm logic" in htm
+    assert "Preregistered challenger catalog" in htm
+    assert (
+        "model_0: CALL/PUT entries on fast-SMA(5) crossing "
+        "above/below slow-SMA(21); otherwise HOLD" in htm
+    )
+    assert "missing_algo: NOT PERSISTED in versions.json" in htm
+    # The '<' in the OOS sentence is HTML-escaped by the report helpers.
+    assert "OOS boundary check" in htm and "max included day 2026-01-22 &lt; 2026-01-30" in htm
+    bad_html = algorithm_logic_report_html(records, versions, oos_start="2026-01-05")
+    assert "max included day 2026-01-22 &gt;= 2026-01-05" in bad_html
+    assert htm == algorithm_logic_report_html(records, versions, oos_start="2026-01-30")

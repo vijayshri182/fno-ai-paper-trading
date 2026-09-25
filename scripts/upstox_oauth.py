@@ -29,6 +29,7 @@ Safety rules honoured here:
 from __future__ import annotations
 
 import argparse
+import os
 import secrets
 import sys
 import webbrowser
@@ -53,8 +54,8 @@ from fno_ai_paper_trading.execution.oauth import (  # noqa: E402
 
 def _build_config(args) -> UpstoxOAuthConfig:
     load_dotenv()
-    client_id = (args.client_id or "").strip()
-    client_secret = (args.client_secret or "").strip()
+    client_id = (args.client_id or os.getenv("UPSTOX_API_KEY", "")).strip()
+    client_secret = (args.client_secret or os.getenv("UPSTOX_API_SECRET", "")).strip()
     if not client_id:
         raise ValueError("missing UPSTOX_API_KEY (the Upstox application id); set it in .env or pass --client-id")
     if not client_secret:

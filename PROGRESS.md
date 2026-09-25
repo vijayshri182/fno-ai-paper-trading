@@ -971,9 +971,41 @@ stay PLANNED behind the evaluation discipline.**
   round trips (costs 82,616 ₹ — cost-dominated, consistent with conclusion B);
   **5 challengers spawned, all future-only-validated (20 days), all gated
   INSUFFICIENT EVIDENCE** (regime-filtered variants stood flat: 0–1 trades vs
-  required 10) → **0 promotions**. Two independent runs → **byte-identical
-  ledger**. Readable timeline: `reports/walkforward/evolution_timeline.html`.
+  required 10) → **0 promotions**. Three runs (two fresh + one resumed after a 500-day checkpoint) — **byte-identical artifacts** across all seven output files. Readable timeline: `reports/walkforward/evolution_timeline.html`.
 - Tests: **1109 passed** (1091 + 18 walk-forward tests; +1 regression for
   trend normalization). Artifacts (git-ignored): `reports/walkforward/*`.
+
+---
+## 33. 18a — Composite signals_for optimization (signals_for hook + composite strategy) (2026-09-23)
+
+> Strategies may now translate their current signals into a **composite
+> per-bar BUY/SELL decision** that the backtest engine consumes — regardless of
+> position — via a `signals_for()` hook. A new `CompositeStrategy`
+> (`strategies/composite.py`) delegates to a weighted set of sub-strategies and
+> resolves their signals into a single decision per bar, exported through
+> `strategies/__init__`, validated against the strategy spec, and registered in
+> the registry.
+
+- **Hook** (`strategies/base.py`, `strategies/spec.py`,
+  `strategies/registry.py`): `Strategy.signals_for()` lets a strategy expose
+  decisions before sizing; the spec round-trips and the registry validates the
+  new signature; resolver (`backtest/engine.py`) prefers `signals_for()` when
+  present and otherwise falls back to the legacy per-bar evaluation path
+  (frozen V1 behaviour unchanged).
+- **Composite strategy** (`strategies/composite.py`, new): delegates to a
+  weighted set of sub-strategiesched and resolves their signals into a single
+  signore per bar; exported via `strategies/__init__`; registry/spec-validated.
+- **Tests** (`tests/test_composite.py` new; `tests/test_strategy_registry.py`,
+  `tests/test_strategy_spec.py`, `tests/test_scoreboard.py`): focused suites
+  **55 passed**; research-integrity harness **2 passed** (15/15 protected
+  artifacts UNCHANGED in `base.py`, spec, and both research modules).
+- Full suite: **2514 passed, 1 pre-existing failure** — the single red
+  (`test_paper_track_orders.py::test_daily_loss_cap_blocks_a_later_entry`,
+  `entries_filled == 1` vs 2) is **pre-existing at HEAD** (reproduced in a clean
+  detached worktree at `bb18dfd`), unrelated to this workstream and not fixed.
+- Committed as `7485c69` (`feat: finalize composite signals_for optimization`)
+  and pushed to `origin/master`; local == remote == `7485c69`. Research
+  modules and `runs/research/day_batch/*` protected artifacts stay **local /
+  untracked**; ruff/mypy not available (pytest is the repo gate).
 
 ---

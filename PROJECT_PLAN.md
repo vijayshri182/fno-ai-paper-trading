@@ -1842,8 +1842,8 @@ the timeline renders it for a human.
 
 ## 17q.4 Real-data run (2026-09-13) — evidence only, nothing promoted
 * Domain: NIFTY 50 5m, **932/932 research days** walked (2022-01-03..2025-10-03);
-  protected OOS 2025-10-06 truncated out, never loaded. Two independent runs
-  produced **byte-identical ledgers**.
+  protected OOS 2025-10-06 truncated out, never loaded. Three runs (two fresh + one resumed after a `--stop-after-days 500` checkpoint)
+  produced **byte-identical artifacts** across all seven outputs.
 * Champion (MA(5,21), `model_0`) domain net **−80,269.64 ₹** over 1293 round
   trips with 82,616 ₹ of transaction costs — costs dominate the edge,
   consistent with WS 7.16 conclusion B.

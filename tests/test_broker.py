@@ -126,6 +126,10 @@ class TestPaperBroker:
         broker = _broker()
         assert broker.is_live is False
 
+    def test_live_flagged_paper_broker_refuses_to_construct(self) -> None:
+        with pytest.raises(RuntimeError):
+            type("LivePaperBroker", (PaperBroker,), {"is_live": True})()
+
     def test_notional_computed_by_fill(self) -> None:
         broker = _broker(slippage_rate=Decimal("0"))
         order = Order(instrument=_instrument(), side=OrderSide.SELL, quantity=7)

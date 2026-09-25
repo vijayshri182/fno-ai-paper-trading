@@ -179,19 +179,32 @@ class ExecutionPosition:
 def _quote_node(data: dict, symbol: str) -> dict:
     """Locate a market-quote node despite response-key separator differences.
 
-    Upstox quote responses key nodes with ``SEGMENT:symbol`` (colon) even
-    though requests use ``SEGMENT|symbol`` (pipe). This looks up the exact key
-    first (backward compatible), then the colon variant, then matches purely by
-    the symbol/token suffix so numeric and descriptive keys both work.
+    Upstox quote responses key nodes with ``SEGMENT:symbol`` (colon, often a
+    descriptive trading symbol) even though requests use ``SEGMENT|symbol``
+    (pipe), and echo the requested pipe-form key inside each node as
+    ``instrument_token``. Lookup order: exact key, colon variant, a node whose
+    ``instrument_token`` equals the requested key (pipe/colon-normalized), then
+    a suffix match so numeric and descriptive keys both work.
     """
     if not isinstance(data, dict):
         return {}
+
+    def _normalize(token_key: str) -> str:
+        return str(token_key or "").replace("|", ":").strip()
+
     node = data.get(symbol)
     if isinstance(node, dict):
         return node
     colon = symbol.replace("|", ":")
     if colon in data and isinstance(data[colon], dict):
         return data[colon]
+    expected_token = _normalize(symbol)
+    if expected_token:
+        for value in data.values():
+            if not isinstance(value, dict):
+                continue
+            if _normalize(value.get("instrument_token")) == expected_token:
+                return value
     suffix = symbol.rsplit("|", 1)[-1].strip()
     if suffix:
         for key, value in data.items():
@@ -348,12 +361,14 @@ class UpstoxExecutionAdapter(ExecutionAdapter):
         from urllib.parse import quote as _quote
 
         key = _quote(symbol)
-        response = self._get(f"/v2/market-quote/ohlc/{key}")
+        response = self._get(f"/v2/market-quote/ohlc?instrument_key={key}&interval=1d")
         payload = response.json
         data = payload.get("data") or {}
         node = _quote_node(data, symbol)
         ohlc = node.get("ohlc") or {}
         close = ohlc.get("close")
+        if close is None:
+            close = node.get("last_price")
         if close is None:
             raise UpstoxExecutionError(f"Upstox returned no close price for {symbol!r}")
         return Decimal(str(close))
@@ -437,7 +452,7 @@ class UpstoxExecutionAdapter(ExecutionAdapter):
     def get_positions(self) -> list[ExecutionPosition]:
         if self.dry_run:
             return []
-        response = self._get("/v2/positions")
+        response = self._get("/v2/portfolio/short-term-positions")
         payload = response.json
         rows = (payload.get("data") or []) if isinstance(payload.get("data"), list) else []
         # Map broker-reported numeric instrument tokens back to our registered

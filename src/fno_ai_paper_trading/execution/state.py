@@ -57,6 +57,10 @@ ALLOWED_TRANSITIONS: frozenset[tuple[ExecutionTestState, ExecutionTestState]] = 
         (ExecutionTestState.AUTHENTICATING, ExecutionTestState.ABORTED),  # preflight fail
         (ExecutionTestState.INSTRUMENT_VALIDATED, ExecutionTestState.ENTRY_REQUESTED),
         (ExecutionTestState.INSTRUMENT_VALIDATED, ExecutionTestState.ABORTED),  # preflight fail
+        # A pre-entry instrument/reference-price failure (e.g. the resolved F&O
+        # contract is not marketable or its OHLCV resource is unavailable) may
+        # terminate the execution test as FAILED before any entry is requested.
+        (ExecutionTestState.INSTRUMENT_VALIDATED, ExecutionTestState.FAILED),
         (ExecutionTestState.ENTRY_REQUESTED, ExecutionTestState.ENTRY_ACKNOWLEDGED),
         (ExecutionTestState.ENTRY_REQUESTED, ExecutionTestState.FAILED),  # ack failure
         (ExecutionTestState.ENTRY_ACKNOWLEDGED, ExecutionTestState.ENTRY_FILLED),

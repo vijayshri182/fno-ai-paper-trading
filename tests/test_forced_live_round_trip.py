@@ -53,6 +53,7 @@ from fno_ai_paper_trading.execution.manager import LiveExecutionTestManager
 from fno_ai_paper_trading.execution.memory import MemoryExecutionAdapter
 from fno_ai_paper_trading.execution.risk import RiskPreflight
 from fno_ai_paper_trading.execution.signal import CallPutSignal, decide_call_put
+from fno_ai_paper_trading.execution.state import ALLOWED_TRANSITIONS, ExecutionTestState
 from fno_ai_paper_trading.models.enums import InstrumentType, OrderSide, OrderStatus
 from fno_ai_paper_trading.models.instruments import Instrument
 from fno_ai_paper_trading.models.market import MarketPrice
@@ -262,6 +263,8 @@ def test_forced_put_round_trip():
     assert result.outcome == "PASS"
     assert result.position_flat is True
     assert len(a.placed_orders) == 2
+    assert result.position_flat is True
+    assert len(a.placed_orders) == 2
     entry_fill, exit_fill = a.placed_orders
     assert entry_fill.side is OrderSide.SELL
     assert exit_fill.side is OrderSide.BUY
@@ -383,3 +386,36 @@ def test_flag_defaults_off_and_isolated():
     result = m.run(_underlying(), signal_bars=_call_bars(), side_preference=CallPutSignal.CALL)
     assert result is not None and result.outcome == "PASS"
     assert len(a.placed_orders) <= 2
+# ================================================================ STEP 3-A/B
+# Points 1-4 of the review step: the pre-entry reference-price seam must be a
+# LEGAL edge (INSTRUMENT_VALIDATED -> FAILED) and a pre-entry reference-price
+# failure must terminate FAILED without ever requesting/placing an order,
+# without an ack, without a fillched false, without an exit order, and without
+# creating a position. In-memory adapter only; nothing live, nothing sent.
+
+
+def test_instrument_validated_to_failed_edge_is_legal():
+    """3A. Fact (point 1): INSTRUMENT_VALIDATED -> FAILED is now a member of
+    ALLOWED_TRANSITIONS, and that is the ONLY pre-entry FAILED addition."""
+    assert (ExecutionTestState.INSTRUMENT_VALIDATED, ExecutionTestState.FAILED) in (
+        ALLOWED_TRANSITIONS
+    )
+
+
+def test_reference_price_failure_before_entry_fails_no_order():
+    """3B. Points 2-4: a pre-entry reference-price (option quote) failure
+    terminates the execution test as FAILED - before any entry - so NO entry
+    order-placement call, NO entry ack, NO fill, NO exit order and NO position
+    are ever produced."""
+    a = _TrackingAdapter(prices={}, account_id="tester", slippage=Decimal("0"), dry_run=False)
+    m = _manager(a, force=True, consent=_open_consent("t"))
+    result = m.run(_underlying(), signal_bars=_call_bars(), side_preference=CallPutSignal.CALL)
+    assert result is not None
+    assert result.outcome == "FAIL"
+    assert any("reference" in r or "quote" in r for r in result.reasons)
+    assert a.placed_orders == []
+    assert result.entry_order_id is None
+    assert result.entry_fill_price is None
+    assert result.exit_order_id is None
+    assert result.exit_fill_price is None
+    assert result.position_flat is True  # no position was ever opened => flat

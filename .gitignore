@@ -9,6 +9,7 @@ __pycache__/
 .idea/
 reports/
 datasets/
+data/
 paper_state/
 experience_store/
 model_registry/

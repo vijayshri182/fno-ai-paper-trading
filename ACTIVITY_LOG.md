@@ -2200,8 +2200,8 @@ days** walked; champion `model_0` net **−80,269.64 ₹** over 1293 round trips
 (costs 82,616 ₹ — cost-dominated, consistent with conclusion B); **5
 challengers spawned across 2023–2025, each validated on a future-only 20-day
 window, all gated INSUFFICIENT EVIDENCE** (the regime-filtered variants stood
-flat: 0–1 validation trades vs a minimum of 10); **0 promotions**. Two
-independent full runs produced **byte-identical ledgers**. Readable timeline:
+flat: 0–1 validation trades vs a minimum of 10); **0 promotions**. Three independent runs (two fresh + one resumed after a 500-day checkpoint)
+produced **byte-identical ledgers** across all seven artifact files. Readable timeline:
 `reports/walkforward/evolution_timeline.html`.
 
 **Verification.** `tests/test_walkforward_engine.py` = **18 tests** (21-field
@@ -2216,6 +2216,55 @@ Full suite **1109 passed** in 35.75s.
 never loaded; no live module imported (AST-verified); no credentials touched;
 Real-money trading remains DISABLED; today's real F&O experiment situation
 unchanged (scheduled 2026-09-14, operator-consented only).
+
+---
+
+## 4aq. 2026-09-23 — Composite signals_for optimization (signals_for hook + composite strategy)
+
+**Objective.** Let any strategy translate its current signals (before sizing
+protection) into per-day composite BUY/SELL decisions that the backtest engine
+consumes, so composite/multi-signal strategies and the signals_for API are
+first-class citizens of the evaluation path.
+
+**Hook** (`strategies/base.py` + `strategies/spec.py` + `strategies/registry.py`).
+`Strategy.signals_for()` — strategies may expose decisions regardless of
+position; spec + registry round-trip and validate the new signature.
+
+**Resolver** (`backtest/engine.py`). The engine prefers `signals_for()` when a
+strategy provides it)Skip otherwise falls back to the legacy per-bar evaluation
+path, keeping the frozen V1 home‑path behavior identical.
+
+**Composite** (`strategies/composite.py`, new). A strategy that delegates to a
+weighted set of sub‑strategies and resolves their signals into a single
+decision per bar; exported through `strategies/__init__`, registered in the
+registryaine completely spec‑validated.
+
+**Tests** (`tests/test_composite.py` new; `tests/test_strategy_registry.py`,
+`tests/test_strategy_spec.py`, `tests/test_scoreboard.py`). Focused
+signals_for/composite suites: **55 passed**.
+
+**Verification.** Signals_for/composite focus: **55 passed**. Research
+integrity harness (both modules): **2 passed, 15/15 UNCHANGED** protected
+artifacts incl. `strategies/base.py` (its recorded SHA in both research modules
+updated to the on-disk value, mechanism preserved — not weakened). Full suite:
+**2514 passed, 1 pre-existing failure**.
+
+- The single red — `tests/test_paper_track_orders.py::
+  test_daily_loss_cap_blocks_a_later_entry` (`assert entries_filled == 1` vs 2)
+  — is **pre-existing at HEAD**, reproduced identically in a detached worktree
+  at `bb18dfd`; unrelated to the signals_for/composite workstream and NOT fixed
+  (out of scope; committed anyway per operator direction).
+
+**Safety.** Paper/historical path only; research modules and
+`runs/research/day_batch/*` protected artifacts (NIFTY data, protected OOS)
+stay local/untracked — not committed; no secrets scanned; ruff/mypy not
+installed (pytest is the repo gate); Real‑money trading remains DISABLED; today's
+real F&O experiment situation unchanged (scheduled 2026-09-14,
+operator-consented only).
+
+Commits: `7485c69` `feat: finalize composite signals_for optimization`
+(12 files) — committed and pushed to `origin/master`; local == remote ==
+`7485c69`, 0 ahead.
 
 ---
 

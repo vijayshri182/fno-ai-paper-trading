@@ -519,7 +519,14 @@ class TrackEngine:
         order = Order(
             instrument=self.config.instrument, side=OrderSide.BUY, quantity=sizing.quantity
         )
-        risk = self.risk_manager.evaluate(order, self.portfolio, bar.close)
+        risk = self.risk_manager.evaluate(
+            order,
+            self.portfolio,
+            bar.close,
+            realized_today=(
+                self.portfolio.realized_pnl_today(self.day) if self.day is not None else None
+            ),
+        )
         self._fault("C")
         if not risk.approved:
             self.counters["risk_refusals"].append(
