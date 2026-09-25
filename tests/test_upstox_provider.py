@@ -47,7 +47,11 @@ from fno_ai_paper_trading.data.errors import (
 from fno_ai_paper_trading.data.provider import MarketDataProvider
 from fno_ai_paper_trading.data.upstox_provider import (
     UPSTOX_BASE_URL,
+    UPSTOX_INTRADAY_CANDLE_PATH,
+    UPSTOX_SOURCE_HISTORICAL,
+    UPSTOX_SOURCE_INTRADAY,
     UpstoxHistoricalDataProvider,
+    upstox_candle_source,
     upstox_instrument_key,
 )
 from fno_ai_paper_trading.models.enums import InstrumentType, MarketPhase
@@ -384,6 +388,12 @@ class TestInterfaceAndWindows:
         with pytest.raises(MarketDataError, match="local instrument list"):
             provider.get_instruments()
 
+    def test_get_instrument_without_list_returns_none(self, monkeypatch) -> None:
+        provider, _ = _provider(monkeypatch)
+        # A lookup (unlike the bulk get_instruments) never raises: an empty
+        # local list simply means no instrument is known.
+        assert provider.get_instrument("Nifty 50") is None
+
     def test_market_session_is_deterministic_and_offline(self, monkeypatch) -> None:
         provider, calls = _provider(monkeypatch)
         session = provider.get_market_session()
@@ -624,6 +634,122 @@ class TestWindowChunking:
                 _index(), interval="1m",
                 start=datetime(2026, 1, 1), end=datetime(2026, 2, 10),
             )
+
+
+# ---------------------------------------------------------------------------
+# Intraday V3 — current trading day candles
+# ---------------------------------------------------------------------------
+
+def _intraday_row(ts: datetime, *, close: float = 24300.0, volume: int = 1300) -> list:
+    return [ts.isoformat(), close - 95.0, close + 100.0, close - 105.0, close, volume, None]
+
+
+def _intraday_payload(*, day=None) -> dict:
+    day = day or NOW.date()
+    return {
+        "candles": [
+            _intraday_row(datetime(day.year, day.month, day.day, 11, 55), close=24300.0),
+            _intraday_row(datetime(day.year, day.month, day.day, 11, 50), close=24205.0),
+        ]
+    }
+
+
+class TestIntradayV3:
+    def test_intraday_url_uses_intraday_path(self, monkeypatch) -> None:
+        provider, calls = _provider(monkeypatch, [_ok_json(_intraday_payload())])
+        provider.get_intraday_ohlcv(_index(), interval="5m")
+        url = calls[0]["url"]
+        expected = f"{BASE}{UPSTOX_INTRADAY_CANDLE_PATH}/{quote(KEY)}/minutes/5"
+        assert url == expected
+        assert "minutes/5/" not in url.split(UPSTOX_INTRADAY_CANDLE_PATH)[-1].rsplit("/", 2)[0]
+
+    def test_intraday_payload_parsed_and_ascending(self, monkeypatch) -> None:
+        provider, _ = _provider(monkeypatch, [_ok_json(_intraday_payload())])
+        bars = provider.get_intraday_ohlcv(_index(), interval="5m")
+        assert len(bars) == 2
+        assert bars[0].timestamp == datetime(2026, 9, 7, 11, 50)
+        assert bars[1].timestamp == datetime(2026, 9, 7, 11, 55)
+        assert bars[1].close == Decimal("24300")
+        assert bars[0].timestamp.tzinfo is None
+        assert bars[0].open_interest is None
+
+    def test_intraday_zero_candles_returns_empty_no_fallback(self, monkeypatch) -> None:
+        provider, calls = _provider(monkeypatch, [_ok_json({"candles": []})])
+        assert provider.get_intraday_ohlcv(_index(), interval="5m") == []
+        assert len(calls) == 1
+
+    def test_intraday_malformed_row_rejected(self, monkeypatch) -> None:
+        provider, _ = _provider(monkeypatch, [_ok_json({"candles": [["2026-09-07T11:50:00+05:30", 1.0, 2.0]]})])
+        with pytest.raises(MarketDataError, match="candle"):
+            provider.get_intraday_ohlcv(_index(), interval="5m")
+
+    def test_intraday_unsuccessful_payload_rejected(self, monkeypatch) -> None:
+        provider, _ = _provider(monkeypatch, [_json(200, {"status": "error", "errors": []})])
+        with pytest.raises(MarketDataError, match="intraday"):
+            provider.get_intraday_ohlcv(_index(), interval="5m")
+
+    def test_intraday_out_of_order_rejected(self, monkeypatch) -> None:
+        day = NOW.date()
+        rows = [
+            _intraday_row(datetime(day.year, day.month, day.day, 11, 55)),
+            _intraday_row(datetime(day.year, day.month, day.day, 11, 55)),
+        ]
+        provider, _ = _provider(monkeypatch, [_ok_json({"candles": rows})])
+        with pytest.raises(MarketDataError, match="duplicate"):
+            provider.get_intraday_ohlcv(_index(), interval="5m")
+
+    def test_intraday_401_raises_authentication_error(self, monkeypatch) -> None:
+        provider, _ = _provider(monkeypatch, [_http_error(401)])
+        with pytest.raises(AuthenticationError):
+            provider.get_intraday_ohlcv(_index(), interval="5m")
+
+    def test_intraday_missing_token_raises_config_error(self, monkeypatch) -> None:
+        provider, calls = _provider(monkeypatch, access_token="")
+        with pytest.raises(ProviderConfigurationError, match="UPSTOX_ACCESS_TOKEN"):
+            provider.get_intraday_ohlcv(_index(), interval="5m")
+        assert calls == []
+
+
+# ---------------------------------------------------------------------------
+# Current-day routing — Intraday V3 for today, Historical V3 for completed days
+# ---------------------------------------------------------------------------
+
+class TestCurrentDayRouting:
+    def test_source_is_intraday_today_and_historical_otherwise(self) -> None:
+        from datetime import date
+
+        today = date(2026, 9, 7)
+        assert upstox_candle_source(today, today) == UPSTOX_SOURCE_INTRADAY
+        yesterday = date(2026, 9, 4)
+        assert upstox_candle_source(yesterday, today) == UPSTOX_SOURCE_HISTORICAL
+        # Real-world analogue: a completed prior day can never be "today".
+        assert UPSTOX_SOURCE_INTRADAY == "intraday"
+        assert UPSTOX_SOURCE_HISTORICAL == "historical"
+
+    def test_today_routes_to_intraday_endpoint_only(self, monkeypatch) -> None:
+        provider, calls = _provider(monkeypatch, [_ok_json(_intraday_payload())])
+        bars = provider.get_ohlcv_for_trading_day(_index(), interval="5m", day=NOW.date())
+        assert len(bars) == 2
+        assert len(calls) == 1  # exactly one request: today never touches Historical V3
+        assert UPSTOX_INTRADAY_CANDLE_PATH in calls[0]["url"]
+        assert "/minutes/5/" not in calls[0]["url"].split(UPSTOX_INTRADAY_CANDLE_PATH)[-1]
+
+    def test_completed_day_routes_to_historical_endpoint(self, monkeypatch) -> None:
+        completed = (NOW - timedelta(days=5)).date()
+        payload = {"candles": [_candle_row(datetime(2026, 9, 2, 9, 15), close=100.0)]}
+        provider, calls = _provider(monkeypatch, [_ok_json(payload)])
+        bars = provider.get_ohlcv_for_trading_day(_index(), interval="5m", day=completed)
+        assert len(bars) == 1
+        assert len(calls) == 1
+        assert UPSTOX_INTRADAY_CANDLE_PATH not in calls[0]["url"]
+        assert f"/minutes/5/{completed.isoformat()}/{completed.isoformat()}" in calls[0]["url"]
+
+    def test_today_zero_intraday_returns_empty_without_historical_fallback(self, monkeypatch) -> None:
+        provider, calls = _provider(monkeypatch, [_ok_json({"candles": []})])
+        assert provider.get_ohlcv_for_trading_day(
+            _index(), interval="5m", day=NOW.date(),
+        ) == []
+        assert len(calls) == 1  # no Historical V3 retry for today (fail closed)
 
 
 # ---------------------------------------------------------------------------

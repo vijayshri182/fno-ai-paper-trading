@@ -21,6 +21,10 @@ official API docs):
 * historical-candle path: ``/v3/historical-candle/{instrument_key}/{unit}/{interval}/{to_date}/{from_date}``
   where ``unit`` is ``minutes``/``hours``/``days``/``weeks``/``months`` and
   ``to_date`` is required and inclusive; ``from_date`` is optional
+* intraday-candle path (**current trading day only**):
+  ``/v3/historical-candle/intraday/{instrument_key}/{unit}/{interval}`` — the
+  dated Historical endpoint returns no candles for the still-open current day,
+  so current-day acquisition must use this dedicated Intraday endpoint
 * candle row: ``[iso_timestamp, open, high, low, close, volume, open_interest]``
 * data depth: minutes/hours since Jan 2022, days since Jan 2000
 * per-request retrieval caps (see ``UPSTOX_MAX_WINDOW_DAYS``): 1 month for
@@ -39,7 +43,7 @@ from __future__ import annotations
 import json
 import re
 import time
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any, Callable
 from urllib.parse import quote
@@ -53,7 +57,7 @@ from fno_ai_paper_trading.data.errors import (
     UnavailableError,
 )
 from fno_ai_paper_trading.data.intervals import canonical_interval, upstox_unit_interval
-from fno_ai_paper_trading.data.market_hours import NSE_TZ, market_session
+from fno_ai_paper_trading.data.market_hours import CLOSE_TIME, NSE_TZ, OPEN_TIME, market_session
 from fno_ai_paper_trading.data.provider import MarketDataProvider
 from fno_ai_paper_trading.models.instruments import Instrument
 from fno_ai_paper_trading.models.market import MarketPrice, MarketQuote, MarketSession
@@ -61,6 +65,14 @@ from fno_ai_paper_trading.utils.http import HttpError, http_get, is_retryable_st
 from fno_ai_paper_trading.utils.retry import RetryExhausted, describe_last_error, retry_call
 
 UPSTOX_BASE_URL = "https://api.upstox.com"
+
+# The dedicated Upstox V3 Intraday Candle path (current trading day only).
+UPSTOX_INTRADAY_CANDLE_PATH = "/v3/historical-candle/intraday"
+
+# Deterministic candle-source labels used by the current-day/completed-day
+# routing decision (:func:`upstox_candle_source`).
+UPSTOX_SOURCE_INTRADAY = "intraday"
+UPSTOX_SOURCE_HISTORICAL = "historical"
 
 # Instrument key = `{SEGMENT}|{symbol}`; segments like NSE_EQ / NSE_FO / NSE_INDEX / MCX_FO.
 _INSTRUMENT_KEY_RE = re.compile(r"^[A-Za-z][A-Za-z_]*\|[\w. ]+$")
@@ -117,6 +129,23 @@ def _historical_date_windows(
         windows.append((cursor.isoformat(), stop.isoformat()))
         cursor = stop + timedelta(days=1)
     return windows
+
+
+def upstox_candle_source(day: date, today: date) -> str:
+    """Select the Upstox V3 candle source for a requested trading day.
+
+    * the **current trading day** (``day == today``) is served exclusively by
+      the dedicated Intraday Candle endpoint (``UPSTOX_INTRADAY_CANDLE_PATH``):
+      the dated Historical endpoint returns no candles for the still-open day;
+    * any **completed day** keeps using the dated Historical Candle endpoint.
+
+    Returns :data:`UPSTOX_SOURCE_INTRADAY` or :data:`UPSTOX_SOURCE_HISTORICAL`.
+    The decision is pure date equality, so it is deterministic and unit-testable
+    without any network call. Callers fail closed (NOT_READY) when today's
+    Intraday data is unavailable -- there is deliberately *no* Intraday ->
+    Historical fallback for the current day.
+    """
+    return UPSTOX_SOURCE_INTRADAY if day == today else UPSTOX_SOURCE_HISTORICAL
 
 
 class UpstoxHistoricalDataProvider(MarketDataProvider):
@@ -309,7 +338,14 @@ class UpstoxHistoricalDataProvider(MarketDataProvider):
         return list(self._instruments)
 
     def get_instrument(self, symbol: str) -> Instrument | None:
-        for instrument in self.get_instruments():
+        """Return the instrument with ``symbol``, or ``None`` if unknown.
+
+        A *lookup* (unlike :meth:`get_instruments`) never raises: an empty or
+        absent local list simply means no instrument can be found. This matches
+        the provider contract ("``None`` if unknown") and lets callers fall
+        back when a symbol is not resolvable.
+        """
+        for instrument in self._instruments:
             if instrument.symbol == symbol:
                 return instrument
         return None
@@ -363,24 +399,39 @@ class UpstoxHistoricalDataProvider(MarketDataProvider):
             if not isinstance(candles, list):
                 raise MarketDataError(f"unexpected Upstox candle payload shape for {key}")
 
-            window_bars: list[MarketPrice] = []
-            for index, candle in enumerate(candles):
-                window_bars.append(self._candle_to_bar(instrument, candle, index, key))
-            # Upstox returns candles newest-first within a window; normalize to
-            # ascending so the merged series stays chronological. Windows that
-            # already arrive ascending are left untouched.
-            if len(window_bars) > 1 and window_bars[0].timestamp > window_bars[-1].timestamp:
-                window_bars.reverse()
+            window_bars = self._bars_from_candles(instrument, key, candles)
             bars.extend(window_bars)
 
         # The merged series must be globally chronological and duplicate-free.
+        self._assert_chronological(bars, key)
+        return bars
+
+    def _bars_from_candles(
+        self, instrument: Instrument, key: str, candles: list[Any]
+    ) -> list[MarketPrice]:
+        """Normalize a candle list into ascending-ordered :class:`MarketPrice`.
+
+        Upstox returns candles newest-first within a window; normalize to
+        ascending so a merged series stays chronological. Sequences that
+        already arrive ascending are left untouched. Malformed rows raise
+        :class:`MarketDataError` (bad data is never silently dropped).
+        """
+        window_bars: list[MarketPrice] = []
+        for index, candle in enumerate(candles):
+            window_bars.append(self._candle_to_bar(instrument, candle, index, key))
+        if len(window_bars) > 1 and window_bars[0].timestamp > window_bars[-1].timestamp:
+            window_bars.reverse()
+        return window_bars
+
+    @staticmethod
+    def _assert_chronological(bars: list[MarketPrice], key: str) -> None:
+        """The bar series must be globally chronological and duplicate-free."""
         for previous, current in zip(bars, bars[1:]):
             if current.timestamp <= previous.timestamp:
                 raise MarketDataError(
                     f"{key}: candles are out of order or contain duplicate timestamps "
                     f"({previous.timestamp.isoformat()} -> {current.timestamp.isoformat()})"
                 )
-        return bars
 
     @staticmethod
     def _candle_to_bar(
@@ -451,6 +502,68 @@ class UpstoxHistoricalDataProvider(MarketDataProvider):
         end = end if end is not None else now
         start = start if start is not None else end - timedelta(days=self.default_days)
         return self._historical(instrument, interval, start, end)
+
+    def get_intraday_ohlcv(
+        self, instrument: Instrument, interval: str
+    ) -> list[MarketPrice]:
+        """Return the current trading day's OHLCV bars via Upstox Intraday V3.
+
+        Calls ``GET /v3/historical-candle/intraday/{key}/{unit}/{number}`` — the
+        dedicated current-day endpoint (the dated Historical endpoint returns
+        zero candles for the still-open trading day). Bars are chronological
+        (oldest first) with naive-IST timestamps, sharing the same parsing,
+        malformed-row rejection and ordering guarantees as the Historical path.
+
+        *Never* falls back to the Historical endpoint: when the current-day feed
+        is unavailable the method returns an empty list (zero candles) or raises,
+        and the caller decides readiness (fail closed) accordingly.
+        """
+        key = self._instrument_key(instrument)
+        try:
+            unit, number = upstox_unit_interval(interval)
+        except ValueError as exc:
+            raise MarketDataError(str(exc)) from exc
+
+        encoded_key = quote(key)
+        path = (
+            f"{UPSTOX_INTRADAY_CANDLE_PATH}/{encoded_key}/{unit}/{number}"
+        )
+        response = self._get(path)
+        payload = response.json
+        if not isinstance(payload, dict) or payload.get("status") not in ("success", None):
+            detail = self._error_from_body(response.text)
+            raise MarketDataError(
+                f"Upstox returned an unsuccessful intraday response for {key}: "
+                f"{detail.get('message')}"
+            )
+        candles = ((payload.get("data") or {}).get("candles")) or []
+        if not isinstance(candles, list):
+            raise MarketDataError(f"unexpected Upstox intraday candle payload shape for {key}")
+
+        bars = self._bars_from_candles(instrument, key, candles)
+        self._assert_chronological(bars, key)
+        return bars
+
+    def get_ohlcv_for_trading_day(
+        self, instrument: Instrument, interval: str, day: date
+    ) -> list[MarketPrice]:
+        """Fetch one trading day, routing by date (deterministic, testable).
+
+        * ``day == today`` (the current trading day, per the provider clock) ->
+          **Intraday V3** (:meth:`get_intraday_ohlcv`) only;
+        * any completed day -> **Historical V3** for the 09:15..15:30 session.
+
+        There is no Intraday -> Historical fallback for the current day: when
+        today's Intraday data is unavailable the returned list is empty (the
+        caller must treat that as NOT_READY / fail closed).
+        """
+        today = self._now_fn().date()
+        source = upstox_candle_source(day, today)
+        if source == UPSTOX_SOURCE_INTRADAY:
+            return self.get_intraday_ohlcv(instrument, interval)
+        start = datetime(day.year, day.month, day.day, OPEN_TIME.hour, OPEN_TIME.minute)
+        end = datetime(day.year, day.month, day.day, CLOSE_TIME.hour, CLOSE_TIME.minute)
+        return self.get_historical_ohlcv(instrument, interval, start, end)
 
     # ---------------------------------------------------------------- quotes
 

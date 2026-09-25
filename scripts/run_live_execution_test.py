@@ -67,6 +67,87 @@ from fno_ai_paper_trading.utils.logging import setup_logging  # noqa: E402
 SMOKE_NOW = datetime(2026, 9, 14, 12, 0)  # a Monday 12:00 IST — session OPEN
 
 
+def _real_round_trip_confirmed(
+    real_upstox_send: bool,
+    result: "ExecutionTestResult",
+) -> bool:
+    """Report-only decision: was a *confirmed* round trip proven by the result?
+
+    ``real_upstox_send`` alone is intent (data-source + not dry-run) and can be
+    true even when the run FAILed/ABORTed before any fill. A confirmed round trip
+    requires the execution result to actually demonstrate it: PASS outcome, the
+    COMPLETE terminal stage, a flat position, and *both* entry and exit fills.
+    This is pure reporting -- it never writes, never gates, never contacts a
+    broker.
+    """
+    return bool(
+        real_upstox_send
+        and result.outcome == "PASS"
+        and result.stage is not None
+        and result.stage.value == "COMPLETE"
+        and result.position_flat
+        and result.entry_fill_price is not None
+        and result.exit_fill_price is not None
+    )
+
+
+def _execution_banner_note(
+    real_upstox_send: bool,
+    result: "ExecutionTestResult",
+) -> str:
+    """Pure reporting line for the execution-integration banner (Outcome A).
+
+    Never prints the "REAL UPSTOX ORDER EXECUTED" wording from intent alone: it
+    is produced only when :func:`_real_round_trip_confirmed` is true. Aborted /
+    failed runs with unconfirmed fills explicitly report that no real order
+    reached the broker, so the banner can never claim a real execution that the
+    result does not prove.
+    """
+    if _real_round_trip_confirmed(real_upstox_send, result):
+        return "REAL UPSTOX ORDER EXECUTED - verify broker positions manually"
+    if real_upstox_send:
+        return (
+            "NO real Upstox order was confirmed at the broker: "
+            f"outcome={result.outcome} "
+            f"stage={result.stage.value if result.stage else 'UNKNOWN'} "
+            "entry/exit fills not both confirmed / position not flat. "
+            "Nothing real was written - verify none of the above."
+        )
+    return "Dry-run intent respected: no real broker write happened."
+
+
+def _execution_banner_note(
+    real_upstox_send: bool,
+    result: "ExecutionTestResult",
+) -> tuple[str, bool]:
+    """Reporting-only banner decision for the live execution test.
+
+    ``real_upstox_send`` is *intent* (data_source + not dry-run) and can be true
+    even when the run FAILed/ABORTed before any fill, so it is never sufficient
+    on its own to claim a real round trip. The REAL banner is produced only when
+    the execution result actually demonstrates a confirmed round trip: PASS
+    outcome, COMPLETE stage, position flat, and *both* entry and exit fills
+    present. Pure reporting — never writes, never gates, never contacts a
+    broker, reads nothing from the environment.
+
+    Returns ``(note, confirmed_round_trip)``.
+    """
+    confirmed_round_trip = _real_round_trip_confirmed(real_upstox_send, result)
+    if confirmed_round_trip:
+        print("REAL UPSTOX ORDER EXECUTED - verify broker positions manually")
+    elif real_upstox_send:
+        note = (
+            "NO real Upstox order was confirmed at the broker: "
+            f"outcome={result.outcome} "
+            f"stage={result.stage.value if result.stage else 'UNKNOWN'} "
+            "entry/exit fills not both confirmed / position not flat. "
+            "Nothing real was written - verify none of the above."
+        )
+    else:
+        note = "Dry-run intent respected: no real broker write happened."
+    return note, confirmed_round_trip
+
+
 def _env_data_token() -> str:
     """Analytics/data-layer Upstox token (signal feed), not the execution token."""
     return os.getenv("FNO_UPSTOX_ACCESS_TOKEN", "").strip()
@@ -113,9 +194,44 @@ def _build_signal_bars(args, underlying):
             "no Upstox analytics/data token; set FNO_UPSTOX_ACCESS_TOKEN (or pass --token). "
             "For an offline smoke use --data-source smoke."
         )
-    provider = UpstoxHistoricalDataProvider(access_token=token)
-    bars = provider.get_ohlcv(underlying, limit=args.bars)
+    provider = UpstoxHistoricalDataProvider(access_token=token, interval=args.interval)
+    bars = _current_day_signal_bars(provider, underlying, args.interval, args.bars)
     return bars, provider
+
+
+def _current_day_signal_bars(provider, underlying, interval: str, limit: int):
+    """CURRENT-DAY signal bars: Intraday V3 for today + Historical V3 warm-up.
+
+    * today's bars come exclusively from the Upstox Intraday Candle V3 endpoint
+      (the dated Historical endpoint returns zero candles for the open day);
+    * completed-day warm-up bars come from Historical V3 (previous session
+      close and earlier);
+    * the merged chronologically-ordered series is truncated to ``limit`` bars.
+
+    Fails closed when the current trading day produced no Intraday V3 candles:
+    the live signal must NEVER use historical data as today's data, fabricate
+    the missing bars, or bypass freshness (the Watchdog is re-applied later in
+    the preflight, unchanged).
+    """
+    now = datetime.now(NSE_TZ).replace(tzinfo=None)
+    today = now.date()
+
+    intraday = provider.get_intraday_ohlcv(underlying, interval)
+    if not intraday:
+        raise ValueError(
+            "current trading day produced zero Intraday V3 candles; refusing to "
+            "build a live signal from historical data (fail closed, NOT_READY)"
+        )
+
+    previous_close = datetime(today.year, today.month, today.day, 15, 30) - timedelta(days=1)
+    history = provider.get_historical_ohlcv(underlying, interval, None, previous_close)
+
+    merged = sorted(history + intraday, key=lambda bar: bar.timestamp)
+    if not merged:
+        raise ValueError("no signal bars available for the live test")
+    if limit and limit > 0:
+        return merged[-limit:]
+    return merged
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -399,10 +515,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  audit path    : reports/execution/audit/<run_id>.jsonl")
     print(f"  summary       : {summary_path.relative_to(REPO_ROOT)}")
     print(f"OUTCOME B (Algorithm Health) -> {result.algorithm_health_note}")
-    if real_upstox_send:
-        print("REAL UPSTOX ORDER EXECUTED - verify broker positions manually")
-    else:
-        print("Dry-run intent respected: no real broker write happened.")
+    banner_note, round_trip_confirmed = _execution_banner_note(real_upstox_send, result)
+    print(banner_note)
 
     return 0 if result.outcome == "PASS" else 1
 

@@ -18,6 +18,7 @@ real Upstox call. Coverage targets, in order:
 """
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import sys
@@ -38,6 +39,7 @@ from fno_ai_paper_trading.config.settings import (
     UpstoxSettings,
 )
 from fno_ai_paper_trading.data.errors import AuthenticationError, RateLimitError, UnavailableError
+from fno_ai_paper_trading.data.instrument_registry import get_research_instrument
 from fno_ai_paper_trading.data.market_hours import market_session
 from fno_ai_paper_trading.execution.audit import ExecutionAudit, new_run_id, redact
 from fno_ai_paper_trading.execution.errors import (
@@ -978,6 +980,168 @@ class TestAudit:
         assert payload["kind"] == "signal_decided"
 
 
+# ------------------------------------------- signal-bar interval forwarding
+
+
+class TestBuildSignalBarsIntervalForwarding:
+    """The live-execution CLI's ``--interval`` must reach the signal provider.
+
+    ``_build_signal_bars`` must pass the parsed ``args.interval`` to the
+    ``UpstoxHistoricalDataProvider`` constructor instead of silently letting the
+    provider fall back to its default ``1d`` interval, which would make the
+    Watchdog stale-bar rule evaluate daily bars.
+    """
+
+    @staticmethod
+    def _load_script():
+        import importlib.util
+
+        script = Path(__file__).resolve().parents[1] / "scripts" / "run_live_execution_test.py"
+        spec = importlib.util.spec_from_file_location(
+            "run_live_execution_test_interval_fixture", script
+        )
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+        return module
+
+    def _capture_constructors(self, monkeypatch):
+        module = self._load_script()
+        created: list[dict] = []
+        methods: list[str] = []
+
+        def _bar_for(ts: datetime) -> MarketPrice:
+            return _bar(Decimal("24200"), ts)
+
+        class RecordingProvider:
+            def __init__(self, **kwargs):
+                created.append(kwargs)
+
+            def get_ohlcv(self, instrument, limit=None):
+                methods.append("get_ohlcv")
+                return []
+
+            def get_intraday_ohlcv(self, instrument, interval):
+                methods.append("get_intraday_ohlcv")
+                return [_bar_for(NOW)]
+
+            def get_historical_ohlcv(self, instrument, interval, start=None, end=None):
+                methods.append("get_historical_ohlcv")
+                return []
+
+        monkeypatch.setattr(module, "UpstoxHistoricalDataProvider", RecordingProvider)
+        return module, created, methods
+
+    def test_default_interval_5m_reaches_provider(self, monkeypatch):
+        module, created, _ = self._capture_constructors(monkeypatch)
+        args = argparse.Namespace(
+            data_source="upstox", interval="5m", token="tok", bars=60
+        )
+        underlying = get_research_instrument("NIFTY 50")
+        module._build_signal_bars(args, underlying)
+        assert len(created) == 1
+        assert created[0]["interval"] == "5m"
+
+    def test_explicit_interval_reaches_provider(self, monkeypatch):
+        module, created, _ = self._capture_constructors(monkeypatch)
+        args = argparse.Namespace(
+            data_source="upstox", interval="15m", token="tok", bars=60
+        )
+        underlying = get_research_instrument("NIFTY 50")
+        module._build_signal_bars(args, underlying)
+        assert len(created) == 1
+        assert created[0]["interval"] == "15m"
+
+    def test_no_fallback_to_provider_default_1d(self, monkeypatch):
+        module, created, _ = self._capture_constructors(monkeypatch)
+        args = argparse.Namespace(
+            data_source="upstox", interval="5m", token="tok", bars=60
+        )
+        underlying = get_research_instrument("NIFTY 50")
+        module._build_signal_bars(args, underlying)
+        assert len(created) == 1
+        assert "interval" in created[0]
+        assert created[0]["interval"] != "1d"
+
+    def test_cli_parses_default_interval_5m(self):
+        import subprocess
+
+        parser_help = subprocess.run(
+            [sys.executable, str(Path(__file__).resolve().parents[1] / "scripts" / "run_live_execution_test.py"),
+             "--help"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert parser_help.returncode == 0
+        assert "--interval" in parser_help.stdout
+        assert "default 5m" in parser_help.stdout or "(default 5m)" in parser_help.stdout
+
+
+class TestBuildSignalBarsCurrentDay:
+    """Current-day signal bars must come from Intraday V3 and fail closed."""
+
+    def _load_script(self):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "run_live_execution_test_current_day",
+            Path(__file__).resolve().parents[1] / "scripts" / "run_live_execution_test.py",
+        )
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+        return module
+
+    def _recording_provider_of(self, monkeypatch, intraday, historical):
+        module = self._load_script()
+        methods: list[tuple[str, ...]] = []
+
+        def _bar_for(ts: datetime) -> MarketPrice:
+            return _bar(Decimal("24200"), ts)
+
+        class RecordingProvider:
+            def __init__(self, **kwargs):
+                pass
+
+            def get_intraday_ohlcv(self, instrument, interval):
+                methods.append(("intraday", interval))
+                return [_bar_for(ts) for ts in intraday]
+
+            def get_historical_ohlcv(self, instrument, interval, start=None, end=None):
+                methods.append(("historical", interval, start, end))
+                return [_bar_for(ts) for ts in historical]
+
+        monkeypatch.setattr(module, "UpstoxHistoricalDataProvider", RecordingProvider)
+        return module, methods
+
+    @staticmethod
+    def _args():
+        return argparse.Namespace(data_source="upstox", interval="5m", token="tok", bars=60)
+
+    def test_current_day_uses_intraday_plus_historical_warmup(self, monkeypatch):
+        history = [NOW - timedelta(days=1, minutes=5 * 30), NOW - timedelta(days=1)]
+        today = [NOW - timedelta(minutes=5), NOW]
+        module, methods = self._recording_provider_of(monkeypatch, today, history)
+        bars, _ = module._build_signal_bars(self._args(), get_research_instrument("NIFTY 50"))
+        assert len(bars) == 4  # warm-up + current day merged, oldest first
+        assert [m[0] for m in methods] == ["intraday", "historical"]
+        assert all(m[1] == "5m" for m in methods)  # interval forwarded to both seams
+        assert bars[0].timestamp == history[0] and bars[-1].timestamp == today[-1]
+
+    def test_current_day_zero_intraday_fails_closed(self, monkeypatch):
+        module, methods = self._recording_provider_of(monkeypatch, [], [NOW - timedelta(days=1)])
+        with pytest.raises(ValueError, match="zero Intraday V3"):
+            module._build_signal_bars(self._args(), get_research_instrument("NIFTY 50"))
+        # The baked-in ''historical'' bars were NOT used to fabricate today.
+        assert methods[0][0] == "intraday"
+
+    def test_upstox_path_never_calls_get_ohlcv(self, monkeypatch):
+        module, methods = self._recording_provider_of(monkeypatch, [NOW], [])
+        module._build_signal_bars(self._args(), get_research_instrument("NIFTY 50"))
+        assert "get_ohlcv" not in [m[0] for m in methods]
+
+
 # --------------------------------------------------------------- CLI
 
 
@@ -988,6 +1152,17 @@ class TestCliOptIn:
         env = {
             "PATH": "C:\\Windows\\System32;C:\\Windows",
             "PYTHONIOENCODING": "utf-8",
+            # Hermetic live-test environment: force the gate CLOSED even when a
+            # repo-local .env would otherwise set FNO_LIVE_EXECUTION_TEST_ENABLED
+            # and inject UPSTOX_ACCESS_TOKEN into this subprocess (dotenv never
+            # overrides pre-existing variables). The opt-in requirement is what
+            # these tests exercise, so the operator's local consent must not leak
+            # into them.
+            "FNO_LIVE_EXECUTION_TEST_ENABLED": "0",
+            "FNO_LIVE_TEST_CONSENT_FILE": str(
+                Path(__file__).resolve().parents[1] / "reports" / "execution" / "test_gate_closed_consent.json"
+            ),
+            "UPSTOX_ACCESS_TOKEN": "",
         }
         return subprocess.run(
             [python, str(script), "--data-source", "smoke", "--out", "reports/execution/test_cli_summary.json", *args],

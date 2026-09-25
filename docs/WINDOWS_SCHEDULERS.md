@@ -25,9 +25,12 @@ Explicit facts to keep in mind:
   candles in the NSE derivative session window and reports whether they are
   available and Watchdog-fresh.
 - The readiness monitor is **read-only**: it performs a GET-only probe plus the
-  production historical fetch path (`UpstoxHistoricalDataClient.fetch_5m_day`).
-  No order execution, no order placement, no execution/paper-trading API is
-  imported or reachable (enforced by tests).
+  production fetch path routed by date — **Intraday Candle V3** for the current
+  trading day (`UpstoxHistoricalDataClient.fetch_intraday_day`) with **no**
+  Intraday→Historical fallback, and **Historical V3** for completed days
+  (`UpstoxHistoricalDataClient.fetch_5m_day`). No order execution, no order
+  placement, no execution/paper-trading API is imported or reachable (enforced
+  by tests).
 - **Neither task is allowed to place BUY/SELL orders.**
 - `FNO_Today5mReadinessMonitor` does **NOT** trigger live trading when it
   becomes `READY`. `READY` is a *market-data readiness signal only*; actual
@@ -101,23 +104,31 @@ TODAY_5M = ERROR      exit code 2
 - `TODAY_5M = ERROR` — HTTP/API/credential/config failure (exit code 2).
 
 The monitor is read-only: it reuses the production
-`UpstoxHistoricalDataClient.fetch_5m_day` + `UpstoxHistoricalDataProvider`
-transport and the runtime analytics credential `FNO_UPSTOX_ACCESS_TOKEN` (the
-same in-memory runtime credential provider the collector uses —
-`PRESENT`/`ABSENT` only, never printed or persisted). It uses the existing
-`Watchdog` with its **default 5-minute `max_bar_age`** — no new freshness
-threshold was introduced and the Watchdog is never bypassed. LTP is never
-substituted for historical candles and nothing is fabricated.
+`UpstoxHistoricalDataClient` (routed by date — `fetch_intraday_day` for the
+current day, `fetch_5m_day` for completed days) plus the shared
+`UpstoxHistoricalDataProvider` transport and the runtime analytics credential
+`FNO_UPSTOX_ACCESS_TOKEN` (the same in-memory runtime credential provider the
+collector uses — `PRESENT`/`ABSENT` only, never printed or persisted). It uses
+the existing `Watchdog` with its **default 5-minute `max_bar_age`** — no new
+freshness threshold was introduced and the Watchdog is never bypassed. Today's
+candles must come from Intraday Candle V3; when that feed is unavailable the
+monitor reports `NOT_READY`/fails closed (the dated Historical endpoint is
+never used as today's source). LTP is never substituted for candles and nothing
+is fabricated.
 
 Outputs:
 
 - Atomic status file `reports\live_readiness\upstox_today_5m_status.json`
   (scratch + fsync + `os.replace`), containing `checked_at`, `nse_date`,
-  `instrument`, `interval`, `session_start/end`, `request`, `http_status`,
-  `api_status`, `candle_count`, `first_candle`, `latest_candle`,
+  `instrument`, `interval`, `session_start/end`, `request`, `source`,
+  `http_status`, `api_status`, `candle_count`, `first_candle`, `latest_candle`,
   `latest_candle_age_seconds`, `watchdog_fresh`, `credential_present`, `ready`,
   `state`, `blocker`.
 - Human-readable line appended to `reports\live_readiness\upstox_today_5m.log`.
+
+The `source` field is `intraday` for the current trading day (Intraday Candle
+V3, path `/v3/historical-candle/intraday/{key}/minutes/5`) and `historical` for
+completed days (dated `/v3/historical-candle/{key}/minutes/5/{to}/{from}`).
 
 ## C. Verification commands
 
