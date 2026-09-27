@@ -42,6 +42,7 @@ from fno_ai_paper_trading.learning.capture import pair_round_trips
 from fno_ai_paper_trading.models.enums import OrderSide, Signal
 from fno_ai_paper_trading.models.market import MarketPrice
 from fno_ai_paper_trading.models.position import Trade
+from fno_ai_paper_trading.options_research.windows import check_no_lookahead
 from fno_ai_paper_trading.regime.detector import RegimeDetector
 from fno_ai_paper_trading.strategies import (
     MovingAverageCrossStrategy,
@@ -580,6 +581,19 @@ class WalkForwardEngine:
         """Replay one day and return its run summary plus completed round trips."""
         bars_list = list(bars)
         signals = StrategyEngine(strategy).evaluate(bars_list)
+        # Canonical no-lookahead (options_research.windows.check_no_lookahead):
+        # a signal's stamped decision time must never be AFTER the latest input
+        # bar the strategy was allowed to see; a violation means the strategy
+        # could have consulted data beyond its own decision instant.
+        decision_ts = bars_list[-1].timestamp
+        assessment = check_no_lookahead(
+            decision_ts,
+            {f"signal@{s.signal.value}": s.timestamp for s in signals if s.timestamp is not None},
+        )
+        if not assessment.ok:
+            raise ValueError(
+                f"no-lookahead violation in {strategy.name}: {assessment.as_dict()}"
+            )
         result = self._backtester.run(bars_list, strategy, self._bt, signals=signals)
         trips, _open_count = pair_round_trips(result.trades)
         run = self._build_day_run(bars_list, result, signals, trips)

@@ -56,6 +56,12 @@ from fno_ai_paper_trading.discovery.competition import (  # noqa: E402
     score_candidate,
 )
 from fno_ai_paper_trading.discovery.learning import analyze_failures  # noqa: E402
+from fno_ai_paper_trading.options_research.windows import (  # noqa: E402
+    PROTECTED_OOS_START,
+    SplitPlan,
+    validate_split,
+    verify_no_protected_reuse,
+)
 from fno_ai_paper_trading.walkforward.config import WalkForwardConfig  # noqa: E402
 
 DEFAULT_INSTRUMENT = "NIFTY 50"
@@ -337,10 +343,21 @@ def main(argv: list[str] | None = None) -> int:
     val_start = date.fromisoformat(args.val_start)
     val_end = date.fromisoformat(args.val_end)
     oos_start = date.fromisoformat(args.protected_oos_start)
-    if val_end >= oos_start:
-        parser.error(f"val-end {val_end} must be strictly before protected OOS start {oos_start}")
-    if train_end < train_start or val_start <= train_end:
-        parser.error("train and validation windows must be contiguous and ordered")
+    # Canonical OOS binding: the CLI boundary must equal the repository's frozen
+    # protected-OOS start, so the guard can never be quietly shifted to a weaker
+    # boundary that would admit protected days into research.
+    if oos_start != PROTECTED_OOS_START:
+        parser.error(
+            f"--protected-oos-start {oos_start} must equal the canonical "
+            f"protected boundary {PROTECTED_OOS_START}"
+        )
+    # Canonical chronological split integrity (options_research.windows).
+    split = validate_split(
+        SplitPlan(development_start=train_start, development_end=train_end,
+                  validation_start=val_start, validation_end=val_end)
+    )
+    if not split.ok:
+        parser.error("split is invalid: " + "; ".join(str(issue) for issue in split.issues))
 
     outdir = Path(args.outdir)
     reports_dir = Path(args.reports_dir)
@@ -390,6 +407,12 @@ def main(argv: list[str] | None = None) -> int:
     dropped = before - len(bars)
     if dropped:
         print(f"[discovery] OOS GUARD: dropped {dropped} bars at/after {oos_start} before research", flush=True)
+    protected = verify_no_protected_reuse(tuple(b.timestamp.date() for b in bars))
+    if protected:
+        parser.error(
+            f"research bars still contain {len(protected)} protected-OOS day(s) "
+            f"({protected[0]}..{protected[-1]}); refusing to proceed"
+        )
     actual_first = bars[0].timestamp.date()
     actual_last = bars[-1].timestamp.date()
     train_start_eff = max(train_start, actual_first)

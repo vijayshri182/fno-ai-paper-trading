@@ -38,6 +38,9 @@ from fno_ai_paper_trading.data.instrument_registry import get_research_instrumen
 from fno_ai_paper_trading.data.upstox_provider import UpstoxHistoricalDataProvider  # noqa: E402
 from fno_ai_paper_trading.data.validation import format_report, validate_bars  # noqa: E402
 from fno_ai_paper_trading.models.market import MarketPrice  # noqa: E402
+from fno_ai_paper_trading.options_research.windows import (  # noqa: E402
+    collect_protected_days,
+)
 from fno_ai_paper_trading.research.real_data import (  # noqa: E402
     DEFAULT_END_DATE,
     DEFAULT_START_DATE,
@@ -375,6 +378,18 @@ def main(argv: list[str] | None = None) -> int:
             dataset = _fetch_real_dataset(token, args.start, args.end, outdir, args.name)
         except Exception as exc:
             return _error(f"failed to acquire dataset: {exc}")
+        # Canonical protected-OOS guard (options_research.windows): real-data
+        # research must never evaluate evidence from protected days; the days
+        # are refused outright rather than silently dropped.
+        protected_days = collect_protected_days(
+            tuple(b.timestamp.date() for b in dataset.bars)
+        )
+        if protected_days:
+            return _error(
+                f"dataset covers {len(protected_days)} protected-OOS day(s) "
+                f"({protected_days[0].isoformat()}..{protected_days[-1].isoformat()}); "
+                "real-data research refuses to ingest protected-window evidence"
+            )
         title = "NIFTY 50 Daily — Baseline MA-Cross Research Report"
         disclaimer = (
             "Historical real-market evidence only. The cost schedule is illustrative, "
