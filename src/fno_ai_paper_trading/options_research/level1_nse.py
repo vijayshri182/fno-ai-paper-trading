@@ -295,7 +295,6 @@ def normalize_trade_ts(ds: date) -> str:
     ist_end = datetime.combine(ds, datetime.min.time()) + timedelta(hours=15, minutes=30)
     utc = ist_end - IST_TO_UTC_OFFSET
     return utc.strftime("%Y-%m-%dT%H:%M:%SZ")
-    return datetime(1970, 1, 1, hour, minute)
 
 
 def build_instrument_key(symbol: str, expiry_dt: str, strike: Decimal | None, opt_type: str) -> str:

@@ -469,8 +469,15 @@ def validate_dataset_directory(directory: Path, *, require_manifest: bool = True
         combined.extend(result.issues)
 
     synthetic = bool(manifest.get("synthetic", False))
-    if not synthetic and manifest.get("source") and not str(manifest["source"]).startswith("SYNTHETIC"):
-        pass
+    if not manifest_synthetic_ok(manifest):
+        combined.append(
+            DatasetIssue(
+                CODE_SYNTHETIC_REQUIRED,
+                "manifest declares synthetic data but its source is not "
+                f"labelled {SYNTHETIC_LABEL!r}; synthetic fixtures can never be "
+                "consumed as observed market evidence",
+            )
+        )
     return DatasetValidation(
         num_rows=num_rows,
         issues=tuple(combined),
