@@ -87,6 +87,24 @@ def test_max_drawdown_and_current_drawdown_from_cumulative_pnl():
     assert metrics.current_drawdown == Decimal("5")
 
 
+def test_never_positive_curve_reports_honest_drawdowns_with_undefined_pct():
+    # Cumulative: -5, -8  → peak stays at the zero baseline, so the percentage
+    # is genuinely undefined (must NOT be a fabricated 0) while both rupee
+    # drawdowns are reported from the baseline.
+    trades = [_trade("-5"), _trade("-3")]
+    metrics = compute_trade_metrics(trades, bucket="backtest")
+    assert metrics.max_drawdown == Decimal("8")
+    assert metrics.max_drawdown_pct is None
+    assert metrics.current_drawdown == Decimal("8")
+
+
+def test_flat_zero_pnl_curve_has_zero_drawdowns():
+    trades = [_trade("0"), _trade("0")]
+    metrics = compute_trade_metrics(trades, bucket="backtest")
+    assert metrics.max_drawdown == Decimal("0")
+    assert metrics.current_drawdown == Decimal("0")
+
+
 def test_consecutive_wins_and_losses_use_ending_streak():
     trades = [_trade("1"), _trade("1"), _trade("-1"), _trade("-1"), _trade("-1")]
     metrics = compute_trade_metrics(trades, bucket="backtest")

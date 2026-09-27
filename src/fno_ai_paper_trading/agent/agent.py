@@ -107,6 +107,15 @@ class AgentConfig:
     job_datasets_dir: str = "datasets"
     job_out_dir: str = "reports/agent"
     job_extra: Mapping[str, object] = field(default_factory=dict)
+    ledger_path: str | Path | None = None
+    ledger_identity: Mapping[str, str] = field(
+        default_factory=lambda: dict(
+            strategy_id="moving_average_cross",
+            strategy_family="TREND_FOLLOWING",
+            strategy_version="1.0.0",
+            configuration_version="",
+        )
+    )
 
     def __post_init__(self) -> None:
         token = canonical_interval(self.interval or self.settings.paper_interval)
@@ -175,6 +184,7 @@ class ContinuousPaperAgent:
         self._last_error = ""
         self._alert_engine = config.alert_engine or AlertEngine()
         self._heartbeat: AgentHeartbeat | None = None
+        self._ledger_fills_synced = 0
         self.run_id = run_id
 
     # ------------------------------------------------------------------ clock
@@ -433,7 +443,26 @@ class ContinuousPaperAgent:
             for order_result in (step.order_result, step.stop_result):
                 if order_result is not None and order_result.fill is not None:
                     self._emit_open_alert(order_result, step.bar.timestamp)
+        self._sync_ledger(session)
         return poll_consumed, jobs_ran, error
+
+    def _sync_ledger(self, session: PaperSession) -> None:
+        """Append newly closed round trips to the attributed paper-trade ledger."""
+        if self.config.ledger_path is None or session.fills <= self._ledger_fills_synced:
+            return
+        try:
+            from fno_ai_paper_trading.agent.ledger import sync_paper_ledger
+
+            sync_paper_ledger(
+                session.portfolio.trade_history,
+                self.config.ledger_path,
+                identity=self.config.ledger_identity,
+            )
+            self._ledger_fills_synced = session.fills
+        except Exception as exc:  # noqa: BLE001 - a ledger write never kills the agent
+            message = f"paper-trade ledger sync failed: {exc}"
+            self._last_error = message
+            self.log.warning("agent %s: %s", self.run_id, message)
 
     def _emit_open_alert(self, order_result, at: datetime) -> None:
         fill = order_result.fill
@@ -687,6 +716,8 @@ class ContinuousPaperAgent:
         stored = load_session(payload)
         session = self._ensure_session()
         session.restore(stored.snapshot)
+        self._ledger_fills_synced = session.fills
+        self.log.info("agent %s session restored (%s fills)", self.run_id, session.fills)
         self._session = session
         self.log.info(
             "session restored from %s (%s bars consumed)",

@@ -123,7 +123,7 @@ class TradeMetrics:
     expectancy: Decimal
     net_expectancy_t: Decimal | None
     max_drawdown: Decimal
-    max_drawdown_pct: Decimal
+    max_drawdown_pct: Decimal | None
     current_drawdown: Decimal
     consecutive_wins: int
     consecutive_losses: int
@@ -203,11 +203,16 @@ def _cumulative(trades: Sequence[TradeRecord]) -> list[Decimal]:
     return curve
 
 
-def _drawdowns(sequence: Sequence[Decimal]) -> tuple[Decimal, Decimal, Decimal]:
+def _drawdowns(sequence: Sequence[Decimal]) -> tuple[Decimal, Decimal | None, Decimal]:
     """Return (max_loss_amount, max_drawdown_pct, current_drawdown_amount).
 
     Drawdowns are measured on the closed-trade cumulative P&L (equity proxy);
     per-trade records carry no intra-trade equity. Documented simplification.
+
+    The running peak starts at the zero starting equity. On a never-positive
+    curve the percentage is genuinely undefined and returned as ``None`` (never
+    a fabricated zero), while the rupee current drawdown is still reported
+    honestly from the baseline.
     """
     peak = Decimal("0")
     max_dd = Decimal("0")
@@ -218,9 +223,9 @@ def _drawdowns(sequence: Sequence[Decimal]) -> tuple[Decimal, Decimal, Decimal]:
         dd = peak - eq
         if dd > max_dd:
             max_dd = dd
-    max_dd_pct = _ratio(max_dd, peak) * Decimal("100") if peak and peak > 0 else None
-    current_dd = peak - current_equity if peak > 0 else Decimal("0")
-    return max_dd, (max_dd_pct if max_dd_pct is not None else Decimal("0")), current_dd
+    max_dd_pct = _ratio(max_dd, peak) * Decimal("100") if peak > 0 else None
+    current_dd = peak - current_equity
+    return max_dd, max_dd_pct, current_dd
 
 
 def _streaks(trades: Sequence[TradeRecord]) -> tuple[int, int]:

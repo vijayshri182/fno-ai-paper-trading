@@ -127,6 +127,7 @@ def _build_agent(args, settings) -> ContinuousPaperAgent:
         alert_engine=alert_engine,
         jobs=jobs,
         quantity=args.quantity,
+        ledger_path=REPO_ROOT / "reports" / "algorithm_state" / "paper_trades.json",
         allow_sandbox=sandbox,
     )
     agent = ContinuousPaperAgent(config)
