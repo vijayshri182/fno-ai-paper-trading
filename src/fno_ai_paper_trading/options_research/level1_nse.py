@@ -216,6 +216,7 @@ def _normalize_header(name: str) -> str:
         "VALUEINLAKH": "VAL_INLAKH",
         "CONTRACTS": "CONTRACTS",
         "TOTTRDQTY": "CONTRACTS",
+        "OPNINT": "OPEN_INT",
     }
     return aliases.get(cleaned, cleaned)
 

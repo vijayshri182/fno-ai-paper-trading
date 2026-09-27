@@ -527,3 +527,108 @@ def test_runner_requires_source_or_fetch(tmp_path, capsys):
     runner = _load_runner()
     with pytest.raises(SystemExit):
         runner.main([])
+
+
+# ---------------------------------------------------------------- fetch hardening
+
+def test_build_nse_url_pins_documented_pattern():
+    runner = _load_runner()
+    url = runner._build_nse_url(dt_date(2022, 6, 17))
+    assert url == (
+        "https://nsearchives.nseindia.com/content/historical/EQUITIES/"
+        "2022/JUN/17/fo170622bhav.csv.zip"
+    )
+
+
+class _FakeResponse:
+    def __init__(self, status, content_type="application/zip", payload=b"zipbytes"):
+        self.status = status
+        self.headers = {"Content-Type": content_type}
+        self._payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self):
+        return self._payload
+
+
+def test_download_classifies_http(tmp_path, monkeypatch):
+    import urllib.request
+
+    caught: list[str] = []
+
+    def fake_urlopen(request, timeout=None):
+        status = int(request.get_full_url().split("/")[-1])
+        caught.append(request.get_header("Referer"))
+        if status == 200:
+            return _FakeResponse(200, payload=b"data")
+        raise urllib.error.HTTPError(request.get_full_url(), status, "err", {}, None)
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    runner = _load_runner()
+    for status, expected in ((200, runner.DOWNLOADED), (404, runner.NOT_FOUND),
+                             (403, runner.ACCESS_BLOCKED), (401, runner.ACCESS_BLOCKED),
+                             (503, runner.DOWNLOAD_ERROR), (429, runner.DOWNLOAD_ERROR)):
+        dest = tmp_path / f"d{status}.zip"
+        got, code = runner._download(f"https://x.in/{status}", dest)
+        assert got == expected and code == status
+        if status == 200:
+            assert dest.read_bytes() == b"data"
+        else:
+            assert not dest.exists()
+    assert all(r == "https://www.nseindia.com/" for r in caught)
+
+
+def test_download_challenge_html_is_blocked_not_saved(tmp_path, monkeypatch):
+    import urllib.request
+
+    monkeypatch.setattr(
+        urllib.request,
+        "urlopen",
+        lambda request, timeout=None: _FakeResponse(200, content_type="text/html", payload=b"<html>login</html>"),
+    )
+    runner = _load_runner()
+    dest = tmp_path / "challenge.zip"
+    got, code = runner._download("https://x.in/200", dest)
+    assert (got, code) == (runner.ACCESS_BLOCKED, 403)
+    assert not dest.exists()
+
+
+def test_download_transient_error_classified(tmp_path, monkeypatch):
+    import urllib.request
+
+    def boom(request, timeout=None):
+        raise TimeoutError("timed out")
+    monkeypatch.setattr(urllib.request, "urlopen", boom)
+    runner = _load_runner()
+    got, code = runner._download("https://x.in/0", tmp_path / "x.zip")
+    assert (got, code) == (runner.DOWNLOAD_ERROR, 0)
+
+
+# ---------------------------------------------------------------- parse tolerance
+
+def test_parse_extra_new_columns_ignored(tmp_path):
+    cls = (
+        "SYMBOL,EXPIRY_DT,STRIKE_PR,OPTION_TYP,OPEN,HIGH,LOW,CLOSE,SETTLE_PR,"
+        "CONTRACTS,VAL_INLAKH,OPEN_INT,CHG_IN_OI,TIMESTAMP,TOTTRDVAL,DAILY_VOL,DAILY_OI\n"
+    )
+    p = _write_csv(tmp_path, cls + _row())
+    rows, issues = m.parse_bhavcopy(p)
+    assert not issues
+    assert len(rows) == 1
+    assert rows[0]["OPEN_INT"] == "48231"
+
+
+def test_parse_opnint_alias(tmp_path):
+    cls = (
+        "SYMBOL,EXPIRY_DT,STRIKE_PR,OPTION_TYP,OPEN,HIGH,LOW,CLOSE,SETTLE_PR,"
+        "CONTRACTS,VAL_INLAKH,OPNINT,CHG_IN_OI,TIMESTAMP\n"
+    )
+    p = _write_csv(tmp_path, cls + _row())
+    rows, issues = m.parse_bhavcopy(p)
+    assert not issues
+    assert rows[0]["OPEN_INT"] == "48231"

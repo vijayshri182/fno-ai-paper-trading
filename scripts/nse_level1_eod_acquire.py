@@ -39,7 +39,10 @@ from fno_ai_paper_trading.options_research import level1_nse as m  # noqa: E402
 # Documented, official NSE archive location pattern for F&O EOD bhavcopy.
 NSE_ARCHIVE_BASE = "https://nsearchives.nseindia.com/content/historical/EQUITIES/{date}"
 
+DOWNLOADED = "DOWNLOADED"
+NOT_FOUND = "NOT_FOUND"
 ACCESS_BLOCKED = "ACCESS_BLOCKED"
+DOWNLOAD_ERROR = "DOWNLOAD_ERROR"
 
 
 def _build_nse_url(trade_date: date) -> str:
@@ -51,23 +54,50 @@ def date_str(d: date) -> str:
     return d.strftime("%d%m%y")
 
 
+def classify_fetch(status_code: int, exc: BaseException | None = None) -> tuple[str, int]:
+    """Honest classification of an opt-in market-data GET.
+
+    HTTP 404 names a genuinely-absent archive (``NOT_FOUND``); 401/403 and
+    challenge pages are ``ACCESS_BLOCKED`` (never retried, never fabricated
+    over); transient network/server failures are ``DOWNLOAD_ERROR`` so a later
+    run may legitimately retry. No status is ever replaced by synthetic data.
+    """
+    if status_code == 404:
+        return NOT_FOUND, status_code
+    if status_code in (401, 403):
+        return ACCESS_BLOCKED, status_code
+    if status_code in (429, 408) or status_code >= 500 or status_code == 0:
+        return DOWNLOAD_ERROR, status_code
+    return ACCESS_BLOCKED, status_code
+
+
 def _download(url: str, dest: Path) -> tuple[str, int]:
     req = urllib.request.Request(
         url,
         headers={
             "User-Agent": "fno-ai-paper-trading-data-acquisition/1.0 (research, read-only)",
             "Accept-Encoding": "identity",
+            "Referer": "https://www.nseindia.com/",
         },
     )
+    status = ACCESS_BLOCKED
+    code = 0
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
-            if resp.status != 200:
-                return ACCESS_BLOCKED, resp.status
+            status = resp.status or 200
+            if status != 200:
+                return classify_fetch(status)
+            content_type = (resp.headers.get("Content-Type") or "").lower()
+            if "html" in content_type:
+                # a login/interstitial page, never the bhavcopy bytes
+                return ACCESS_BLOCKED, 403
             payload = resp.read()
-    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
-        return ACCESS_BLOCKED, getattr(exc, "code", 0)
+    except urllib.error.HTTPError as exc:
+        return classify_fetch(getattr(exc, "code", 0), exc)
+    except (urllib.error.URLError, TimeoutError) as exc:
+        return classify_fetch(0, exc)
     dest.write_bytes(payload)
-    return "DOWNLOADED", 200
+    return DOWNLOADED, status
 
 
 def _read_or_create_manifest(manifest_path: Path) -> dict:
@@ -137,7 +167,8 @@ def main(argv: list[str] | None = None) -> int:
         dest = dataset_root / "raw" / f"fo{date_str(trade_date)}bhav.csv.zip"
         dest.parent.mkdir(parents=True, exist_ok=True)
         download_status, code = _download(source_url, dest)
-        if download_status != "DOWNLOADED":
+        if download_status != DOWNLOADED:
+            status_label = f"{download_status} (HTTP/code {code})"
             report = m.render_report(
                 manifesto=m.build_manifest(
                     level=m.LEVEL_LABEL, source=m.SOURCE_ID, coverage={}, files={}
@@ -151,21 +182,26 @@ def main(argv: list[str] | None = None) -> int:
                     file_sha256="",
                     source_url=source_url,
                     retrieval_timestamp=retrieval_ts,
-                    acquisition_status=ACCESS_BLOCKED,
+                    acquisition_status=status_label,
                 ),
                 normalized_path="",
             )
-            lines = report.strip().splitlines()
-            lines[lines.index("## Provenance") + 5] = (
-                f"| Acquisition status | `{ACCESS_BLOCKED}` | (HTTP/code {code}) |"
+            out_dir = (
+                report_root / "errors"
+                if download_status == DOWNLOAD_ERROR
+                else report_root / "absent"
+                if download_status == NOT_FOUND
+                else report_root / "blocked"
             )
-            print("\n".join(lines))
-            (report_root / "blocked").mkdir(parents=True, exist_ok=True)
-            (report_root / "blocked" / f"nse_fo_eod_{args.trade_date}.md").write_text(
-                "\n".join(lines) + "\n", encoding="utf-8"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            (out_dir / f"nse_fo_eod_{args.trade_date}.md").write_text(
+                report + "\n", encoding="utf-8"
             )
-            print(f"\nACCESS_BLOCKED for {args.trade_date} (HTTP/code {code}); no data fabricated.")
-            return 3
+            print(
+                f"{download_status} for {args.trade_date} (HTTP/code {code}); "
+                "no data fabricated."
+            )
+            return 3 if download_status != DOWNLOAD_ERROR else 4
         raw_path = dest
         raw_bytes = dest.read_bytes()
         original_filename = dest.name
