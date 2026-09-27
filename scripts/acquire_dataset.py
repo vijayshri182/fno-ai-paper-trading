@@ -72,11 +72,6 @@ def main(argv: list[str] | None = None) -> int:
         "--days", type=int, help="look-back window in calendar days (alternative to --start)"
     )
     parser.add_argument(
-        "--token",
-        default="",
-        help="Upstox analytics/data access token (default: FNO_UPSTOX_ACCESS_TOKEN env var)",
-    )
-    parser.add_argument(
         "--outdir", default="datasets", help="directory for the saved dataset (default: datasets)"
     )
     parser.add_argument(
@@ -87,10 +82,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     load_dotenv()
-    token = (args.token or os.getenv("FNO_UPSTOX_ACCESS_TOKEN", "") or "").strip()
+    token = (os.getenv("FNO_UPSTOX_ACCESS_TOKEN", "") or "").strip()
     if not token:
         parser.error(
-            "no Upstox analytics/data access token; set FNO_UPSTOX_ACCESS_TOKEN (or pass --token). "
+            "no Upstox analytics/data access token; set FNO_UPSTOX_ACCESS_TOKEN. "
             "This script is opt-in — it never runs without credentials."
         )
 

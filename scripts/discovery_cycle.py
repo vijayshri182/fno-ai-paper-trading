@@ -327,11 +327,10 @@ def main(argv: list[str] | None = None) -> int:
                         help="calendar-day warm-up reach before train start")
     parser.add_argument("--outdir", default="datasets")
     parser.add_argument("--reports-dir", default="reports")
-    parser.add_argument("--token", default="", help="FNO_UPSTOX_ACCESS_TOKEN (default: env)")
     args = parser.parse_args(argv)
 
     load_dotenv()
-    token = (args.token or os.getenv("FNO_UPSTOX_ACCESS_TOKEN", "") or "").strip()
+    token = (os.getenv("FNO_UPSTOX_ACCESS_TOKEN", "") or "").strip()
 
     train_start = date.fromisoformat(args.train_start)
     train_end = date.fromisoformat(args.train_end)

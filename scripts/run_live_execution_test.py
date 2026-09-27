@@ -188,10 +188,10 @@ def _build_signal_bars(args, underlying):
                 )
             )
         return rebased, None
-    token = args.token or _env_data_token()
+    token = _env_data_token()
     if not token:
         raise ValueError(
-            "no Upstox analytics/data token; set FNO_UPSTOX_ACCESS_TOKEN (or pass --token). "
+            "no Upstox analytics/data token; set FNO_UPSTOX_ACCESS_TOKEN. "
             "For an offline smoke use --data-source smoke."
         )
     provider = UpstoxHistoricalDataProvider(access_token=token, interval=args.interval)
@@ -267,7 +267,6 @@ def main(argv: list[str] | None = None) -> int:
                         help="F&O lot size override (0 = take the authoritative lot size from the master file)")
     parser.add_argument("--holder", default="operator",
                         help="consent-file 'operator' label for the --smoke helpers")
-    parser.add_argument("--token", default="", help="Upstox analytics/data token for the signal feed (env: FNO_UPSTOX_ACCESS_TOKEN)")
     parser.add_argument("--interval", default="5m", help="underlying signal bar interval (default 5m)")
     parser.add_argument("--bars", type=int, default=60, help="underlying bars to fetch for the signal")
     parser.add_argument("--hold-seconds", type=float, default=0.0,

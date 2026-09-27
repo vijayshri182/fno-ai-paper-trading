@@ -55,11 +55,11 @@ from fno_ai_paper_trading.execution.oauth import (  # noqa: E402
 def _build_config(args) -> UpstoxOAuthConfig:
     load_dotenv()
     client_id = (args.client_id or os.getenv("UPSTOX_API_KEY", "")).strip()
-    client_secret = (args.client_secret or os.getenv("UPSTOX_API_SECRET", "")).strip()
+    client_secret = os.getenv("UPSTOX_API_SECRET", "").strip()
     if not client_id:
         raise ValueError("missing UPSTOX_API_KEY (the Upstox application id); set it in .env or pass --client-id")
     if not client_secret:
-        raise ValueError("missing UPSTOX_API_SECRET (the Upstox application secret); set it in .env or pass --client-secret")
+        raise ValueError("missing UPSTOX_API_SECRET (the Upstox application secret); set it in .env")
     return UpstoxOAuthConfig(
         client_id=client_id,
         client_secret=client_secret,
@@ -76,7 +76,6 @@ def main(argv: list[str] | None = None) -> int:
         epilog="The token is never printed or logged; it is stored in the git-ignored .env unless --no-write-env.",
     )
     parser.add_argument("--client-id", default="", help="Upstox application id (env: UPSTOX_API_KEY)")
-    parser.add_argument("--client-secret", default="", help="Upstox application secret (env: UPSTOX_API_SECRET)")
     parser.add_argument("--redirect-uri", default=DEFAULT_REDIRECT_URI,
                         help="registered redirect URI (default http://127.0.0.1:8000/callback)")
     parser.add_argument("--port", type=int, default=DEFAULT_CALLBACK_PORT,

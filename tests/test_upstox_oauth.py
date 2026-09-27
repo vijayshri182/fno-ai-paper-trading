@@ -342,12 +342,12 @@ class TestCliEndToEnd:
         for key in ("UPSTOX_API_KEY", "UPSTOX_API_SECRET", "UPSTOX_ACCESS_TOKEN",
                     "UPSTOX_BASE_URL"):
             env.pop(key, None)
+        env["UPSTOX_API_KEY"] = CLIENT_ID
+        env["UPSTOX_API_SECRET"] = CLIENT_SECRET
         try:
             proc = subprocess.Popen(
                 [
                     sys.executable, str(_CLI_SCRIPT),
-                    "--client-id", CLIENT_ID,
-                    "--client-secret", CLIENT_SECRET,
                     "--base-url", f"http://127.0.0.1:{token_port}",
                     "--redirect-uri", f"http://127.0.0.1:{callback_port}/callback",
                     "--port", str(callback_port),

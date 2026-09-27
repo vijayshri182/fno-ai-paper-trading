@@ -219,11 +219,6 @@ def main(argv: list[str] | None = None) -> int:
         help=f"canonical bar interval token (default: {DEFAULT_INTERVAL})",
     )
     parser.add_argument(
-        "--token",
-        default="",
-        help="Upstox analytics/data access token (default: FNO_UPSTOX_ACCESS_TOKEN env var)",
-    )
-    parser.add_argument(
         "--outdir", default="datasets", help="directory for saved datasets (default: datasets)"
     )
     parser.add_argument(
@@ -258,10 +253,10 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             parser.error(f"invalid --day {args.day!r}; expected YYYY-MM-DD")
 
-        token = args.token or os.getenv("FNO_UPSTOX_ACCESS_TOKEN", "").strip()
+        token = os.getenv("FNO_UPSTOX_ACCESS_TOKEN", "").strip()
         if not token:
             parser.error(
-                "no Upstox analytics/data access token; set FNO_UPSTOX_ACCESS_TOKEN (or pass --token). "
+                "no Upstox analytics/data access token; set FNO_UPSTOX_ACCESS_TOKEN. "
                 "The current-data demo never runs without credentials."
             )
 

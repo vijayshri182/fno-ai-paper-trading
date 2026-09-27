@@ -80,14 +80,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sleep", type=float, default=0.5, help="seconds between request windows")
     parser.add_argument("--outdir", default="datasets", help="directory for the saved dataset")
     parser.add_argument("--name", default=None, help="dataset name override (default: auto)")
-    parser.add_argument("--token", default="", help="Upstox access token (default: env var)")
     parser.add_argument("--progress", default="datasets/acquire_progress.json", help="checkpoint path")
     args = parser.parse_args(argv)
 
     load_dotenv()
-    token = (args.token or os.getenv("FNO_UPSTOX_ACCESS_TOKEN", "") or "").strip()
+    token = (os.getenv("FNO_UPSTOX_ACCESS_TOKEN", "") or "").strip()
     if not token:
-        parser.error("no Upstox analytics/data access token; set FNO_UPSTOX_ACCESS_TOKEN (or pass --token)")
+        parser.error("no Upstox analytics/data access token; set FNO_UPSTOX_ACCESS_TOKEN")
 
     if args.window_days < 1:
         parser.error("--window-days must be >= 1")

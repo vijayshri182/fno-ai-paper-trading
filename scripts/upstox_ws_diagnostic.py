@@ -586,8 +586,6 @@ def run_diagnostic(args: argparse.Namespace) -> dict:
 
     # 1) authorize ---------------------------------------------------------- #
     token = read_token(args.token_env if args.token_env else DEFAULT_TOKEN_ENV)
-    if args.token:
-        token = args.token
     if not token:
         report["errors"].append("no data-layer token found")
         report["verdict"] = VERDICT_IMPL_BLOCKED
@@ -859,8 +857,6 @@ def main(argv: list[str] | None = None) -> int:
                         help="max age of last ltt for FRESH (seconds)")
     parser.add_argument("--lag-tolerance", type=int, default=15,
                         help="max receive-vs-ltt lag for FRESH (seconds)")
-    parser.add_argument("--token", default="",
-                        help="override data-layer token (default: FNO_UPSTOX_ACCESS_TOKEN)")
     parser.add_argument("--token-env", default="",
                         help="env-var name holding the data-layer token")
     parser.add_argument("--out", default="", help="evidence JSON path under the repo")
