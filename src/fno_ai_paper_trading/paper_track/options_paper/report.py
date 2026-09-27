@@ -65,18 +65,34 @@ def build_daily_report(records: tuple[LifecycleRecord, ...], day: date) -> dict:
 
     ledger = []
     for r in closed:
-        ledger.append(
-            {
-                "record_id": r.record_id,
-                "contract_key": r.contract_key,
-                "quantity": r.quantity,
-                "entry_fill": str(r.entry.fill_price),
-                "exit_fill": str(r.exit.fill_price),
-                "gross_realized_pnl": str(r.financials.gross_realized_pnl),
-                "net_realized_pnl": str(r.financials.net_realized_pnl),
-                "close_day": r.financials.close_day,
-            }
-        )
+        fin = r.financials
+        row = {
+            "record_id": r.record_id,
+            "contract_key": r.contract_key,
+            "quantity": r.quantity,
+            "entry_fill": str(r.entry.fill_price),
+            "exit_fill": str(r.exit.fill_price),
+            "gross_realized_pnl": str(fin.gross_realized_pnl),
+            "net_realized_pnl": str(fin.net_realized_pnl),
+            "close_day": fin.close_day,
+        }
+        # Phase 12 research enrichment — real, on-record values only. Missing
+        # fields are omitted (metrics preserve missingness; never zeroed).
+        if fin.entry_commission is not None:
+            row["entry_commission"] = str(fin.entry_commission)
+        if fin.exit_commission is not None:
+            row["exit_commission"] = str(fin.exit_commission)
+        if r.entry.premium_exposure is not None:
+            row["premium_exposure"] = str(r.entry.premium_exposure)
+        if fin.holding_duration_seconds is not None:
+            row["holding_duration_seconds"] = fin.holding_duration_seconds
+        if r.regime is not None:
+            row["regime"] = r.regime
+        if r.expiry:
+            row["expiry"] = r.expiry
+        if r.strike is not None:
+            row["strike"] = str(r.strike)
+        ledger.append(row)
 
     payload = {
         "paper_only": True,

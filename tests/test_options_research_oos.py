@@ -801,6 +801,94 @@ class TestPhase11LedgerIntegration:
         assert metrics.max_drawdown == DEC("383.8875")
         assert metrics.capital_utilization_pct == DEC("22.5")
 
+    def test_daily_report_ledger_enriches_phase12_metrics(self) -> None:
+        day = date(2026, 9, 24)
+        rec = LifecycleRecord(
+            event_id="evt-c",
+            record_id="rec-c",
+            decision_timestamp=datetime(2026, 9, 24, 9, 30, 0),
+            instrument_key="OPT|NIFTY 01OCT2026 24700 CE",
+            contract_key="OPT|NIFTY 01OCT2026 24700 CE",
+            underlying_symbol="NIFTY",
+            option_side="CE",
+            strike=DEC("24700"),
+            expiry="2026-10-01",
+            quantity=1,
+            lot_size=75,
+            multiplier=1,
+            direction="LONG",
+            fingerprint="f-c",
+            phase=LifecyclePhase.RECONCILED,
+            history=(
+                Step(LifecyclePhase.CANDIDATE, datetime(2026, 9, 24, 9, 30, 0)),
+                Step(LifecyclePhase.POSITION_CLOSED, datetime(2026, 9, 24, 14, 0, 0)),
+            ),
+            entry=_entry_fill("200.00", "c", datetime(2026, 9, 24, 9, 31, 0)),
+            exit=_exit_fill("210.00", "c", datetime(2026, 9, 24, 14, 0, 0)),
+            financials=Financials(
+                entry_commission=DEC("4.50"),
+                exit_commission=DEC("4.725"),
+                gross_realized_pnl=DEC("750.00"),
+                net_realized_pnl=DEC("740.775"),
+                holding_duration_seconds=16140,
+                close_day=day.isoformat(),
+            ),
+            reconciliation=Reconciliation(datetime(2026, 9, 24, 14, 1, 0), ok=True, violations=()),
+            regime="BULLISH_HIGH",
+        )
+        report = build_daily_report((rec,), day)
+        row = report["aggregate"]["ledger"][0]
+        # The report producer must emit the Phase 12 research fields, not just
+        # the identity/P&L core (this is what makes metrics non-structurally-empty).
+        assert row["entry_commission"] == "4.50"
+        assert row["exit_commission"] == "4.725"
+        assert row["premium_exposure"] == "15000.00"
+        assert row["holding_duration_seconds"] == 16140
+        assert row["regime"] == "BULLISH_HIGH"
+        assert row["expiry"] == "2026-10-01"
+        assert row["strike"] == "24700"
+
+        sample = sample_from_daily_report(
+            report, capital=DEC("100000"), data_label="SYNTHETIC_FIXTURE"
+        )
+        metrics = compute_metrics(sample)
+        assert metrics.commissions == DEC("4.50") + DEC("4.725")
+        assert metrics.total_premium_exposure == DEC("15000.00")
+        assert metrics.avg_holding_seconds == 16140
+        assert metrics.regime_distribution == {"BULLISH_HIGH": 1}
+        assert metrics.regime_unknown == 0
+        assert metrics.expiry_buckets == {"2026-10-01": 1}
+        assert metrics.expiry_unknown == 0
+        assert metrics.strike_buckets == {"24700": 1}
+        assert metrics.reasons == {
+            "profit_factor": "undefined: no losing trades (zero denominator)"
+        }
+
+    def test_lifecycle_record_regime_roundtrip(self) -> None:
+        rec = LifecycleRecord(
+            event_id="evt-rt",
+            record_id="rec-rt",
+            decision_timestamp=datetime(2026, 9, 24, 9, 30, 0),
+            instrument_key="OPT|NIFTY 01OCT2026 24700 CE",
+            contract_key="OPT|NIFTY 01OCT2026 24700 CE",
+            underlying_symbol="NIFTY",
+            option_side="CE",
+            strike=DEC("24700"),
+            expiry="2026-10-01",
+            quantity=1,
+            lot_size=75,
+            multiplier=1,
+            direction="LONG",
+            fingerprint="f-rt",
+            phase=LifecyclePhase.POSITION_OPEN,
+            regime="BULLISH_HIGH",
+        )
+        restored = LifecycleRecord.from_dict(rec.to_dict())
+        assert restored.regime == "BULLISH_HIGH"
+        legacy = dict(rec.to_dict())
+        del legacy["regime"]
+        assert LifecycleRecord.from_dict(legacy).regime is None
+
 
 # ---------------------------------------------------------------- safety
 

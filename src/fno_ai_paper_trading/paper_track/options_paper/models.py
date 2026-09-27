@@ -325,6 +325,7 @@ class LifecycleRecord:
     exit: ExitFill | None = None
     financials: Financials | None = None
     reconciliation: Reconciliation | None = None
+    regime: str | None = None
 
     def __post_init__(self) -> None:
         _naive(self.decision_timestamp, "decision_timestamp")
@@ -367,6 +368,7 @@ class LifecycleRecord:
             "reconciliation": self.reconciliation.to_dict()
             if self.reconciliation is not None
             else None,
+            "regime": self.regime,
         }
 
     @classmethod
@@ -395,6 +397,7 @@ class LifecycleRecord:
             exit=_exit_fill_from_dict(data.get("exit")),
             financials=_financials_from_dict(data.get("financials")),
             reconciliation=_reconciliation_from_dict(data.get("reconciliation")),
+            regime=data.get("regime"),
         )
 
 

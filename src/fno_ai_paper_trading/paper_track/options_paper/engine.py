@@ -464,6 +464,7 @@ class OptionsPaperEngine:
             direction=event.direction,
             fingerprint=self._fingerprint(event),
             phase=LifecyclePhase.CANDIDATE,
+            regime=event.regime.regime,
             history=(
                 Step(LifecyclePhase.CANDIDATE, event.decision_timestamp, "candidate received"),
             ),
