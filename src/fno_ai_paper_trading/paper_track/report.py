@@ -16,6 +16,7 @@ from decimal import Decimal
 
 from fno_ai_paper_trading.models.enums import OrderSide
 from fno_ai_paper_trading.paper_track.accounting import verify_accounting
+from fno_ai_paper_trading.paper_track.costs import cost_attribution
 from fno_ai_paper_trading.paper_track.store import stable_dumps
 
 __all__ = [
@@ -132,6 +133,11 @@ def build_report(engine) -> dict:
             "final_position_quantity": engine.position_quantity,
             "cash_consistent": accounting.cash_consistent,
             "violations": list(accounting.violations),
+            "cost_schedule": cost_attribution(
+                fills,
+                commission_total=accounting.total_commission,
+                slippage_rate=engine.broker.config.slippage_rate,
+            ),
         },
         "risk": {
             "entries_filled": engine.counters["entries_filled"],
