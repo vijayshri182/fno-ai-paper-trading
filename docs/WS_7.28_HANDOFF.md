@@ -7,17 +7,18 @@ Mode: **HANDOFF ONLY** — read-only to code/credentials/consent, no push, no en
 
 ## 1. Current Checkpoint
 
-- **HEAD:** `00b749d94863c633b6960f779137799a8faee73a`
-- **Previous WS:** WS 7.27 (committed as `708d907` → advanced by this workstream to `00b749d`)
-- **Test status (this session, both exits logged):**
-  - Full suite: **1805 passed / 0 failed / exit 0** (141.94s)
-  - Forced focused (`tests/test_forced_live_round_trip.py`): **12 passed / exit 0** (run twice)
-  - `tests/test_live_execution_test.py` forced+breadth: **green, exit 0**
-- **Working-tree status:** `PROGRESS.md`, `PROJECT_PLAN.md`, `ACTIVITY_LOG.md` **modified** (doc-only, pre-existing). No source files dirty.
-- **Files changed in WS 7.27 (now committed at `00b749d`):**
-  - `scripts/run_live_execution_test.py` (+159/−21) — threads `--force-one-lot-round-trip`, `--expiry-bucket`, `--strike`, `--signal-strategy`, `--instruments-file`; Upstox-master contract resolution; sanitized dry-run payload
-  - `src/fno_ai_paper_trading/execution/upstox.py` (+56/−8) — `_quote_node` key normalization; broker-token reverse-map; registered/SEGMENT|TOKEN suffix identity
-- **Push status:** local-only, **1 commit ahead of `origin/master`**, upstream tracked, **NOT pushed** (per handoff policy: no push without human confirmation).
+- **HEAD:** `df3c11b` (`ba41f69`→`04f2fec`→`93fd476`→`f9ca92e`→`df3c11b` are this session's advances: WP-13 scheduler hardening, WP-8 statutory cost schedule, WP-18 credential hygiene + `secret_scan` gate, G7 research-integrity wiring)
+- **Previous WS:** WS 7.27 (committed as `708d907`)
+- **Test status (this session, exit logged):**
+  - Full suite: **3224 passed / 0 failed / exit 0** (727.80s)
+  - `tests/test_research_integrity_wiring.py` (G7 wiring): **7 passed**
+- **Working-tree status:** only known noise untracked (`runs/`, `gui/`, `NIFTY_50_5m/`, `node_modules/`, `reports/` artifacts, `docs/architecture` images, session probe files). No source files dirty.
+- **Session advances (committed bare `df3c11b`):**
+  - `ba41f69` — `fresh_oos/scheduler.py` WP-13: bounded transient retry, consecutive-failure STALL escalation, run-status artifact
+  - `04f2fec` — `paper_track/costs.py` + report wiring WP-8: reporting-only statutory schedule; executed commission math and the frozen reconciliation identity untouched
+  - `93fd476` — WP-18: `--token`/`--client-secret` removed from all entry scripts (env-only secrets) + `scripts/secret_scan.py` gate
+  - `df3c11b` — G7: canonical split/boundary/lookahead/protected-OOS guards wired into `discovery_cycle.py`, `research_real_data.py`, walk-forward engine
+- **Push status:** local-only, **NOT pushed** (per handoff policy: no push without human confirmation).
 
 ## 2. Code Readiness
 
