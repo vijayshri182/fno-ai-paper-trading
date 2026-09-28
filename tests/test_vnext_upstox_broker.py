@@ -207,7 +207,7 @@ class TestSubmitOrder:
         assert body["quantity"] == 75
         assert body["transaction_type"] == "BUY"
         assert body["order_type"] == "MARKET"
-        assert body["product"] == "M"
+        assert body["product"] == "I"
         assert body["validity"] == "DAY"
 
     def test_close_sell_uses_se_sell_tx_type(self, fake_creds):

@@ -170,7 +170,7 @@ def test_ready_builds_one_lot_market_buy_payload(tmp_path):
     assert payload is not None
     assert payload["transaction_type"] == "BUY"
     assert payload["order_type"] == "MARKET"
-    assert payload["product"] == "M"
+    assert payload["product"] == "I"
     assert payload["validity"] == "DAY"
     assert payload["quantity"] == 75  # == current lot size (one lot, market)
     assert payload["instrument_token"] == 51418

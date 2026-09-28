@@ -311,7 +311,7 @@ class UpstoxBroker:
         body = {
             "instrument_token": token,
             "quantity": int(order.quantity),
-            "product": "M",
+            "product": "I",
             "validity": "DAY",
             "price": 0,
             "tag": _ORDER_TAG,

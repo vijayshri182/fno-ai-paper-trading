@@ -402,7 +402,7 @@ class UpstoxExecutionAdapter(ExecutionAdapter):
         body = {
             "instrument_token": token,
             "quantity": int(order.quantity),
-            "product": "M",
+            "product": "I",
             "validity": "DAY",
             "price": 0,
             "tag": "fno-ai-controlled-live-execution-test",

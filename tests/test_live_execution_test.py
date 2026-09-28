@@ -647,6 +647,37 @@ class TestUpstoxAdapter:
         assert transport.calls[0][0] == "POST"
         assert transport.calls[0][1].endswith("/v2/order/place")
 
+    def test_real_place_order_body_uses_intraday_product(self):
+        recorded: list[dict] = []
+
+        def _recording_request(method, url, *, headers=None, timeout=10.0, data=None, **kwargs):
+            raw = data.decode("utf-8") if isinstance(data, (bytes, bytearray)) else (data or "{}")
+            recorded.append({"method": method, "url": url, "data": json.loads(raw)})
+            return _json_response(200, {"data": {"order_id": "PX-9", "timestamp": "2026-09-14T12:00:00"}})
+
+        adapter = UpstoxExecutionAdapter(
+            credentials=UpstoxCredentials(access_token="tok", api_key="apikey"),
+            dry_run=False,
+            instrument_tokens={KEY: 123456},
+            request=_recording_request,
+            now_fn=lambda: datetime(2026, 9, 14, 12, 0),
+        )
+        ack = adapter.place_order(Order(instrument=_option(), side=OrderSide.BUY, quantity=LOT))
+        assert ack.provider_order_id == "PX-9"
+        assert recorded[0]["method"] == "POST"
+        assert recorded[0]["url"].endswith("/v2/order/place")
+        body = recorded[0]["data"]
+        # Upstox intraday product code: "M" is invalid (UDAPI1054), "I" is valid.
+        assert body["product"] == "I"
+        assert body["order_type"] == "MARKET"
+        assert body["validity"] == "DAY"
+        assert body["is_amo"] is False
+        assert body["price"] == 0
+        assert body["instrument_type"] == "OPT"
+        assert body["instrument_token"] == 123456
+        assert body["quantity"] == LOT
+        assert body["transaction_type"] == "BUY"
+
     def test_place_order_refuses_normal_live(self):
         adapter = self._adapter(_FakeTransport(), dry_run=False)
         with pytest.raises(UpstoxExecutionError):
@@ -1140,6 +1171,57 @@ class TestBuildSignalBarsCurrentDay:
         module, methods = self._recording_provider_of(monkeypatch, [NOW], [])
         module._build_signal_bars(self._args(), get_research_instrument("NIFTY 50"))
         assert "get_ohlcv" not in [m[0] for m in methods]
+
+
+class TestDryRunPayloadBody:
+    """The CLI's dry-run upstox payload must use the intraday product ``I``.
+
+    Regressing to the invalid ``"M"`` (Upstox rejects it with UDAPI1054) must
+    fail these tests. The helper is exercised directly — the exact path the
+    CLI uses to print the dry-run payload — with no network or broker access.
+    """
+
+    @staticmethod
+    def _script_module():
+        import importlib.util
+
+        script = Path(__file__).resolve().parents[1] / "scripts" / "run_live_execution_test.py"
+        spec = importlib.util.spec_from_file_location(
+            "run_live_execution_test_dry_run_payload", script
+        )
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+        return module
+
+    def _payload(self, module, side, option_type_pref="CE"):
+        contract = type("FakeContract", (), {"instrument_token": 51418, "lot_size": 75})()
+        return module._dry_run_payload_body(contract, option_type_pref, side)
+
+    def test_dry_run_payload_uses_intraday_product(self):
+        module = self._script_module()
+        body = self._payload(module, "CALL")
+        assert body["product"] == "I"  # invalid "M" (UDAPI1054) must never come back
+        assert body["order_type"] == "MARKET"
+        assert body["validity"] == "DAY"
+        assert body["is_amo"] is False
+        assert body["price"] == 0
+        assert body["instrument_type"] == "OPT"
+        assert body["instrument_token"] == 51418
+        assert body["quantity"] == 75
+        assert body["transaction_type"] == "BUY"
+
+    def test_dry_run_payload_put_side_renders_sell(self):
+        module = self._script_module()
+        body = self._payload(module, "PUT", option_type_pref="PE")
+        assert body["product"] == "I"
+        assert body["transaction_type"] == "SELL"
+
+    def test_dry_run_payload_auto_side_renders_signal(self):
+        module = self._script_module()
+        body = self._payload(module, "auto", option_type_pref="PE")
+        assert body["product"] == "I"
+        assert body["transaction_type"] == "<signal>"
 
 
 # --------------------------------------------------------------- CLI

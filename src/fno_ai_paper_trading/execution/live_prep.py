@@ -29,7 +29,8 @@ empty payload):
 6. **Margin sanity (client-side)** — :func:`estimate_required_margin` against
    ``settings.max_margin_notional``; over-cap ⇒ abort before any buy.
 7. **Exact one-lot MARKET BUY payload** — quantity = the resolved current lot
-   size, product ``M``, validity ``DAY``, type MARKET, price 0, side BUY. The
+   size, product ``I`` (Upstox intraday), validity ``DAY``, type MARKET, price 0,
+   side BUY. The
    payload is **returned, never sent**; real order placement requires the
    separate, explicitly-authorized Stage B path (``run_live_execution_test.py``
    + gate open + operator confirmation).
@@ -421,7 +422,7 @@ def prepare_live_buy(io: PrepIO | None = None) -> LivePrepResult:
     payload_preview = {
         "instrument_token": contract.instrument_token,
         "quantity": quantity,
-        "product": "M",
+        "product": "I",
         "validity": "DAY",
         "price": 0,
         "instrument_type": "OPT",
