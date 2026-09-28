@@ -234,6 +234,40 @@ class TestExecutionCredentials:
         assert EXEC_SECRET not in rendered
         assert "api_secret_configured=True" in rendered
 
+    # ------------------------------------------------------------------
+    # Runtime-token precedence: a freshly OAuth-authenticated execution
+    # credential wins over a (possibly stale) UPSTOX_ACCESS_TOKEN in .env
+    # ------------------------------------------------------------------
+
+    def test_from_env_runtime_override_wins_over_stale_env(self, monkeypatch) -> None:
+        monkeypatch.setenv("UPSTOX_ACCESS_TOKEN", "stale-env-token")
+        monkeypatch.setenv("FNO_UPSTOX_ACCESS_TOKEN", DATA_TOKEN)
+        credentials = UpstoxCredentials.from_env(access_token=EXEC_TOKEN)
+        assert credentials.access_token == EXEC_TOKEN
+        assert credentials.access_token != "stale-env-token"
+
+    def test_from_env_runtime_override_never_uses_analytics_token(self, monkeypatch) -> None:
+        monkeypatch.setenv("UPSTOX_ACCESS_TOKEN", "stale-env-token")
+        monkeypatch.setenv("FNO_UPSTOX_ACCESS_TOKEN", DATA_TOKEN)
+        credentials = UpstoxCredentials.from_env(access_token=EXEC_TOKEN)
+        assert credentials.access_token == EXEC_TOKEN
+        assert credentials.access_token != DATA_TOKEN
+
+    def test_from_env_blank_override_falls_back_to_env(self, monkeypatch) -> None:
+        monkeypatch.setenv("UPSTOX_ACCESS_TOKEN", EXEC_TOKEN)
+        credentials = UpstoxCredentials.from_env(access_token="   ")
+        assert credentials.access_token == EXEC_TOKEN
+
+    def test_from_env_empty_override_falls_back_to_env(self, monkeypatch) -> None:
+        monkeypatch.setenv("UPSTOX_ACCESS_TOKEN", EXEC_TOKEN)
+        credentials = UpstoxCredentials.from_env(access_token="")
+        assert credentials.access_token == EXEC_TOKEN
+
+    def test_from_env_no_override_uses_env(self, monkeypatch) -> None:
+        monkeypatch.setenv("UPSTOX_ACCESS_TOKEN", EXEC_TOKEN)
+        credentials = UpstoxCredentials.from_env()
+        assert credentials.access_token == EXEC_TOKEN
+
 
 # ---------------------------------------------------------------------------
 # Enablement gating — a token is necessary but never sufficient

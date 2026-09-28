@@ -353,8 +353,12 @@ def prepare_live_buy(io: PrepIO | None = None) -> LivePrepResult:
     if io.adapter_factory is not None:
         adapter = io.adapter_factory()
     else:
+        # Adapter authenticates the SAME credential the gate and consent just
+        # validated: the freshly OAuth-exchanged runtime token wins over any
+        # (possibly stale) .env UPSTOX_ACCESS_TOKEN, so account lookup never
+        # silently falls back to a superseded credential.
         adapter = UpstoxExecutionAdapter(
-            UpstoxCredentials.from_env(),
+            UpstoxCredentials.from_env(access_token=token),
             dry_run=bool(io.dry_run),
         )
     try:

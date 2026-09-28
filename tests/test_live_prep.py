@@ -258,6 +258,100 @@ def test_place_order_never_called_on_ready_path(tmp_path):
     assert spy.order_writes == []  # no write surface was reached
 
 
+def test_stage_a_adapter_uses_fresh_oauth_credential_not_stale_env(tmp_path, monkeypatch):
+    import fno_ai_paper_trading.execution.live_prep as live_prep_module
+
+    monkeypatch.setenv("UPSTOX_ACCESS_TOKEN", "stale-env-token-that-must-not-win")
+    captured = {}
+
+    class _RecordingAdapter(_AdapterSpy):
+        def __init__(self, credentials, *, dry_run):  # pragma: no cover - spy ctor
+            captured["credentials"] = credentials
+            captured["dry_run"] = dry_run
+            super().__init__()
+
+    class _FakeCredentials:
+        @classmethod
+        def from_env(cls, *, access_token=None):
+            captured["from_env_access_token"] = access_token
+            return "runtime-credential-sentinel"
+
+    monkeypatch.setattr(live_prep_module, "UpstoxExecutionAdapter", _RecordingAdapter)
+    monkeypatch.setattr(live_prep_module, "UpstoxCredentials", _FakeCredentials)
+
+    io = PrepIO(
+        settings=_settings(tmp_path),
+        oauth_config=UpstoxOAuthConfig(
+            client_id=FAKE_CLIENT_ID, client_secret=FAKE_CLIENT_SECRET
+        ),
+        consent_path=tmp_path / "operator_consent.json",
+        operator="TestOperator",
+        purpose="WS 7.24B hermetic prep test",
+        master_file=_write_master(tmp_path),
+        now_fn=lambda: REF_NOW,
+        oauth_exchange=lambda _cfg, _code: FAKE_TOKEN,
+        adapter_factory=None,  # exercise the default real-adapter construction seam
+    )
+    result = prepare_live_buy(io)
+
+    assert result.status == READY
+    # The adapter is built from the freshly exchanged OAuth token — the same
+    # credential the consent fingerprint and the gate validated — never the
+    # stale .env UPSTOX_ACCESS_TOKEN.
+    assert captured["from_env_access_token"] == FAKE_TOKEN
+    assert captured["credentials"] == "runtime-credential-sentinel"
+    assert captured["dry_run"] is True
+    assert FAKE_TOKEN not in json.dumps(result.printable)
+
+
+def test_closed_gate_never_reaches_adapter_or_credential_construction(tmp_path, monkeypatch):
+    import fno_ai_paper_trading.execution.live_prep as live_prep_module
+
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        live_prep_module,
+        "UpstoxExecutionAdapter",
+        lambda *args, **kwargs: calls.append("adapter") or _AdapterSpy(),
+    )
+
+    class _FakeCredentials:
+        @classmethod
+        def from_env(cls, *, access_token=None):
+            calls.append("from_env")
+            return "runtime-credential-sentinel"
+
+    monkeypatch.setattr(live_prep_module, "UpstoxCredentials", _FakeCredentials)
+
+    settings = LiveExecutionTestSettings(
+        enabled=False,  # master flag off => gate closed; tokens cannot open it
+        consent_file=str(tmp_path / "operator_consent.json"),
+        expiry_hours=24.0,
+    )
+    io = PrepIO(
+        settings=settings,
+        oauth_config=UpstoxOAuthConfig(
+            client_id=FAKE_CLIENT_ID, client_secret=FAKE_CLIENT_SECRET
+        ),
+        consent_path=tmp_path / "operator_consent.json",
+        operator="TestOperator",
+        purpose="hermetic gate guard",
+        master_file=_write_master(tmp_path),
+        now_fn=lambda: REF_NOW,
+        oauth_exchange=lambda _cfg, _code: FAKE_TOKEN,
+        adapter_factory=None,
+    )
+
+    result = prepare_live_buy(io)
+
+    assert result.status == FAIL_CLOSED
+    assert result.stage == "gate"
+    assert result.payload is None
+    # Even with a live credential in hand, a closed gate short-circuits before
+    # any adapter construction — the runtime token cannot bypass the gate.
+    assert calls == []
+
+
 def test_fail_closed_when_oauth_not_configured(tmp_path):
     io = PrepIO(
         settings=_settings(tmp_path),

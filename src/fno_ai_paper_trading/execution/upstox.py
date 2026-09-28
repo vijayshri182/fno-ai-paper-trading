@@ -131,17 +131,29 @@ class UpstoxCredentials:
         )
 
     @classmethod
-    def from_env(cls) -> "UpstoxCredentials":
+    def from_env(
+        cls,
+        *,
+        access_token: str | None = None,
+    ) -> "UpstoxCredentials":
         """Build execution credentials from the ``UPSTOX_*`` environment only.
 
         The execution path **never** consumes the analytics/data token
         (``FNO_UPSTOX_ACCESS_TOKEN``): if ``UPSTOX_ACCESS_TOKEN`` is absent the
         credentials are simply unconfigured, so a non-dry-run attempt fails
         before any HTTP write rather than borrowing the analytics token.
+
+        Credential precedence: a non-empty ``access_token`` explicitly supplied
+        by the caller (e.g. a freshly OAuth-authenticated runtime token) wins
+        over the environment's ``UPSTOX_ACCESS_TOKEN``; ``None``/empty falls
+        back to the environment. All other fields always come from the
+        environment, so the rest of the flow still sees real ``UPSTOX_*``
+        configuration.
         """
         load_dotenv()
+        runtime_token = (access_token or "").strip()
         return cls(
-            access_token=os.getenv("UPSTOX_ACCESS_TOKEN", "").strip(),
+            access_token=(runtime_token or os.getenv("UPSTOX_ACCESS_TOKEN", "")).strip(),
             api_key=os.getenv("UPSTOX_API_KEY", "").strip(),
             api_secret=os.getenv("UPSTOX_API_SECRET", "").strip(),
             base_url=(os.getenv("UPSTOX_BASE_URL", "") or UPSTOX_BASE_URL),
