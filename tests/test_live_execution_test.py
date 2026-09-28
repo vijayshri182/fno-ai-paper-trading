@@ -1173,6 +1173,113 @@ class TestBuildSignalBarsCurrentDay:
         assert "get_ohlcv" not in [m[0] for m in methods]
 
 
+class TestCurrentDaySignalBarsNewestRetention:
+    """Regression: current-day signal bars must keep the NEWEST N bars.
+
+    Guards the 2026-09-28 freshness STOP diagnostic: there is no stale-feed or
+    timezone defect in ``_current_day_signal_bars`` — history + intraday are
+    merged chronologically and truncated with ``merged[-limit:]``, so
+    ``bars[-1]`` is the newest available Intraday V3 candle (exactly what the
+    preflight Watchdog is evaluated against).
+    """
+
+    FIXED_NOW = datetime(2026, 9, 28, 10, 54, 0)
+    DAY_START = datetime(2026, 9, 28, 9, 15, 0)
+    LIMIT = 60
+
+    def _load_script(self):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "run_live_execution_test_newest_retention",
+            Path(__file__).resolve().parents[1] / "scripts" / "run_live_execution_test.py",
+        )
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+        return module
+
+    @staticmethod
+    def _freeze_clock(module, monkeypatch, fixed: datetime) -> None:
+        class _FixedClock(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return fixed
+
+        monkeypatch.setattr(module, "datetime", _FixedClock)
+
+    @staticmethod
+    def _history(count: int = 75) -> list[datetime]:
+        # A completed prior session (2026-09-25 09:15..15:25), all before today.
+        start = datetime(2026, 9, 25, 9, 15, 0)
+        return [start + timedelta(minutes=5 * i) for i in range(count)]
+
+    def _intraday(self, count: int = 20) -> list[datetime]:
+        # Today's Intraday V3 candles 09:15..(09:15 + 5*(count-1)) IST.
+        return [self.DAY_START + timedelta(minutes=5 * i) for i in range(count)]
+
+    def _build_through(self, module, monkeypatch, history, intraday, limit=LIMIT):
+        monkeypatch.setattr(module, "UpstoxHistoricalDataProvider", self._recording_provider(module, intraday, history))
+        monkeypatch.setattr(module, "_env_data_token", lambda: "test-token")
+        return module._build_signal_bars(
+            argparse.Namespace(data_source="upstox", interval="5m", token="tok", bars=limit),
+            get_research_instrument("NIFTY 50"),
+        )
+
+    @staticmethod
+    def _recording_provider(module, intraday, history):
+        def _bar_for(ts: datetime) -> MarketPrice:
+            return _bar(Decimal("24200"), ts)
+
+        class RecordingProvider:
+            def __init__(self, **kwargs):
+                pass
+
+            def get_intraday_ohlcv(self, instrument, interval):
+                return [_bar_for(ts) for ts in intraday]
+
+            def get_historical_ohlcv(self, instrument, interval, start=None, end=None):
+                return [_bar_for(ts) for ts in history]
+
+        return RecordingProvider
+
+    def test_merged_sorted_and_newest_n_retained(self, monkeypatch):
+        module = self._load_script()
+        self._freeze_clock(module, monkeypatch, self.FIXED_NOW)
+        history = self._history()
+        intraday = self._intraday()
+        bars, _ = self._build_through(module, monkeypatch, history, intraday)
+
+        expected = sorted(history + intraday)[-self.LIMIT :]
+        got = [b.timestamp for b in bars]
+        assert len(bars) == self.LIMIT  # merged (95) truncated to the newest 60
+        assert got == expected  # strictly chronological, keeps the newest N
+        assert bars[-1].timestamp == intraday[-1]  # newest Intraday V3 candle last
+        assert bars[0].timestamp != history[0]  # oldest bars are dropped, not kept
+
+    def test_limit_smaller_than_intraday_keeps_newest_intraday(self, monkeypatch):
+        module = self._load_script()
+        self._freeze_clock(module, monkeypatch, self.FIXED_NOW)
+        history = self._history()
+        intraday = self._intraday()
+        bars, _ = self._build_through(module, monkeypatch, history, intraday)
+
+        expected = sorted(history + intraday)[-self.LIMIT :]
+        assert len(bars) == self.LIMIT
+        # With limit < intraday count the tail still ends at the newest candle.
+        assert bars[-1].timestamp == expected[-1] == intraday[-1]
+        assert all(bars[i].timestamp < bars[i + 1].timestamp for i in range(len(bars) - 1))
+
+    def test_no_limit_returns_full_sorted_series(self, monkeypatch):
+        module = self._load_script()
+        self._freeze_clock(module, monkeypatch, self.FIXED_NOW)
+        history = self._history()
+        intraday = self._intraday()
+        bars, _ = self._build_through(module, monkeypatch, history, intraday, limit=0)
+        assert [b.timestamp for b in bars] == sorted(history + intraday)
+        assert bars[-1].timestamp == intraday[-1]
+
+
 class TestDryRunPayloadBody:
     """The CLI's dry-run upstox payload must use the intraday product ``I``.
 

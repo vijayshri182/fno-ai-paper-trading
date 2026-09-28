@@ -221,6 +221,49 @@ class TestWatchdog:
                 timedelta(minutes=5),
             )
 
+    def test_is_stale_boundary_exactly_max_bar_age_is_fresh(self) -> None:
+        # A bar exactly ``max_bar_age`` (300 s) old must stay fresh; only bars
+        # OLDER than the window are stale. Guards against `>` becoming `>=`.
+        assert is_stale(BASE_TIME - timedelta(minutes=5), BASE_TIME, timedelta(minutes=5)) is False
+
+    def test_is_stale_beyond_max_bar_age_is_stale(self) -> None:
+        assert is_stale(
+            BASE_TIME - timedelta(minutes=5, seconds=1),
+            BASE_TIME,
+            timedelta(minutes=5),
+        ) is True
+
+    def test_is_stale_future_dated_bar_is_stale(self) -> None:
+        # A future-dated bar (age < 0) is invalid/out-of-order data: stale.
+        assert is_stale(BASE_TIME + timedelta(minutes=1), BASE_TIME, timedelta(minutes=5)) is True
+
+    def test_market_data_freshness_race_documented(self) -> None:
+        """The observed 2026-09-28 race: the verdict is evaluation-instant dependent.
+
+        The same latest 10:50 candle was READY at 10:54:14 IST (age 254 s) yet
+        escalated to STOP by the time the controlled live run reached its
+        preflight at 10:55:01 IST (age 301 s). TODAY_5M READY is time-sensitive:
+        it is never a guarantee for a later evaluation.
+        """
+        latest = datetime(2026, 9, 28, 10, 50, 0)
+        fresh = Watchdog(
+            max_bar_age=timedelta(minutes=5),
+            now=lambda: datetime(2026, 9, 28, 10, 54, 14),
+        )
+        stale = Watchdog(
+            max_bar_age=timedelta(minutes=5),
+            now=lambda: datetime(2026, 9, 28, 10, 55, 1),
+        )
+
+        fresh_report = fresh.evaluate(latest_bar_time=latest, components={})
+        assert fresh_report.status is ComponentStatus.HEALTHY
+        assert fresh.safety(fresh_report).decision is SafetyDecision.SAFE
+
+        stale_report = stale.evaluate(latest_bar_time=latest, components={})
+        assert stale_report.status is ComponentStatus.CRITICAL
+        assert stale_report.findings[0].component == "market_data"
+        assert stale.safety(stale_report).decision is SafetyDecision.STOP
+
     def test_bar_sequence_validation(self) -> None:
         times = [BASE_TIME + timedelta(minutes=i) for i in range(5)]
         assert bar_sequence_is_valid(times) is True
