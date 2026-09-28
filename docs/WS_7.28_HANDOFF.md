@@ -7,12 +7,12 @@ Mode: **HANDOFF ONLY** — read-only to code/credentials/consent, no push, no en
 
 ## 1. Current Checkpoint
 
-- **HEAD:** `df3c11b` (`ba41f69`→`04f2fec`→`93fd476`→`f9ca92e`→`df3c11b` are this session's advances: WP-13 scheduler hardening, WP-8 statutory cost schedule, WP-18 credential hygiene + `secret_scan` gate, G7 research-integrity wiring)
+- **HEAD:** `79e34b4` (`ba41f69`→`04f2fec`→`93fd476`→`f9ca92e`→`df3c11b`→`79e34b4` are this session's advances: WP-13 scheduler hardening, WP-8 statutory cost schedule, WP-18 credential hygiene + `secret_scan` gate, G7 research-integrity wiring, milestone docs)
 - **Previous WS:** WS 7.27 (committed as `708d907`)
 - **Test status (this session, exit logged):**
-  - Full suite: **3224 passed / 0 failed / exit 0** (727.80s)
+  - Full suite: **3224 passed / 0 failed / exit 0** (re-run 846.21s; was 727.80s)
   - `tests/test_research_integrity_wiring.py` (G7 wiring): **7 passed**
-- **Working-tree status:** only known noise untracked (`runs/`, `gui/`, `NIFTY_50_5m/`, `node_modules/`, `reports/` artifacts, `docs/architecture` images, session probe files). No source files dirty.
+- **Working-tree status:** only known noise untracked (`runs/`, `gui/`, `NIFTY_50_5m/`, `node_modules/`, `vendor/`, `reports/` artifacts, `docs/architecture` images, session probe files incl. `tests/_probe_forced_uses.py`, root `fresh_oos_manifest.json` snapshot). No source files dirty.
 - **Session advances (committed bare `df3c11b`):**
   - `ba41f69` — `fresh_oos/scheduler.py` WP-13: bounded transient retry, consecutive-failure STALL escalation, run-status artifact
   - `04f2fec` — `paper_track/costs.py` + report wiring WP-8: reporting-only statutory schedule; executed commission math and the frozen reconciliation identity untouched
