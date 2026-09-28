@@ -175,6 +175,7 @@ def test_ready_builds_one_lot_market_buy_payload(tmp_path):
     assert payload["quantity"] == 75  # == current lot size (one lot, market)
     assert payload["instrument_token"] == 51418
     assert payload["is_amo"] is False
+    assert payload["trigger_price"] == 0
 
 
 def test_gate_is_authoritative_and_fail_closed_on_closed_gate(tmp_path):

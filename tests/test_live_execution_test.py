@@ -673,10 +673,46 @@ class TestUpstoxAdapter:
         assert body["validity"] == "DAY"
         assert body["is_amo"] is False
         assert body["price"] == 0
+        assert body["trigger_price"] == 0
         assert body["instrument_type"] == "OPT"
         assert body["instrument_token"] == 123456
         assert body["quantity"] == LOT
         assert body["transaction_type"] == "BUY"
+
+    def test_place_order_body_pins_trigger_price_contract(self):
+        # 2026-09-28 11:31 incident: a real send reached /v2/order/place but
+        # Upstox rejected it HTTP 400 UDAPI1036 "The ''trigger_price'' is
+        # required" because the adapter body omitted 'trigger_price'. Upstox's
+        # order schema requires the key with value 0 for MARKET/LIMIT orders.
+        # This test pins the fixed 11-key contract: 'trigger_price' must be
+        # present and exactly 0.
+        recorded: list[dict] = []
+
+        def _recording_request(method, url, *, headers=None, timeout=10.0, data=None, **kwargs):
+            raw = data.decode("utf-8") if isinstance(data, (bytes, bytearray)) else (data or "{}")
+            recorded.append(json.loads(raw))
+            return _json_response(200, {"data": {"order_id": "PX-U", "timestamp": "2026-09-14T12:00:00"}})
+
+        adapter = UpstoxExecutionAdapter(
+            credentials=UpstoxCredentials(access_token="tok", api_key="apikey"),
+            dry_run=False,
+            instrument_tokens={KEY: 123456},
+            request=_recording_request,
+            now_fn=lambda: datetime(2026, 9, 14, 12, 0),
+        )
+        ack = adapter.place_order(Order(instrument=_option(), side=OrderSide.BUY, quantity=LOT))
+        assert ack.provider_order_id == "PX-U"
+        body = recorded[0]
+        assert set(body) == {
+            "instrument_token", "quantity", "product", "validity", "price",
+            "trigger_price", "tag", "instrument_type", "transaction_type",
+            "order_type", "is_amo",
+        }
+        assert body["trigger_price"] == 0
+        assert body["product"] == "I"
+        assert body["order_type"] == "MARKET"
+        assert body["validity"] == "DAY"
+        assert body["is_amo"] is False
 
     def test_place_order_refuses_normal_live(self):
         adapter = self._adapter(_FakeTransport(), dry_run=False)
@@ -1313,6 +1349,7 @@ class TestDryRunPayloadBody:
         assert body["validity"] == "DAY"
         assert body["is_amo"] is False
         assert body["price"] == 0
+        assert body["trigger_price"] == 0
         assert body["instrument_type"] == "OPT"
         assert body["instrument_token"] == 51418
         assert body["quantity"] == 75

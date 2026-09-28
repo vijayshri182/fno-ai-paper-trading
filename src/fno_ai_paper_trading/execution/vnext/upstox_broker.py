@@ -314,6 +314,7 @@ class UpstoxBroker:
             "product": "I",
             "validity": "DAY",
             "price": 0,
+            "trigger_price": 0,
             "tag": _ORDER_TAG,
             "instrument_type": _instrument_type_for(order.contract),
             "transaction_type": order.tx_side.value,

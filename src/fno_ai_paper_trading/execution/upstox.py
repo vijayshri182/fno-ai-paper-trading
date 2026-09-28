@@ -405,6 +405,7 @@ class UpstoxExecutionAdapter(ExecutionAdapter):
             "product": "I",
             "validity": "DAY",
             "price": 0,
+            "trigger_price": 0,
             "tag": "fno-ai-controlled-live-execution-test",
             "instrument_type": self._instrument_type_for(order),
             "transaction_type": order.side.value,

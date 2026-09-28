@@ -209,6 +209,7 @@ class TestSubmitOrder:
         assert body["order_type"] == "MARKET"
         assert body["product"] == "I"
         assert body["validity"] == "DAY"
+        assert body["trigger_price"] == 0
 
     def test_close_sell_uses_se_sell_tx_type(self, fake_creds):
         transport = RecordingTransport(

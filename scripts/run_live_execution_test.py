@@ -238,10 +238,10 @@ def _dry_run_payload_body(contract, option_type_pref: str, side: str) -> dict[st
     """Reconstructed order body a real send would POST to ``/v2/order/place``.
 
     Mirrors the exact body built by :class:`UpstoxExecutionAdapter` (intraday
-    product ``I``, MARKET, DAY validity, non-AMO, zero price) so a dry run prints
-    what a real send would post. Credentials are never included. For an ``auto``
-    leg the ``transaction_type`` is decided by the signal at runtime and is
-    rendered as ``"<signal>"`` here.
+    product ``I``, MARKET, DAY validity, non-AMO, zero price, zero trigger price)
+    so a dry run prints what a real send would post. Credentials are never
+    included. For an ``auto`` leg the ``transaction_type`` is decided by the
+    signal at runtime and is rendered as ``"<signal>"`` here.
     """
     return {
         "instrument_token": contract.instrument_token,
@@ -249,6 +249,7 @@ def _dry_run_payload_body(contract, option_type_pref: str, side: str) -> dict[st
         "product": "I",
         "validity": "DAY",
         "price": 0,
+        "trigger_price": 0,
         "tag": "fno-ai-controlled-live-execution-test",
         "instrument_type": "OPT",
         "transaction_type": ("BUY" if option_type_pref == "CE" else "SELL") if side != "auto" else "<signal>",

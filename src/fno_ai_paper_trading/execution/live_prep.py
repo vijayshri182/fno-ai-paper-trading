@@ -425,6 +425,7 @@ def prepare_live_buy(io: PrepIO | None = None) -> LivePrepResult:
         "product": "I",
         "validity": "DAY",
         "price": 0,
+        "trigger_price": 0,
         "instrument_type": "OPT",
         "transaction_type": "BUY",
         "order_type": "MARKET",
