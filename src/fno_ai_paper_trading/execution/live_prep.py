@@ -420,7 +420,7 @@ def prepare_live_buy(io: PrepIO | None = None) -> LivePrepResult:
         order_type=OrderType.MARKET,
     )
     payload_preview = {
-        "instrument_token": contract.instrument_token,
+        "instrument_token": contract.instrument_key,
         "quantity": quantity,
         "product": "I",
         "validity": "DAY",

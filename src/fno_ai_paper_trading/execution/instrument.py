@@ -19,6 +19,28 @@ from fno_ai_paper_trading.utils.functions import positive_decimal, positive_int
 #: Conservative margin buffer to apply on top of the raw option premium cost.
 MARGIN_BUFFER = Decimal("1.15")
 
+#: Known Upstox instrument-key segments for canonical ``SEGMENT|TOKEN`` keys.
+UPSTOX_KEY_SEGMENTS = frozenset(
+    {"NSE_EQ", "NSE_FO", "NSE_INDEX", "BSE_EQ", "BSE_FO", "BSE_INDEX", "MCX_CC", "MCX_SS"}
+)
+
+
+def is_canonical_upstox_instrument_key(key: str) -> bool:
+    """True when ``key`` is a canonical Upstox instrument key (``SEGMENT|TOKEN``).
+
+    Order placement requires the full segment-namespaced numeric key (e.g.
+    ``"NSE_FO|73897"``); the bare numeric token is rejected by the broker
+    (``UDAPI100011 Invalid Instrument key``). A canonical key is exactly
+    ``SEGMENT|TOKEN`` with a known ``SEGMENT`` prefix and an all-numeric,
+    non-empty token suffix — no surrounding whitespace, no extra separators.
+    """
+    if not key or key != key.strip() or "|" not in key:
+        return False
+    segment, _, suffix = key.partition("|")
+    if not segment or "|" in suffix:
+        return False
+    return segment in UPSTOX_KEY_SEGMENTS and suffix.isdigit()
+
 
 def resolve_fno_instrument(
     *,

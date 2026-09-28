@@ -609,6 +609,7 @@ class TestUpstoxAdapter:
             credentials=credentials,
             dry_run=dry_run,
             instrument_tokens={KEY: 123456},
+            instrument_keys={KEY: "NSE_FO|123456"},
             request=transport,
             now_fn=lambda: datetime(2026, 9, 14, 12, 0),
         )
@@ -659,6 +660,7 @@ class TestUpstoxAdapter:
             credentials=UpstoxCredentials(access_token="tok", api_key="apikey"),
             dry_run=False,
             instrument_tokens={KEY: 123456},
+            instrument_keys={KEY: "NSE_FO|123456"},
             request=_recording_request,
             now_fn=lambda: datetime(2026, 9, 14, 12, 0),
         )
@@ -675,7 +677,7 @@ class TestUpstoxAdapter:
         assert body["price"] == 0
         assert body["trigger_price"] == 0
         assert body["instrument_type"] == "OPT"
-        assert body["instrument_token"] == 123456
+        assert body["instrument_token"] == "NSE_FO|123456"
         assert body["quantity"] == LOT
         assert body["transaction_type"] == "BUY"
 
@@ -697,6 +699,7 @@ class TestUpstoxAdapter:
             credentials=UpstoxCredentials(access_token="tok", api_key="apikey"),
             dry_run=False,
             instrument_tokens={KEY: 123456},
+            instrument_keys={KEY: "NSE_FO|123456"},
             request=_recording_request,
             now_fn=lambda: datetime(2026, 9, 14, 12, 0),
         )
@@ -708,6 +711,7 @@ class TestUpstoxAdapter:
             "trigger_price", "tag", "instrument_type", "transaction_type",
             "order_type", "is_amo",
         }
+        assert body["instrument_token"] == "NSE_FO|123456"
         assert body["trigger_price"] == 0
         assert body["product"] == "I"
         assert body["order_type"] == "MARKET"
@@ -728,6 +732,150 @@ class TestUpstoxAdapter:
             adapter.place_order(
                 Order(instrument=_option_without_token(), side=OrderSide.BUY, quantity=LOT)
             )
+
+    # ------------------------------------------------------------------
+    # Canonical instrument-key contract (2026-09-24 13:20 incident)
+    #
+    # The broker rejected the order with HTTP 400 UDAPI100011 "Invalid
+    # Instrument key" because the adapter placed the bare numeric token in the
+    # "instrument_token" field. /v2/order/place expects the full canonical
+    # "SEGMENT|TOKEN" key (e.g. "NSE_FO|73897"); the numeric token stays the
+    # identity for quotes and for positions reconciliation, never the payload.
+    # ------------------------------------------------------------------
+
+    def _recording_adapter(self, transport) -> UpstoxExecutionAdapter:
+        return UpstoxExecutionAdapter(
+            credentials=UpstoxCredentials(access_token="tok", api_key="apikey"),
+            dry_run=False,
+            instrument_tokens={KEY: 123456},
+            instrument_keys={KEY: "NSE_FO|123456"},
+            request=transport,
+            now_fn=lambda: datetime(2026, 9, 14, 12, 0),
+        )
+
+    def test_instrument_sent_as_canonical_segment_token_key(self):
+        recorded: list[dict] = []
+
+        def _recording_request(method, url, *, headers=None, timeout=10.0, data=None, **kwargs):
+            raw = data.decode("utf-8") if isinstance(data, (bytes, bytearray)) else (data or "{}")
+            recorded.append(json.loads(raw))
+            return _json_response(200, {"data": {"order_id": "PX-K", "timestamp": "2026-09-14T12:00:00"}})
+
+        adapter = self._recording_adapter(_recording_request)
+        ack = adapter.place_order(Order(instrument=_option(), side=OrderSide.BUY, quantity=LOT))
+        assert ack.provider_order_id == "PX-K"
+        assert ack.dry_run is False
+        assert recorded[0]["instrument_token"] == "NSE_FO|123456"
+
+    def test_numeric_only_token_rejected_for_order_placement(self):
+        from fno_ai_paper_trading.models.instruments import Instrument
+
+        option = Instrument(
+            symbol="NIFTY 24500 CE",
+            instrument_type=InstrumentType.OPTION_CE,
+            underlying_symbol="NIFTY",
+            expiry=date(2026, 12, 24),
+            strike=Decimal("24500"),
+            option_type="CE",
+            exchange="NSE",
+            exchange_token="123456",  # numeric-only: UDAPI100011 on a real send
+            lot_size=LOT,
+            multiplier=1,
+        )
+        adapter = self._adapter(_FakeTransport(), dry_run=False)
+        with pytest.raises(UpstoxExecutionError, match="refuses to guess"):
+            adapter.place_order(Order(instrument=option, side=OrderSide.BUY, quantity=LOT))
+
+    def test_unregistered_local_key_rejected_for_order_placement(self):
+        adapter = self._adapter(_FakeTransport(), dry_run=False)
+        adapter.instrument_keys = {}  # descriptive local key, no canonical mapping
+        with pytest.raises(UpstoxExecutionError, match="refuses to guess"):
+            adapter.place_order(
+                Order(instrument=_option(), side=OrderSide.BUY, quantity=LOT)
+            )
+
+    def test_invalid_instrument_key_prefix_rejected(self):
+        adapter = UpstoxExecutionAdapter(
+            credentials=UpstoxCredentials(access_token="tok", api_key="apikey"),
+            dry_run=False,
+            instrument_tokens={KEY: 123456},
+            instrument_keys={KEY: "BOGUS|123456"},
+            request=_FakeTransport(),
+            now_fn=lambda: datetime(2026, 9, 14, 12, 0),
+        )
+        with pytest.raises(UpstoxExecutionError, match="invalid Upstox instrument key"):
+            adapter.place_order(
+                Order(instrument=_option(), side=OrderSide.BUY, quantity=LOT)
+            )
+
+    def test_instrument_key_numeric_mismatch_rejected(self):
+        adapter = UpstoxExecutionAdapter(
+            credentials=UpstoxCredentials(access_token="tok", api_key="apikey"),
+            dry_run=False,
+            instrument_tokens={KEY: 123456},
+            instrument_keys={KEY: "NSE_FO|99999"},
+            request=_FakeTransport(),
+            now_fn=lambda: datetime(2026, 9, 14, 12, 0),
+        )
+        with pytest.raises(UpstoxExecutionError, match="does not match"):
+            adapter.place_order(
+                Order(instrument=_option(), side=OrderSide.BUY, quantity=LOT)
+            )
+
+    def test_canonical_exchange_token_used_without_mapping(self):
+        # The live resolver emits exchange_token == the canonical key directly
+        # (e.g. "NSE_FO|73897"); the adapter must use it as-is for the payload.
+        recorded: list[dict] = []
+
+        def _recording_request(method, url, *, headers=None, timeout=10.0, data=None, **kwargs):
+            raw = data.decode("utf-8") if isinstance(data, (bytes, bytearray)) else (data or "{}")
+            recorded.append(json.loads(raw))
+            return _json_response(200, {"data": {"order_id": "PX-N", "timestamp": "2026-09-14T12:00:00"}})
+
+        option = resolve_fno_instrument(
+            underlying="NIFTY",
+            expiry=date(2026, 12, 24),
+            strike=Decimal("24500"),
+            option_type="CE",
+            exchange_token="NSE_FO|73897",
+            lot_size=LOT,
+        )
+        adapter = UpstoxExecutionAdapter(
+            credentials=UpstoxCredentials(access_token="tok", api_key="apikey"),
+            dry_run=False,
+            instrument_tokens={"NSE_FO|73897": 73897},
+            request=_recording_request,
+            now_fn=lambda: datetime(2026, 9, 14, 12, 0),
+        )
+        adapter.place_order(Order(instrument=option, side=OrderSide.BUY, quantity=LOT))
+        assert recorded[0]["instrument_token"] == "NSE_FO|73897"
+
+    def test_entry_and_exit_use_same_instrument_key(self):
+        recorded: list[dict] = []
+
+        def _recording_request(method, url, *, headers=None, timeout=10.0, data=None, **kwargs):
+            raw = data.decode("utf-8") if isinstance(data, (bytes, bytearray)) else (data or "{}")
+            recorded.append(json.loads(raw))
+            return _json_response(200, {"data": {"order_id": f"PX-{len(recorded)}", "timestamp": "2026-09-14T12:00:00"}})
+
+        adapter = self._recording_adapter(_recording_request)
+        adapter.place_order(Order(instrument=_option(), side=OrderSide.BUY, quantity=LOT))
+        adapter.place_order(Order(instrument=_option(), side=OrderSide.SELL, quantity=LOT))
+        assert recorded[0]["instrument_token"] == "NSE_FO|123456"
+        assert recorded[1]["instrument_token"] == "NSE_FO|123456"
+
+    def test_quotes_and_positions_reconciliation_unchanged_by_keys(self):
+        # Numeric registry stays the identity for quotes and for reverse-mapping
+        # broker-reported positions; only the order payload carries the key.
+        transport = _FakeTransport([
+            _json_response(200, {"data": {KEY: {"ohlc": {"close": "247.50"}}}}),
+            _json_response(200, {"data": [{"instrument_token": 123456, "trading_symbol": KEY, "exchange": "NSE", "net_quantity": 75, "average_price": "249.00", "pnl": "12.00"}]}),
+        ])
+        adapter = self._adapter(transport, dry_run=False)
+        assert adapter.quote(KEY) == Decimal("247.50")
+        positions = adapter.get_positions()
+        assert [p.symbol for p in positions] == [KEY]
+        assert [p.quantity for p in positions] == [75]
 
     def test_get_order_status_maps_filled(self):
         transport = _FakeTransport([
@@ -1338,7 +1486,11 @@ class TestDryRunPayloadBody:
         return module
 
     def _payload(self, module, side, option_type_pref="CE"):
-        contract = type("FakeContract", (), {"instrument_token": 51418, "lot_size": 75})()
+        contract = type(
+            "FakeContract",
+            (),
+            {"instrument_key": "NSE_FO|51418", "instrument_token": 51418, "lot_size": 75},
+        )()
         return module._dry_run_payload_body(contract, option_type_pref, side)
 
     def test_dry_run_payload_uses_intraday_product(self):
@@ -1351,7 +1503,7 @@ class TestDryRunPayloadBody:
         assert body["price"] == 0
         assert body["trigger_price"] == 0
         assert body["instrument_type"] == "OPT"
-        assert body["instrument_token"] == 51418
+        assert body["instrument_token"] == "NSE_FO|51418"
         assert body["quantity"] == 75
         assert body["transaction_type"] == "BUY"
 

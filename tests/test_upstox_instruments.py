@@ -20,6 +20,7 @@ from fno_ai_paper_trading.data.upstox_instruments import (
     load_nse_rows,
     resolve_fno_contract,
 )
+from fno_ai_paper_trading.execution.instrument import is_canonical_upstox_instrument_key
 from fno_ai_paper_trading.execution.upstox import (
     UpstoxCredentials,
     UpstoxExecutionAdapter,
@@ -382,3 +383,35 @@ class TestAdapterTokenWiring:
         positions = adapter.get_positions()
         assert positions[0].symbol == "SOME OTHER"
         assert positions[0].quantity == 10
+
+
+class TestCanonicalInstrumentKey:
+    """Order placement requires the canonical SEGMENT|NUMERIC instrument key.
+
+    The numeric-only token and descriptive (non-numeric) keys are invalid for
+    placement (the broker rejects them with UDAPI100011) even though the numeric
+    token remains valid as a quote/positions identity.
+    """
+
+    def test_accepts_canonical_nse_fo_key(self):
+        assert is_canonical_upstox_instrument_key("NSE_FO|73897") is True
+
+    def test_accepts_other_known_segments(self):
+        for key in ("NSE_EQ|1000", "NSE_INDEX|26000", "BSE_FO|4321", "MCX_CC|991"):
+            assert is_canonical_upstox_instrument_key(key) is True
+
+    def test_rejects_numeric_only_token(self):
+        assert is_canonical_upstox_instrument_key("73897") is False
+
+    def test_rejects_unknown_segment_prefix(self):
+        assert is_canonical_upstox_instrument_key("BOGUS|73897") is False
+
+    def test_rejects_descriptive_non_numeric_suffix(self):
+        assert is_canonical_upstox_instrument_key("NSE_FO|NIFTY 24500 CE 17 SEP 26") is False
+
+    def test_rejects_double_pipe_and_empty_parts(self):
+        assert is_canonical_upstox_instrument_key("NSE_FO|57617|X") is False
+        assert is_canonical_upstox_instrument_key("|57617") is False
+        assert is_canonical_upstox_instrument_key("NSE_FO|") is False
+        assert is_canonical_upstox_instrument_key("") is False
+        assert is_canonical_upstox_instrument_key("NSE_FO|57617 ") is False

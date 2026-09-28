@@ -48,6 +48,7 @@ from fno_ai_paper_trading.execution.errors import (
     UpstoxOrderRejectedError,
 )
 from fno_ai_paper_trading.execution.gate import ExecutionMode
+from fno_ai_paper_trading.execution.instrument import is_canonical_upstox_instrument_key
 from fno_ai_paper_trading.models.enums import OrderSide, OrderStatus
 from fno_ai_paper_trading.models.order import Order
 from fno_ai_paper_trading.utils.http import HttpError, http_request
@@ -286,11 +287,17 @@ def _map_order_status(raw: str, filled_quantity: int, quantity: int) -> OrderSta
 class UpstoxExecutionAdapter(ExecutionAdapter):
     """REST adapter over the Upstox V2 trading endpoints.
 
-    ``instrument_tokens`` maps a local ``exchange_token`` (``SEGMENT|SYMBOL``
-    or the numeric-key form ``SEGMENT|TOKEN``) to the numeric Upstox instrument
-    token the order API expects. When absent for a symbol, the adapter refuses
-    to place the order (no guessing) *unless* the ``SEGMENT|TOKEN`` key already
-    carries the numeric token — that suffix is the identity, not a guess.
+    ``instrument_tokens`` maps a local ``exchange_token`` to the numeric Upstox
+    instrument token (a numeric identity used for market quotes and for
+    reverse-mapping the instrument tokens reported by ``/v2/positions``).
+
+    Order placement requires the canonical full instrument key (``SEGMENT|TOKEN``,
+    e.g. ``"NSE_FO|73897"``); the bare numeric token is rejected by the broker
+    (``UDAPI100011 Invalid Instrument key``). ``instrument_keys`` maps a local
+    ``exchange_token`` to the canonical key; when it is absent the adapter falls
+    back to the exchange token itself only if it already is a canonical key. A
+    missing, malformed, or numerically inconsistent key aborts the order locally
+    — the adapter never guesses or reconstructs a key from a bare numeric token.
     """
 
     def __init__(
@@ -299,6 +306,7 @@ class UpstoxExecutionAdapter(ExecutionAdapter):
         *,
         dry_run: bool = True,
         instrument_tokens: Mapping[str, int] | None = None,
+        instrument_keys: Mapping[str, str] | None = None,
         request: Callable = http_request,
         now_fn: Callable[[], datetime] = datetime.now,
         sleep: Callable[[float], None] | None = None,
@@ -307,6 +315,7 @@ class UpstoxExecutionAdapter(ExecutionAdapter):
         self.credentials = credentials
         self.dry_run = bool(dry_run)
         self.instrument_tokens: dict[str, int] = dict(instrument_tokens or {})
+        self.instrument_keys: dict[str, str] = dict(instrument_keys or {})
         self._request = request
         self._now = now_fn
         self._sleep = sleep
@@ -395,12 +404,12 @@ class UpstoxExecutionAdapter(ExecutionAdapter):
         if order.instrument is None:
             raise UpstoxExecutionError("an instrument is required to place an order")
 
+        key = self._order_instrument_key(order.instrument.exchange_token)
         if self.dry_run:
             return self._dry_ack(order)
 
-        token = self._token_for(order.instrument.exchange_token)
         body = {
-            "instrument_token": token,
+            "instrument_token": key,
             "quantity": int(order.quantity),
             "product": "I",
             "validity": "DAY",
@@ -500,6 +509,13 @@ class UpstoxExecutionAdapter(ExecutionAdapter):
     # ---------------------------------------------------------------- internals
 
     def _token_for(self, exchange_token: str | None) -> int:
+        """Numeric Upstox instrument token identity for a local key.
+
+        Used for quotes and to reverse-map broker-reported positions. This is a
+        numeric identity, NOT the value the order API accepts: ``place_order``
+        sends the canonical ``SEGMENT|TOKEN`` key via
+        :meth:`_order_instrument_key` instead.
+        """
         token = self.instrument_tokens.get(exchange_token)
         if token is None and exchange_token:
             # A SEGMENT|TOKEN key already carries the numeric Upstox token in
@@ -513,6 +529,38 @@ class UpstoxExecutionAdapter(ExecutionAdapter):
                 "the adapter refuses to guess"
             )
         return int(token)
+
+    def _order_instrument_key(self, exchange_token: str | None) -> str:
+        """Resolve and validate the canonical Upstox key used for order placement.
+
+        Resolution order: an explicit ``instrument_keys`` mapping entry, else
+        the exchange token itself when it already is a canonical ``SEGMENT|TOKEN``
+        key. A missing, malformed, or numerically inconsistent key is rejected
+        locally — the adapter never guesses or reconstructs a key from a bare
+        numeric token (the broker rejects those with UDAPI100011).
+        """
+        local = (exchange_token or "").strip()
+        canonical = self.instrument_keys.get(local)
+        if canonical is None:
+            canonical = local if is_canonical_upstox_instrument_key(local) else None
+        if canonical is None:
+            raise UpstoxExecutionError(
+                f"no canonical Upstox instrument key registered for {local!r}; "
+                "the adapter refuses to guess or reconstruct one from a numeric token"
+            )
+        if not is_canonical_upstox_instrument_key(canonical):
+            raise UpstoxExecutionError(
+                f"invalid Upstox instrument key {canonical!r}; expected a canonical "
+                "SEGMENT|NUMERIC key for order placement"
+            )
+        numeric = self._token_for(local)
+        suffix = int(canonical.rsplit("|", 1)[1])
+        if suffix != numeric:
+            raise UpstoxExecutionError(
+                f"instrument key {canonical!r} does not match the registered numeric "
+                f"Upstox token {numeric} for {local!r}"
+            )
+        return canonical
 
     def _dry_ack(self, order: Order) -> ExecutionAck:
         order_id = order.order_id or new_id("ORD")

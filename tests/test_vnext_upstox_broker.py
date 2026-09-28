@@ -203,7 +203,7 @@ class TestSubmitOrder:
         (call,) = transport.calls
         assert call["method"] == "POST"
         body = json.loads(call["data"].decode("utf-8"))
-        assert body["instrument_token"] == 57617
+        assert body["instrument_token"] == "NSE_FO|57617"
         assert body["quantity"] == 75
         assert body["transaction_type"] == "BUY"
         assert body["order_type"] == "MARKET"
@@ -266,7 +266,7 @@ class TestSubmitOrder:
         )
         adapter.submit_order(OrderRequest(OrderAction.OPEN, contract, TxSide.BUY, 75))
         (call,) = transport.calls
-        assert json.loads(call["data"])["instrument_token"] == 4321
+        assert json.loads(call["data"])["instrument_token"] == "BSE_FO|004321"
 
     def test_missing_token_refuses_to_guess(self, fake_creds):
         transport = RecordingTransport()
@@ -634,7 +634,7 @@ class FakeUpstoxServer:
         self.calls.append((method, url))
         if method == "POST" and url.endswith("/v2/order/place"):
             body = json.loads(data)
-            token = int(body["instrument_token"])
+            token = int(body["instrument_token"].rsplit("|", 1)[-1])
             delta = int(body["quantity"]) if body["transaction_type"] == "BUY" else -int(body["quantity"])
             symbol, qty = self.position.get(token, (str(body.get("tag") or ""), 0))
             self.position[token] = (symbol, qty + delta)
@@ -707,7 +707,7 @@ class TestCallPutSemanticsEndToEnd:
         machine.on_signal(SignalDirection.SHORT)
         assert machine.state is PositionState.LONG_PUT
         assert _payload_signature(server.placed) == [
-            ("57618", "BUY", "OPT", "MARKET")
+            ("NSE_FO|57618", "BUY", "OPT", "MARKET")
         ]
 
     def test_long_entry_is_buy_ce_at_the_http_layer(self, fake_creds):
@@ -715,7 +715,7 @@ class TestCallPutSemanticsEndToEnd:
         machine.on_signal(SignalDirection.LONG)
         assert machine.state is PositionState.LONG_CALL
         assert _payload_signature(server.placed) == [
-            ("57617", "BUY", "OPT", "MARKET")
+            ("NSE_FO|57617", "BUY", "OPT", "MARKET")
         ]
 
     def test_reversal_call_to_put_sells_ce_then_buys_pe(self, fake_creds):
@@ -724,9 +724,9 @@ class TestCallPutSemanticsEndToEnd:
         machine.on_signal(SignalDirection.SHORT)
         assert machine.state is PositionState.LONG_PUT
         assert _payload_signature(server.placed) == [
-            ("57617", "BUY", "OPT", "MARKET"),
-            ("57617", "SELL", "OPT", "MARKET"),
-            ("57618", "BUY", "OPT", "MARKET"),
+            ("NSE_FO|57617", "BUY", "OPT", "MARKET"),
+            ("NSE_FO|57617", "SELL", "OPT", "MARKET"),
+            ("NSE_FO|57618", "BUY", "OPT", "MARKET"),
         ]
 
     def test_reversal_put_to_call_sells_pe_then_buys_ce(self, fake_creds):
@@ -735,9 +735,9 @@ class TestCallPutSemanticsEndToEnd:
         machine.on_signal(SignalDirection.LONG)
         assert machine.state is PositionState.LONG_CALL
         assert _payload_signature(server.placed) == [
-            ("57618", "BUY", "OPT", "MARKET"),
-            ("57618", "SELL", "OPT", "MARKET"),
-            ("57617", "BUY", "OPT", "MARKET"),
+            ("NSE_FO|57618", "BUY", "OPT", "MARKET"),
+            ("NSE_FO|57618", "SELL", "OPT", "MARKET"),
+            ("NSE_FO|57617", "BUY", "OPT", "MARKET"),
         ]
 
     def test_put_close_is_sell_pe_not_reverse_buy(self, fake_creds):
@@ -746,8 +746,8 @@ class TestCallPutSemanticsEndToEnd:
         machine.on_signal(SignalDirection.FLAT)
         assert machine.state is PositionState.FLAT
         assert _payload_signature(server.placed) == [
-            ("57618", "BUY", "OPT", "MARKET"),
-            ("57618", "SELL", "OPT", "MARKET"),
+            ("NSE_FO|57618", "BUY", "OPT", "MARKET"),
+            ("NSE_FO|57618", "SELL", "OPT", "MARKET"),
         ]
 
     def test_never_a_sell_open_in_any_sequence(self, fake_creds):
@@ -776,4 +776,4 @@ class TestCallPutSemanticsEndToEnd:
     def test_machine_satisfies_contract_pairing_via_resolver(self, fake_creds):
         machine, server, _ = _machine_with_upstox(fake_creds)
         machine.on_signal(SignalDirection.SHORT)
-        assert server.placed[0]["instrument_token"] == 57618  # PE token, PE contract
+        assert server.placed[0]["instrument_token"] == "NSE_FO|57618"  # PE key, PE contract

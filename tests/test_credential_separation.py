@@ -167,6 +167,7 @@ class TestExecutionCredentials:
             UpstoxCredentials(),
             dry_run=False,
             instrument_tokens={KEY: 123456},
+            instrument_keys={KEY: "NSE_FO|123456"},
             request=spy,
             now_fn=lambda: NOW,
         )
@@ -182,6 +183,7 @@ class TestExecutionCredentials:
             UpstoxCredentials.from_env(),
             dry_run=False,
             instrument_tokens={KEY: 123456},
+            instrument_keys={KEY: "NSE_FO|123456"},
             request=spy,
             now_fn=lambda: NOW,
         )
@@ -194,6 +196,7 @@ class TestExecutionCredentials:
             UpstoxCredentials(access_token=EXEC_TOKEN),
             dry_run=False,
             instrument_tokens={KEY: 123456},
+            instrument_keys={KEY: "NSE_FO|123456"},
             request=_raise_http_error,
             now_fn=lambda: NOW,
         )

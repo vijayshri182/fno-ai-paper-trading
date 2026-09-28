@@ -213,6 +213,38 @@ def _token_from_instrument_key(key: str) -> int | None:
     return None
 
 
+#: Known Upstox instrument-key segments (canonical ``SEGMENT|TOKEN`` form).
+_UPSTOX_KEY_SEGMENTS = frozenset(
+    {"NSE_EQ", "NSE_FO", "NSE_INDEX", "BSE_EQ", "BSE_FO", "BSE_INDEX", "MCX_CC", "MCX_SS"}
+)
+
+
+def _is_canonical_instrument_key(key: str) -> bool:
+    """True when ``key`` is a canonical Upstox instrument key (``SEGMENT|TOKEN``)."""
+    if not key or key != key.strip() or "|" not in key:
+        return False
+    segment, _, suffix = key.partition("|")
+    if not segment or "|" in suffix:
+        return False
+    return segment in _UPSTOX_KEY_SEGMENTS and suffix.isdigit()
+
+
+def _canonical_instrument_key(instrument_key: str | None) -> str:
+    """Validate and return the canonical Upstox key for order placement.
+
+    The order API requires the full ``SEGMENT|NUMERIC`` key (e.g.
+    ``"NSE_FO|73897"``); a bare numeric token is rejected with UDAPI100011. The
+    adapter refuses to guess or reconstruct a key from a numeric token.
+    """
+    key = (instrument_key or "").strip()
+    if not _is_canonical_instrument_key(key):
+        raise UpstoxBrokerError(
+            f"invalid Upstox instrument key {key!r}; expected a canonical "
+            "SEGMENT|NUMERIC key — the adapter refuses to guess"
+        )
+    return key
+
+
 def _json_bytes(body: Mapping[str, object]) -> bytes:
     def _default(value: object) -> object:
         if isinstance(value, Decimal):
@@ -304,12 +336,18 @@ class UpstoxBroker:
             )
         if order.quantity <= 0:
             raise InvalidOrderSemanticsError("quantity must be positive")
+        key = _canonical_instrument_key(order.contract.instrument_key)
         token = self._token_for(order.contract)
+        if _token_from_instrument_key(key) != token:
+            raise UpstoxBrokerError(
+                f"instrument key {key!r} does not match the registered numeric "
+                f"Upstox token {token}"
+            )
         if self.dry_run:
             provider_id = f"DRYRUN-{uuid.uuid4().hex[:8]}"
             return OrderTicket(order_id=provider_id, status=OrderStatus.SUBMITTED)
         body = {
-            "instrument_token": token,
+            "instrument_token": key,
             "quantity": int(order.quantity),
             "product": "I",
             "validity": "DAY",

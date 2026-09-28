@@ -244,7 +244,7 @@ def _dry_run_payload_body(contract, option_type_pref: str, side: str) -> dict[st
     signal at runtime and is rendered as ``"<signal>"`` here.
     """
     return {
-        "instrument_token": contract.instrument_token,
+        "instrument_token": contract.instrument_key,
         "quantity": int(contract.lot_size),
         "product": "I",
         "validity": "DAY",
